@@ -15,6 +15,9 @@ let check_fun2 _ = (* a failing test *)
 let t_int name value expected = name>::
   (fun _ -> assert_equal expected value ~printer:string_of_int);;
 
+let t_string name value expected = name>::
+    (fun _ -> assert_equal expected value);;
+
 (* Feel free to add any new testing functions you may need *)
 
 
@@ -23,12 +26,38 @@ let my_second_test = "my_second_test">::check_fun2;;
 let my_third_test = t_int "my_third_test" (2 + 2) 7;;
 let my_fourth_test = t_int "my_fourth_test" (2 + 2) 4;;
 
+let max_test_1 = t_int "max_test_1" (max 5 4) 5;;
+let max_test_2 = t_int "max_test_2" (max ~-4 2) 2;;
+let max_test_3 = t_int "max_test_3" (max ~-12 ~-4) ~-4;;
+let max_test_4 = t_int "max_test_4" (max 5 5) 5;;
+
+let fib_test_1 = t_int "fib_test_1" (fibonacci 1) 1;;
+let fib_test_2 = t_int "fib_test_2" (fibonacci 2) 1;;
+let fib_test_3 = t_int "fib_test_3" (fibonacci 10) 55;;
+
+let inorder_test_1 = t_string "inorder_test_1" (inorder_str Leaf) "";;
+let inorder_test_2 = t_string "inorder_test_2" (inorder_str Node("a", Leaf, Leaf)) "a";;
+let inorder_test_3 = t_string "inorder_test_3" (inorder_str Node("i", Node("h", Leaf, Leaf), Leaf)) "hi";;
+let inorder_test_4 = t_string "inorder_test_4" (inorder_str Node("h", Leaf, Node("i", Leaf, Leaf))) "hi";;
+let inorder_test_5 = t_string "inorder_test_5" (inorder_str Node("r", Node("h", Node("c", Leaf, Leaf), Node("a", Leaf, Leaf)), Node("c", Node("a", Leaf, Leaf), Node("e", Node("t", Leaf, Leaf), Node("r", Leaf, Leaf))))) "character";;
+
 let suite = "suite">:::[
   my_first_test;
   (* my_second_test; *)
   (* my_third_test; *)
-  (* my_fourth_test; *)
-  (* add more tests here *)
+  my_fourth_test;
+  max_test_1;
+  max_test_2;
+  max_test_3;
+  max_test_4;
+  fib_test_1;
+  fib_test_2;
+  fib_test_3;
+  inorder_test_1;
+  inorder_test_2;
+  inorder_test_3;
+  inorder_test_4;
+  inorder_test_5;
   ];;
 
 run_test_tt_main suite
