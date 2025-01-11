@@ -128,3 +128,9 @@ let rec inorder_str (bt : btnode) : string =
 *
 * => "car"                      
 *)
+
+let rec size (bt: btnode): int =
+  match bt with
+    | Leaf -> 0
+    | Node(s, left, right) ->
+      1 + (size left) + (size right)

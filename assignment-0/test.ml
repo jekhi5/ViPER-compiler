@@ -46,6 +46,12 @@ let inorder_test_3 = t_string "inorder_test_3" (inorder_str hi_left) "hi";;
 let inorder_test_4 = t_string "inorder_test_4" (inorder_str hi_right) "hi";;
 let inorder_test_5 = t_string "inorder_test_5" (inorder_str character) "character";;
 
+let size_test_1 = t_int "size_test_1" (size Leaf) 0;;
+let size_test_2 = t_int "size_test_2" (size a) 1;;
+let size_test_3 = t_int "size_test_3" (size hi_left) 2;;
+let size_test_4 = t_int "size_test_4" (size hi_right) 2;;
+let size_test_5 = t_int "size_test_5" (size character) 9;;
+
 let suite = "suite">:::[
   my_first_test;
   (* my_second_test; *)
@@ -63,6 +69,11 @@ let suite = "suite">:::[
   inorder_test_3;
   inorder_test_4;
   inorder_test_5;
+  size_test_1;
+  size_test_2;
+  size_test_3;
+  size_test_4;
+  size_test_5;
   ];;
 
 run_test_tt_main suite
