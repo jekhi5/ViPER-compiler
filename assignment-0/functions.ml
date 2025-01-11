@@ -148,3 +148,9 @@ let rec increment_all (lst : int list) : int list =
   match lst with
     | [] -> []
     | first::rest -> (first + 1) :: (increment_all rest)
+
+let rec long_strings (lst : string list) (len: int) : string list =
+  match lst with
+    | [] -> []
+    | first::rest ->
+      if (String.length first) > len then first::(long_strings rest len) else (long_strings rest len)

@@ -21,6 +21,9 @@ let t_string name value expected = name>::
 let t_int_list name value expected = name>::
     (fun _ -> assert_equal expected value ~printer:(fun (lst : int list) -> "[" ^ (String.concat "; " (List.map string_of_int lst)) ^ "]"));;
 
+let t_string_list name value expected = name>::
+    (fun _ -> assert_equal expected value ~printer:(fun (lst : string list) -> "[" ^ (String.concat "; " lst) ^ "]"));;
+
 (* Feel free to add any new testing functions you may need *)
 
 
@@ -74,16 +77,31 @@ let height_test_4 = t_int "height_test_4" (height long_right) 4;;
 let height_test_5 = t_int "height_test_5" (height character) 4;;
 
 let empty = []
-let single = [1]
+let single_int = [1]
 let positive_only = [1; 2; 3]
 let negative_only = [~-6; ~-3; ~-12]
 let mixed_sign = [4; ~-32; ~-5; ~-1; 6]
 
 let increment_all_test_1 = t_int_list "increment_all_test_1" (increment_all empty) [];;
-let increment_all_test_2 = t_int_list "increment_all_test_2" (increment_all single) [2];;
+let increment_all_test_2 = t_int_list "increment_all_test_2" (increment_all single_int) [2];;
 let increment_all_test_3 = t_int_list "increment_all_test_3" (increment_all positive_only) [2; 3; 4];;
 let increment_all_test_4 = t_int_list "increment_all_test_4" (increment_all negative_only) [~-5; ~-2; ~-11];;
 let increment_all_test_5 = t_int_list "increment_all_test_5" (increment_all mixed_sign) [5; ~-31; ~-4; 0; 7];;
+
+let empty_string = [""]
+let single_str = ["hello"]
+let many_str = ["hello"; "Charlie/Zack"; "how"; "is"; "grading"; "going"]
+
+let long_strings_test_1 = t_string_list "long_string_test_1" (long_strings empty 0) [];;
+let long_strings_test_2 = t_string_list "long_string_test_2" (long_strings empty 5000) [];;
+let long_strings_test_3 = t_string_list "long_string_test_3" (long_strings empty_string 0) [];;
+let long_strings_test_4 = t_string_list "long_string_test_4" (long_strings empty_string ~-1) [""];;
+let long_strings_test_5 = t_string_list "long_string_test_5" (long_strings single_str 4) ["hello"];;
+let long_strings_test_6 = t_string_list "long_string_test_6" (long_strings single_str 5) [];;
+let long_strings_test_7 = t_string_list "long_string_test_7" (long_strings single_str 18) [];;
+let long_strings_test_8 = t_string_list "long_string_test_8" (long_strings many_str 5) ["Charlie/Zack"; "grading"];;
+let long_strings_test_9 = t_string_list "long_string_test_9" (long_strings many_str ~-1) ["hello"; "Charlie/Zack"; "how"; "is"; "grading"; "going"];;
+
 
 let suite = "suite">:::[
   my_first_test;
@@ -123,6 +141,16 @@ let suite = "suite">:::[
   increment_all_test_3;
   increment_all_test_4;
   increment_all_test_5;
+
+  long_strings_test_1;
+  long_strings_test_2;
+  long_strings_test_3;
+  long_strings_test_4;
+  long_strings_test_5;
+  long_strings_test_6;
+  long_strings_test_7;
+  long_strings_test_8;
+  long_strings_test_9;
   ];;
 
 run_test_tt_main suite
