@@ -38,7 +38,16 @@ let fib_test_3 = t_int "fib_test_3" (fibonacci 10) 55;;
 let a = Node("a", Leaf, Leaf);;
 let hi_left = Node("i", Node("h", Leaf, Leaf), Leaf);;
 let hi_right = Node("h", Leaf, Node("i", Leaf, Leaf));;
-let character = Node("r", Node("h", Node("c", Leaf, Leaf), Node("a", Leaf, Leaf)), Node("c", Node("a", Leaf, Leaf), Node("e", Node("t", Leaf, Leaf), Node("r", Leaf, Leaf))));;
+let character = 
+  Node("r", 
+    Node("h", 
+      Node("c", Leaf, Leaf), 
+      Node("a", Leaf, Leaf)), 
+    Node("c", 
+      Node("a", Leaf, Leaf), 
+      Node("e", 
+        Node("t", Leaf, Leaf), 
+        Node("r", Leaf, Leaf))));;
 
 let inorder_test_1 = t_string "inorder_test_1" (inorder_str Leaf) "";;
 let inorder_test_2 = t_string "inorder_test_2" (inorder_str a) "a";;
@@ -51,6 +60,15 @@ let size_test_2 = t_int "size_test_2" (size a) 1;;
 let size_test_3 = t_int "size_test_3" (size hi_left) 2;;
 let size_test_4 = t_int "size_test_4" (size hi_right) 2;;
 let size_test_5 = t_int "size_test_5" (size character) 9;;
+
+let long_left = Node("", Node("", Node("", Node("", Leaf, Leaf), Leaf), Leaf), Node("", Leaf, Leaf)) (* The left has height 4, right side only has height 2*)
+let long_right = Node("", Node("", Leaf, Leaf), Node("", Node("", Node("", Leaf, Leaf), Leaf), Leaf)) (* inverse of above *)
+
+let height_test_1 = t_int "height_test_1" (height Leaf) 0;;
+let height_test_2 = t_int "height_test_2" (height a) 1;;
+let height_test_3 = t_int "height_test_3" (height long_left) 4;;
+let height_test_4 = t_int "height_test_4" (height long_right) 4;;
+let height_test_5 = t_int "height_test_5" (height character) 4;;
 
 let suite = "suite">:::[
   my_first_test;
@@ -74,6 +92,11 @@ let suite = "suite">:::[
   size_test_3;
   size_test_4;
   size_test_5;
+  height_test_1;
+  height_test_2;
+  height_test_3;
+  height_test_4;
+  height_test_5;
   ];;
 
 run_test_tt_main suite
