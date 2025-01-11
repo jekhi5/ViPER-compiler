@@ -140,3 +140,11 @@ let rec height (bt : btnode) : int =
     | Leaf -> 0
     | Node(s, left, right) ->
       1 + (max (height left) (height right))
+
+
+(* 4. *)
+
+let rec increment_all (lst : int list) : int list =
+  match lst with
+    | [] -> []
+    | first::rest -> (first + 1) :: (increment_all rest)

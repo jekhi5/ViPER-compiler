@@ -18,6 +18,9 @@ let t_int name value expected = name>::
 let t_string name value expected = name>::
     (fun _ -> assert_equal expected value ~printer:(fun str -> str));;
 
+let t_int_list name value expected = name>::
+    (fun _ -> assert_equal expected value ~printer:(fun (lst : int list) -> "[" ^ (String.concat "; " (List.map string_of_int lst)) ^ "]"));;
+
 (* Feel free to add any new testing functions you may need *)
 
 
@@ -70,33 +73,56 @@ let height_test_3 = t_int "height_test_3" (height long_left) 4;;
 let height_test_4 = t_int "height_test_4" (height long_right) 4;;
 let height_test_5 = t_int "height_test_5" (height character) 4;;
 
+let empty = []
+let single = [1]
+let positive_only = [1; 2; 3]
+let negative_only = [~-6; ~-3; ~-12]
+let mixed_sign = [4; ~-32; ~-5; ~-1; 6]
+
+let increment_all_test_1 = t_int_list "increment_all_test_1" (increment_all empty) [];;
+let increment_all_test_2 = t_int_list "increment_all_test_2" (increment_all single) [2];;
+let increment_all_test_3 = t_int_list "increment_all_test_3" (increment_all positive_only) [2; 3; 4];;
+let increment_all_test_4 = t_int_list "increment_all_test_4" (increment_all negative_only) [~-5; ~-2; ~-11];;
+let increment_all_test_5 = t_int_list "increment_all_test_5" (increment_all mixed_sign) [5; ~-31; ~-4; 0; 7];;
+
 let suite = "suite">:::[
   my_first_test;
   (* my_second_test; *)
   (* my_third_test; *)
   my_fourth_test;
+
   max_test_1;
   max_test_2;
   max_test_3;
   max_test_4;
+
   fib_test_1;
   fib_test_2;
   fib_test_3;
+
   inorder_test_1;
   inorder_test_2;
   inorder_test_3;
   inorder_test_4;
   inorder_test_5;
+
   size_test_1;
   size_test_2;
   size_test_3;
   size_test_4;
   size_test_5;
+
   height_test_1;
   height_test_2;
   height_test_3;
   height_test_4;
   height_test_5;
+
+  increment_all_test_1;
+  increment_all_test_2;
+  increment_all_test_3;
+  increment_all_test_4;
+  increment_all_test_5;
   ];;
 
 run_test_tt_main suite
