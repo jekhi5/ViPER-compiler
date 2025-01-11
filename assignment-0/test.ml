@@ -102,6 +102,12 @@ let long_strings_test_7 = t_string_list "long_string_test_7" (long_strings singl
 let long_strings_test_8 = t_string_list "long_string_test_8" (long_strings many_str 5) ["Charlie/Zack"; "grading"];;
 let long_strings_test_9 = t_string_list "long_string_test_9" (long_strings many_str ~-1) ["hello"; "Charlie/Zack"; "how"; "is"; "grading"; "going"];;
 
+let every_other_test_1 = t_int_list "every_other_test_1" (every_other empty) [];;
+let every_other_test_2 = t_int_list "every_other_test_2" (every_other single_int) [1];; (* Odd initial list *)
+let every_other_test_3 = t_string_list "every_other_test_3" (every_other single_str) ["hello"];; (* Odd initial list *)
+let every_other_test_4 = t_int_list "every_other_test_4" (every_other mixed_sign) [4; ~-5; 6];; (* Odd initial list *)
+let every_other_test_5 = t_string_list "every_other_test_5" (every_other many_str) ["hello"; "how"; "grading"];; (* Even initial list *)
+
 
 let suite = "suite">:::[
   my_first_test;
@@ -151,6 +157,12 @@ let suite = "suite">:::[
   long_strings_test_7;
   long_strings_test_8;
   long_strings_test_9;
+
+  every_other_test_1;
+  every_other_test_2;
+  every_other_test_3;
+  every_other_test_4;
+  every_other_test_5;
   ];;
 
 run_test_tt_main suite

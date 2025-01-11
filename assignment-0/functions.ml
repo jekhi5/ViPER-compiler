@@ -154,3 +154,11 @@ let rec long_strings (lst : string list) (len: int) : string list =
     | [] -> []
     | first::rest ->
       if (String.length first) > len then first::(long_strings rest len) else (long_strings rest len)
+
+let rec every_other (lst: 'a list) =
+  match lst with
+    | [] -> []
+    | first::rest ->
+      first :: (match rest with 
+                  | [] -> []
+                  | next::rest_rest -> (every_other rest_rest))
