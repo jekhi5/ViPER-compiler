@@ -162,3 +162,13 @@ let rec every_other (lst: 'a list) =
       first :: (match rest with 
                   | [] -> []
                   | next::rest_rest -> (every_other rest_rest))
+
+let rec sum (l : int list) : int =
+  match l with
+    | [] -> 0
+    | first::rest -> first + (sum rest)
+
+let rec sum_all (lst: int list list) =
+  match lst with
+    | [] -> []
+    | first::rest -> (sum first)::(sum_all rest)

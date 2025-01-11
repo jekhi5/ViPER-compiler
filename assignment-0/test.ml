@@ -24,6 +24,9 @@ let t_int_list name value expected = name>::
 let t_string_list name value expected = name>::
     (fun _ -> assert_equal expected value ~printer:(fun (lst : string list) -> "[" ^ (String.concat "; " lst) ^ "]"));;
 
+let t_int_list_list name value expected = name>::
+    (fun _ -> assert_equal expected value);;
+
 (* Feel free to add any new testing functions you may need *)
 
 
@@ -108,6 +111,14 @@ let every_other_test_3 = t_string_list "every_other_test_3" (every_other single_
 let every_other_test_4 = t_int_list "every_other_test_4" (every_other mixed_sign) [4; ~-5; 6];; (* Odd initial list *)
 let every_other_test_5 = t_string_list "every_other_test_5" (every_other many_str) ["hello"; "how"; "grading"];; (* Even initial list *)
 
+let all_empty_sub_lists = [[]; []; []]
+let all_single_sub_lists = [[1]; [2]; [5]]
+let mixed_size_sub_lists = [[1; 2; 3]; [4; ~-3]; []; [~-14]]
+
+let sum_all_test_1 = t_int_list_list "sum_all_test_1" (sum_all empty) [];;
+let sum_all_test_2 = t_int_list_list "sum_all_test_2" (sum_all all_empty_sub_lists) [0; 0; 0];;
+let sum_all_test_3 = t_int_list_list "sum_all_test_3" (sum_all all_single_sub_lists) [1; 2; 5];;
+let sum_all_test_4 = t_int_list_list "sum_all_test_4" (sum_all mixed_size_sub_lists) [6; 1; 0; ~-14];;
 
 let suite = "suite">:::[
   my_first_test;
@@ -163,6 +174,11 @@ let suite = "suite">:::[
   every_other_test_3;
   every_other_test_4;
   every_other_test_5;
+
+  sum_all_test_1;
+  sum_all_test_2;
+  sum_all_test_3;
+  sum_all_test_4;
   ];;
 
 run_test_tt_main suite
