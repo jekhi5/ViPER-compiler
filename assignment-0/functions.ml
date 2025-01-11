@@ -1,3 +1,4 @@
+open Printf
 (* Fill in the functions you need to write here *)
 
 
@@ -7,19 +8,25 @@ let rec fibonacci (n: int) =
     if n == 1 || n == 2 then 1 else (fibonacci (n - 1)) + (fibonacci (n - 2))
 
 (* 
- (fibonacci 3)
+ * (fibonacci 3)
  
- => if 3 == 1 || 3 == 2 then 1 else (fibonacci (3 - 1)) + (fibonacci (3 - 2))
- => if false then 1 else (fibonacci (3 - 1)) + (fibonacci (3 - 2))
- => (fibonacci 2) + (fibonacci (3 - 2))
- => (if 2 == 1 || 2 == 2 then 1 else (fibonacci (2 - 1)) + (fibonacci (2 - 2))) + (fibonacci (3 - 2))
- => (if true then 1 else (fibonacci (2 - 1)) + (fibonacci (2 - 2))) + (fibonacci (3 - 2))
- => (1) + (fibonacci (3 - 2))
- => 1 + (fibonacci 1)
- => 1 + (if 1 == 1 || 1 == 2 then 1 else (fibonacci (1 - 1)) + (fibonacci (1 - 2)))
- => 1 + (if true then 1 else (fibonacci (1 - 1)) + (fibonacci (1 - 2)))
- => 1 + (1)
- => 2
+ * => if 3 == 1 || 3 == 2 then 1 else (fibonacci (3 - 1)) + (fibonacci (3 - 2))
+ * => if false || 3 == 2 then 1 else (fibonacci (3 - 1)) + (fibonacci (3 - 2))
+ * => if false || false then 1 else (fibonacci (3 - 1)) + (fibonacci (3 - 2))
+ * => if false then 1 else (fibonacci (3 - 1)) + (fibonacci (3 - 2))
+ * => (fibonacci (3 - 1)) + (fibonacci (3 - 2))
+ * => (fibonacci 2) + (fibonacci (3 - 2))
+ * => (if 2 == 1 || 2 == 2 then 1 else (fibonacci (2 - 1)) + (fibonacci (2 - 2))) + (fibonacci (3 - 2))
+ * => (if false || 2 == 2 then 1 else (fibonacci (2 - 1)) + (fibonacci (2 - 2))) + (fibonacci (3 - 2))
+ * => (if false || true then 1 else (fibonacci (2 - 1)) + (fibonacci (2 - 2))) + (fibonacci (3 - 2))
+ * => (if true then 1 else (fibonacci (2 - 1)) + (fibonacci (2 - 2))) + (fibonacci (3 - 2))
+ * => 1 + (fibonacci (3 - 2))
+ * => 1 + (fibonacci 1)
+ * => 1 + (if 1 == 1 || 1 == 2 then 1 else (fibonacci (1 - 1)) + (fibonacci (1 - 2)))
+ * => 1 + (if true || 1 == 2 then 1 else (fibonacci (1 - 1)) + (fibonacci (1 - 2)))
+ * => 1 + (if true then 1 else (fibonacci (1 - 1)) + (fibonacci (1 - 2)))
+ * => 1 + 1
+ * => 2
  *)
 
 (* 3. *)
@@ -31,5 +38,93 @@ type btnode =
 let rec inorder_str (bt : btnode) : string =
   match bt with
     | Leaf -> ""
-    | Node(s, left, right) ->
+    | Node(s, left, right) -> 
       (inorder_str left) ^ s ^ (inorder_str right)
+
+(* 
+* "car"
+* (inorder_str Node("a", Node("c", Leaf, Leaf), Node("r", Leaf, Leaf)))
+*
+* => match Node("a", Node("c", Leaf, Leaf), Node("r", Leaf, Leaf)) with
+*      | Leaf -> ""
+*      | Node(s, left, right) -> 
+*        (inorder_str left) ^ s ^ (inorder_str right)
+*
+* => match Node("a", Node("c", Leaf, Leaf), Node("r", Leaf, Leaf)) with
+*      | Leaf -> ""
+*      | Node("a", Node("c", Leaf, Leaf), Node("r", Leaf, Leaf)) -> 
+*        (inorder_str left) ^ s ^ (inorder_str right)
+* 
+* => match Node("a", Node("c", Leaf, Leaf), Node("r", Leaf, Leaf)) with
+*      | Leaf -> ""
+*      | Node("a", Node("c", Leaf, Leaf), Node("r", Leaf, Leaf)) -> 
+*        (inorder_str Node("c", Leaf, Leaf)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+* 
+* => (inorder_str Node("c", Leaf, Leaf)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => (match Node("c", Leaf, Leaf) with
+*      | Leaf -> ""
+*      | Node(s, left, right) -> 
+*        (inorder_str left) ^ s ^ (inorder_str right)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => (match Node("c", Leaf, Leaf) with
+*      | Leaf -> ""
+*      | Node("c", Leaf, Leaf) -> 
+*        (inorder_str left) ^ s ^ (inorder_str right)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => (match Node("c", Leaf, Leaf) with
+*      | Leaf -> ""
+*      | Node("c", Leaf, Leaf) -> 
+*        (inorder_str Leaf) ^ "c" ^ (inorder_str Leaf)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => ((inorder_str Leaf) ^ "c" ^ (inorder_str Leaf)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => ((match Leaf with
+*      | Leaf -> ""
+*      | Node(s, left, right) -> 
+*        (inorder_str left) ^ s ^ (inorder_str right)) ^ "c" ^ (inorder_str Leaf)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => ("" ^ "c" ^ (inorder_str Leaf)) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => ("" ^ "c" ^ (match Leaf with
+*      | Leaf -> ""
+*      | Node(s, left, right) -> 
+*        (inorder_str left) ^ s ^ (inorder_str right))) ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ (inorder_str Node("r", Leaf, Leaf))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ (match Node("r", Leaf, Leaf) with
+*                               | Leaf -> ""
+*                               | Node(s, left, right) -> 
+*                                 (inorder_str left) ^ s ^ (inorder_str right))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ (match Node("r", Leaf, Leaf) with
+*                               | Leaf -> ""
+*                              | Node("r", Leaf, Leaf) -> 
+*                                 (inorder_str left) ^ s ^ (inorder_str right))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ (match Node("r", Leaf, Leaf) with
+*                               | Leaf -> ""
+*                               | Node("r", Leaf, Leaf) -> 
+*                                 (inorder_str Leaf) ^ "r" ^ (inorder_str Leaf))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ ((inorder_str Leaf) ^ "r" ^ (inorder_str Leaf))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ ((match Leaf with
+*                               | Leaf -> ""
+*                               | Node(s, left, right) -> 
+*                                 (inorder_str left) ^ s ^ (inorder_str right)) ^ "r" ^ (inorder_str Leaf))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ ("" ^ "r" ^ (inorder_str Leaf))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ ("" ^ "r" ^ (match Leaf with
+*                                            | Leaf -> ""
+*                                            | Node(s, left, right) -> 
+*                                              (inorder_str left) ^ s ^ (inorder_str right)))
+*
+* => ("" ^ "c" ^ "") ^ "a" ^ ("" ^ "r" ^ "")
+*
+* => "" ^ "c" ^ "" ^ "a" ^ "" ^ "r" ^ ""
+*
+* => "car"                      
+*)

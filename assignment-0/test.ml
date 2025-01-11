@@ -16,7 +16,7 @@ let t_int name value expected = name>::
   (fun _ -> assert_equal expected value ~printer:string_of_int);;
 
 let t_string name value expected = name>::
-    (fun _ -> assert_equal expected value);;
+    (fun _ -> assert_equal expected value ~printer:(fun str -> str));;
 
 (* Feel free to add any new testing functions you may need *)
 
@@ -35,11 +35,16 @@ let fib_test_1 = t_int "fib_test_1" (fibonacci 1) 1;;
 let fib_test_2 = t_int "fib_test_2" (fibonacci 2) 1;;
 let fib_test_3 = t_int "fib_test_3" (fibonacci 10) 55;;
 
+let a = Node("a", Leaf, Leaf);;
+let hi_left = Node("i", Node("h", Leaf, Leaf), Leaf);;
+let hi_right = Node("h", Leaf, Node("i", Leaf, Leaf));;
+let character = Node("r", Node("h", Node("c", Leaf, Leaf), Node("a", Leaf, Leaf)), Node("c", Node("a", Leaf, Leaf), Node("e", Node("t", Leaf, Leaf), Node("r", Leaf, Leaf))));;
+
 let inorder_test_1 = t_string "inorder_test_1" (inorder_str Leaf) "";;
-let inorder_test_2 = t_string "inorder_test_2" (inorder_str Node("a", Leaf, Leaf)) "a";;
-let inorder_test_3 = t_string "inorder_test_3" (inorder_str Node("i", Node("h", Leaf, Leaf), Leaf)) "hi";;
-let inorder_test_4 = t_string "inorder_test_4" (inorder_str Node("h", Leaf, Node("i", Leaf, Leaf))) "hi";;
-let inorder_test_5 = t_string "inorder_test_5" (inorder_str Node("r", Node("h", Node("c", Leaf, Leaf), Node("a", Leaf, Leaf)), Node("c", Node("a", Leaf, Leaf), Node("e", Node("t", Leaf, Leaf), Node("r", Leaf, Leaf))))) "character";;
+let inorder_test_2 = t_string "inorder_test_2" (inorder_str a) "a";;
+let inorder_test_3 = t_string "inorder_test_3" (inorder_str hi_left) "hi";;
+let inorder_test_4 = t_string "inorder_test_4" (inorder_str hi_right) "hi";;
+let inorder_test_5 = t_string "inorder_test_5" (inorder_str character) "character";;
 
 let suite = "suite">:::[
   my_first_test;
