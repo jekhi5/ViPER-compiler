@@ -96,9 +96,37 @@ let evaluate_tests =
       (evaluate
          (Plus (Plus (Variable "a", Variable "a"), Times (Variable "b", Variable "b")))
          [("a", 4); ("UNUSED", 6); ("b", 8); ("c", 1)] )
-      72 ]
-    "evaluate41"
-  >:: fun _ -> assert_raises "Identifier `x` not found!" (fun () -> evaluate (Variable "x") [])
+      72;
+    ( "evaluate41"
+    >:: fun _ ->
+    assert_raises (Failure "Identifier `x` not found!") (fun () -> evaluate (Variable "x") []) );
+    ( "evaluate41"
+    >:: fun _ ->
+    assert_raises (Failure "Identifier `a` not found!") (fun () -> evaluate (Variable "a") []) );
+    ( "evaluate41"
+    >:: fun _ ->
+    assert_raises (Failure "Identifier `x` not found!") (fun () ->
+        evaluate (Plus (Num ~-7, Variable "x")) [("p", ~-3)] ) );
+    ( "evaluate41"
+    >:: fun _ ->
+    assert_raises (Failure "Identifier `uh-oh` not found!") (fun () ->
+        evaluate (Plus (Variable "uh-oh", Num 3)) [("hmmm", ~-3)] ) );
+    ( "evaluate41"
+    >:: fun _ ->
+    assert_raises (Failure "Identifier `brb` not found!") (fun () ->
+        evaluate (Times (Variable "brb", Num 3)) [("idk", ~-3); ("DJ", 5)] ) );
+    ( "evaluate41"
+    >:: fun _ ->
+    assert_raises (Failure "Identifier `jk` not found!") (fun () ->
+        evaluate (Times (Num 3, Variable "jk")) [("lol", ~-3)] ) );
+    ( "evaluate41"
+    >:: fun _ ->
+    assert_raises (Failure "Identifier `c` not found!") (fun () ->
+        evaluate
+          (Times
+             (Times (Variable "a", Plus (Variable "b", Variable "c")), Plus (Num 4, Variable "b"))
+          )
+          [("a", ~-3); ("b", 5); ("OTHER", 10)] ) ) ]
 ;;
 
 let all_arith_tests = get_tests @ contains_tests @ evaluate_tests

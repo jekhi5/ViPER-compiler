@@ -118,7 +118,7 @@ let rec evaluate (a : arith) (vars : env) : int =
   | Times (a, b) -> evaluate a vars * evaluate b vars
   | Variable name -> (
     match get vars name with
-    | None -> failwith (sprintf "Identifier `%s` not found!" name)
+    | None -> failwith ("Identifier `" ^ name ^ "` not found!")
     | Some x -> x )
 ;;
 
