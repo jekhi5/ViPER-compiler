@@ -177,16 +177,16 @@ let pretty_tests =
     t_string "pretty23" (pretty (Plus (Variable "a", Num 4))) "a + 4";
     t_string "pretty23" (pretty (Plus (Variable "a", Plus (Num 2, Variable "b")))) "a + 2 + b";
     t_string "pretty23" (pretty (Plus (Plus (Num 2, Variable "b"), Variable "a"))) "2 + b + a";
-    t_string "pretty23" (pretty (Plus (Times (Num 2, Variable "b"), Variable "a"))) "(2)b + a";
-    t_string "pretty23" (pretty (Times (Num 2, Variable "b"))) "(2)b";
-    t_string "pretty23" (pretty (Times (Variable "b", Num 2))) "b(2)";
+    t_string "pretty23" (pretty (Plus (Times (Num 2, Variable "b"), Variable "a"))) "2b + a";
+    t_string "pretty23" (pretty (Times (Num 2, Variable "b"))) "2b";
+    t_string "pretty23" (pretty (Times (Variable "b", Num 2))) "b2";
     t_string "pretty23" (pretty (Times (Plus (Num 4, Num 5), Num 8))) "(4 + 5) * 8";
     t_string "pretty23"
       (pretty (Times (Plus (Num 4, Times (Plus (Num 12, Variable "c"), Num 8)), Variable "b")))
       "(4 + (12 + c) * 8)b";
     t_string "pretty23"
       (pretty (Times (Times (Plus (Num 4, Plus (Num 12, Variable "c")), Num 8), Variable "b")))
-      "((4 + 12 + c) * 8)b" ]
+      "(4 + 12 + c) * 8b" ]
 ;;
 
 let all_arith_tests = get_tests @ contains_tests @ evaluate_tests @ pretty_tests

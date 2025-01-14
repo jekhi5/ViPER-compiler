@@ -2,10 +2,17 @@
   "cSpell.words": [
     "btnode",
     "datatypes",
+    "endcol",
+    "endline",
     "failwith",
     "inorder",
+    "LPAREN",
+    "RPAREN",
     "Sexp",
     "sprintf",
+    "startcol",
+    "startline",
+    "toks",
     "Zack"
   ]
 }

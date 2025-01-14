@@ -165,15 +165,15 @@ let rec pretty_helper (a : arith) (should_wrap : bool) : string =
         pretty_helper left false ^ " + " ^ pretty_helper right false
   | Times (left, right) -> (
     match left with
-    | Variable x -> x ^ "(" ^ pretty_helper right false ^ ")"
+    | Variable x -> x ^ pretty_helper right true
     | Num _ | Plus _ | Times _ -> (
       match right with
-      | Variable x -> "(" ^ pretty_helper left false ^ ")" ^ x
+      | Variable x -> pretty_helper left true ^ x
       | Num _ | Plus _ | Times _ -> pretty_helper left true ^ " * " ^ pretty_helper right true ) )
 ;;
 
 (*
  * Prints the arithmetic expression with infix notation, 
- * keeping note of multiplication syntax above 
+ * keeping note of multiplication syntax above
  *)
 let rec pretty (a : arith) : string = pretty_helper a false
