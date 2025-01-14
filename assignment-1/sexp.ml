@@ -1,6 +1,7 @@
 open Unix
 open Str
 open Printf
+open List
 
 type 'a tok =
   | LPAREN of 'a
@@ -100,33 +101,33 @@ let sexp_info s =
   | Nest (_, x) -> x
 ;;
 
-let rec parse_toks_helper (toks : pos tok list) (paren_stack : post tok list) (acc : pos sexp list)
-    : (pos sexp list, string) result =
-  match toks with
-  | [] ->
-      if is_empty paren_stack then
-        Ok (acc, _)
-      else
-        fail_with
-          (Printf.sprintf "Unmatched left paren at %s" (pos_to_string (snd (hd paren_stack))))
-  | cur_tok :: rest -> (
-    match cur_tok with
-    | LPAREN pos -> Nest (parse_toks_helper rest (("(", pos) @ paren_stack))
-    | RPAREN pos ->
-        if String.equal (fst (hd paren_stack)) "(" then
-          parse_toks_helper rest (tl paren_stack)
-        else
-          fail_with (Printf.sprintf "Illegal closing paren at %s" (pos_to_string pos))
-    | TSym (sym, pos) -> parse_toks_helper rest paren_stack (Sym (sym, pos))
-    | TInt (int, pos) -> parse_toks_helper rest paren_stack (Int (int, pos))
-    | TBool (bool, pos) -> parse_toks_helper rest paren_stack (Bool (bool, pos)) )
-;;
-
 let parse_toks (toks : pos tok list) : (pos sexp list, string) result =
+  let rec parse_toks_helper (toks : pos tok list) (paren_stack : pos list) (acc : pos sexp list) :
+      (pos sexp list, string) result =
+    match toks with
+    | [] ->
+        if is_empty paren_stack then
+          Ok acc
+        else
+          failwith
+            (Printf.sprintf "Unmatched left paren at %s"
+               (pos_to_string (List.hd paren_stack) false) )
+    | cur_tok :: rest -> (
+      match cur_tok with
+      | LPAREN pos -> Nest (parse_toks_helper rest (pos :: paren_stack))
+      | RPAREN pos ->
+          if not (is_empty paren_stack) then
+            parse_toks_helper rest (tl paren_stack)
+          else
+            failwith (Printf.sprintf "Illegal closing paren at %s" (pos_to_string pos false))
+      | TSym (sym, pos) -> parse_toks_helper rest paren_stack (Sym (sym, pos) @ acc)
+      | TInt (int, pos) -> parse_toks_helper rest paren_stack (Int (int, pos) @ acc)
+      | TBool (bool, pos) -> parse_toks_helper rest paren_stack (Bool (bool, pos) @ acc) )
+  in
   try parse_toks_helper toks [] []
   with e ->
-    let location = Printexc.to_string e in
-    Error (_, location)
+    let message = Printexc.to_string e in
+    Error message
 ;;
 
-let parse str = Error "Not yet implemented"
+let parse str = parse_toks (tokenize str)

@@ -165,7 +165,7 @@ let rec pretty_helper (a : arith) (should_wrap : bool) : string =
         pretty_helper left false ^ " + " ^ pretty_helper right false
   | Times (left, right) -> (
     match left with
-    | Variable x -> x ^ pretty_helper right true
+    | Variable x -> pretty_helper right true ^ x
     | Num _ | Plus _ | Times _ -> (
       match right with
       | Variable x -> pretty_helper left true ^ x

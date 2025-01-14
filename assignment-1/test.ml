@@ -196,7 +196,9 @@ let arith_suite = "arithmetic_evaluation" >::: all_arith_tests;;
 
 run_test_tt_main arith_suite
 
-let all_sexp_tests = [ (* More tests here *) ]
+let all_sexp_tests =
+  [  ]
+;;
 
 let sexp_suite = "sexp_parsing" >::: all_sexp_tests;;
 
