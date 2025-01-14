@@ -1,0 +1,12 @@
+if dune fmt; then
+  make clean
+  make test
+  ./test
+  make 
+  if [ $# -gt 0 ]; then
+    zip submission.zip Makefile expr.ml sexp.ml test.ml
+    echo "Saved submission.zip"
+  fi
+else
+  echo "Build failure. Aborting..."
+fi

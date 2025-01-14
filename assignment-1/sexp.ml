@@ -55,31 +55,31 @@ let tokenize (str : string) : pos tok list =
   let toks, _, _ =
     List.fold_left
       (fun ((toks : pos tok list), (line : int), (col : int)) (tok : Str.split_result) ->
-         match tok with
-         | Delim t ->
-           if t = " " then
-             (toks, line, col + 1)
-           else if t = "\t" then
-             (toks, line, col + 1)
-           else if t = "\n" then
-             (toks, line + 1, 0)
-           else if t = "(" then
-             (LPAREN (line, col, line, col + 1) :: toks, line, col + 1)
-           else if t = ")" then
-             (RPAREN (line, col, line, col + 1) :: toks, line, col + 1)
-           else
-             let tLen = String.length t in
-             (TSym (t, (line, col, line, col + tLen)) :: toks, line, col + tLen)
-         | Text t -> (
-             if t = "true" then
-               (TBool (true, (line, col, line, col + 4)) :: toks, line, col + 4)
-             else if t = "false" then
-               (TBool (false, (line, col, line, col + 5)) :: toks, line, col + 5)
-             else
-               let tLen = String.length t in
-               try (TInt (int_of_string t, (line, col, line, col + tLen)) :: toks, line, col + tLen)
-               with Failure _ -> (TSym (t, (line, col, line, col + tLen)) :: toks, line, col + tLen)
-           ) )
+        match tok with
+        | Delim t ->
+            if t = " " then
+              (toks, line, col + 1)
+            else if t = "\t" then
+              (toks, line, col + 1)
+            else if t = "\n" then
+              (toks, line + 1, 0)
+            else if t = "(" then
+              (LPAREN (line, col, line, col + 1) :: toks, line, col + 1)
+            else if t = ")" then
+              (RPAREN (line, col, line, col + 1) :: toks, line, col + 1)
+            else
+              let tLen = String.length t in
+              (TSym (t, (line, col, line, col + tLen)) :: toks, line, col + tLen)
+        | Text t -> (
+            if t = "true" then
+              (TBool (true, (line, col, line, col + 4)) :: toks, line, col + 4)
+            else if t = "false" then
+              (TBool (false, (line, col, line, col + 5)) :: toks, line, col + 5)
+            else
+              let tLen = String.length t in
+              try (TInt (int_of_string t, (line, col, line, col + tLen)) :: toks, line, col + tLen)
+              with Failure _ -> (TSym (t, (line, col, line, col + tLen)) :: toks, line, col + tLen)
+            ) )
       ([], 0, 0)
       (full_split (regexp "[()\n\t ]") str)
   in
