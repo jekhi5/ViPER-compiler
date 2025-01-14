@@ -5,7 +5,7 @@
   For example, the expression
 
     5 * 3 + y
-  
+
   would be represented as
 
     Plus(Times(Num(5), Num(3)), Variable("y"))
@@ -28,47 +28,73 @@ type arith =
   | Variable of string
   | Num of int
 
-
 (**
-  To represent the set of known variables, we're going to use a 
-  simple list representation: (string * int) list
- *)
+   To represent the set of known variables, we're going to use a 
+   simple list representation: (string * int) list
+*)
 type env = (string * int) list
 
 (**
-  To use such an environment, we need to be able to `add` new variables
-  to an environment (which produces a *new* environment), and we need
-  to `get` the values of variables in an environment. We may also want
-  to check whether an environment `contains` a particular variable.
+   To use such an environment, we need to be able to `add` new variables
+   to an environment (which produces a *new* environment), and we need
+   to `get` the values of variables in an environment. We may also want
+   to check whether an environment `contains` a particular variable.
 
-  Notice that I described this as a *set*, which implies no duplicate
-  variable names, but the list type above can certainly have such
-  duplicates.  You need to decide how to handle such duplication.
-  One solution will be markedly easier than the alternatives!
+   Notice that I described this as a *set*, which implies no duplicate
+   variable names, but the list type above can certainly have such
+   duplicates.  You need to decide how to handle such duplication.
+   One solution will be markedly easier than the alternatives!
 
-  Additionally, for `get`, we need to handle the case where the variable 
-  is not found.
- *)
+   Additionally, for `get`, we need to handle the case where the variable 
+   is not found.
+*)
 
 (* Implement the following three functions.  If needed, you may define them
    recursively, so uncomment out the `rec` keyword. *)
-let (* rec? *) get (env : env) (x : string) : int option =
-  None
+
+(* Get the value of the given variable in the environment, None if not found *)
+let rec get (env : env) (x : string) : int option =
+  match env with
+  | [] -> None
+  | cur :: rest ->
+      if String.equal (fst cur) x then
+        Some (snd cur)
+      else
+        get rest x
 ;;
-let (* rec? *) contains (env : env) (x : string) : bool =
-  false
+
+(* Is the given variable in the environment? *)
+let rec contains (env : env) (x : string) : bool =
+  match env with
+  | [] -> false
+  | cur :: rest ->
+      if String.equal (fst cur) x then
+        true
+      else
+        contains rest x
 ;;
-let (* rec? *) add (env : env) (x : string) (xVal : int) : env =
-  []
+
+(*
+ * Adds the given variable to the environment with the given value
+ * If the variable already exists, overwrites existing variable in place to store new value 
+ *)
+let rec add (env : env) (x : string) (xVal : int) : env =
+  match env with
+  | [] -> (x, xVal) :: []
+  | cur :: rest ->
+      if String.equal (fst cur) x then
+        (x, xVal) :: rest
+      else
+        cur :: add rest x xVal
 ;;
-             
+
 (*
   Next, write evaluate, which takes an arithmetic expression and 
   an environment mapping from strings to integers, and evaluate the expression,
   using the given integer value for the variable.
-  
+
   For example
-  
+
      evaluate
        (Times(Plus(Variable("x"), Variable("y")), Num(5)))
        [("x", 5); ("y", 7)]
@@ -78,14 +104,23 @@ let (* rec? *) add (env : env) (x : string) (xVal : int) : env =
      evaluate (Plus(Num(4), Num(5))) []
 
   should produce 9.
-  
+
   If there is a variable not contained in vars in the expression, throw an
   exception with failwith.
 
 *)
 
+(* Evaluates the given expression using the given environment *)
 let rec evaluate (a : arith) (vars : env) : int =
-  0
+  match a with
+  | Num x -> x
+  | Plus (a, b) -> evaluate a vars + evaluate b vars
+  | Times (a, b) -> evaluate a vars * evaluate b vars
+  | Variable name -> (
+    match get vars name with
+    | None -> failwith (sprintf "Identifier `%s` not found!" name)
+    | Some x -> x )
+;;
 
 (*
   Next, write pretty, which takes an arithmetic expression and renders it in
@@ -98,7 +133,7 @@ let rec evaluate (a : arith) (vars : env) : int =
   pretty-printed by putting the coefficient adjacent, for example:
 
     pretty (Plus(Plus(Times(Plus(Num(5), Variable("y")), Variable("x")), Num(2)), Num(1)))
-  
+
   should pretty-print as
 
     (5 + y)x + 2 + 1
@@ -113,8 +148,4 @@ let rec evaluate (a : arith) (vars : env) : int =
   should work nicely.  There are several reasonable answers here.
 *)
 
-let rec pretty (a : arith) : string =
-  ""
-
-
-
+let rec pretty (a : arith) : string = ""
