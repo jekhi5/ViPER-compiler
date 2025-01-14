@@ -9,6 +9,10 @@ let t_int name value expected = name >:: fun _ -> assert_equal expected value ~p
 (* A helper for testing primitive values (won't print datatypes well) *)
 let t_any name value expected = name >:: fun _ -> assert_equal expected value ~printer:dump
 
+let t_string name value expected =
+  name >:: fun _ -> assert_equal expected value ~printer:(fun str -> str)
+;;
+
 (* Feel free to add any new testing functions you may need *)
 
 (* It can be useful to aggregate tests into lists if they test separate
@@ -129,7 +133,63 @@ let evaluate_tests =
           [("a", ~-3); ("b", 5); ("OTHER", 10)] ) ) ]
 ;;
 
-let all_arith_tests = get_tests @ contains_tests @ evaluate_tests
+let pretty_tests =
+  [ t_string "pretty1" (pretty (Num 1)) "1";
+    t_string "pretty2" (pretty (Num ~-1)) "-1";
+    t_string "pretty3" (pretty (Variable "abc")) "abc";
+    t_string "pretty4" (pretty (Plus (Num 1, Num 5))) "1 + 5";
+    t_string "pretty5" (pretty (Plus (Num 5, Num 1))) "5 + 1";
+    t_string "pretty6" (pretty (Plus (Num 5, Plus (Num 8, Num 55)))) "5 + 8 + 55";
+    t_string "pretty7" (pretty (Plus (Plus (Num 8, Num 55), Num 5))) "8 + 55 + 5";
+    t_string "pretty8"
+      (pretty (Plus (Plus (Num 8, Num 55), Plus (Num 12, Num ~-2))))
+      "8 + 55 + 12 + -2";
+    t_string "pretty9" (pretty (Plus (Num 5, Times (Num 4, Num 9)))) "5 + 4 * 9";
+    t_string "pretty10" (pretty (Plus (Times (Num 4, Num 9), Num 5))) "4 * 9 + 5";
+    t_string "pretty11"
+      (pretty (Plus (Times (Num ~-9, Num 9), Times (Num 12, Num 54))))
+      "-9 * 9 + 12 * 54";
+    t_string "pretty12"
+      (pretty (Plus (Times (Num ~-9, Num 9), Plus (Num 12, Num 54))))
+      "-9 * 9 + 12 + 54";
+    t_string "pretty13"
+      (pretty (Plus (Plus (Num 12, Num 54), Times (Num ~-9, Num 9))))
+      "12 + 54 + -9 * 9";
+    t_string "pretty14" (pretty (Times (Num 1, Num 5))) "1 * 5";
+    t_string "pretty15" (pretty (Times (Num 5, Num 1))) "5 * 1";
+    t_string "pretty16" (pretty (Times (Num 5, Plus (Num 8, Num 55)))) "5 * (8 + 55)";
+    t_string "pretty17" (pretty (Times (Plus (Num 8, Num 55), Num 5))) "(8 + 55) * 5";
+    t_string "pretty18"
+      (pretty (Times (Plus (Num 8, Num 55), Plus (Num 12, Num ~-2))))
+      "(8 + 55) * (12 + -2)";
+    t_string "pretty19" (pretty (Times (Num 5, Times (Num 4, Num 9)))) "5 * 4 * 9";
+    t_string "pretty20" (pretty (Times (Times (Num 4, Num 9), Num 5))) "4 * 9 * 5";
+    t_string "pretty21"
+      (pretty (Times (Times (Num ~-9, Num 9), Times (Num 12, Num 54))))
+      "-9 * 9 * 12 * 54";
+    t_string "pretty22"
+      (pretty (Times (Times (Num ~-9, Num 9), Plus (Num 12, Num 54))))
+      "-9 * 9 * (12 + 54)";
+    t_string "pretty23"
+      (pretty (Times (Plus (Num 12, Num 54), Times (Num ~-9, Num 9))))
+      "(12 + 54) * -9 * 9";
+    t_string "pretty23" (pretty (Plus (Num 4, Variable "a"))) "4 + a";
+    t_string "pretty23" (pretty (Plus (Variable "a", Num 4))) "a + 4";
+    t_string "pretty23" (pretty (Plus (Variable "a", Plus (Num 2, Variable "b")))) "a + 2 + b";
+    t_string "pretty23" (pretty (Plus (Plus (Num 2, Variable "b"), Variable "a"))) "2 + b + a";
+    t_string "pretty23" (pretty (Plus (Times (Num 2, Variable "b"), Variable "a"))) "(2)b + a";
+    t_string "pretty23" (pretty (Times (Num 2, Variable "b"))) "(2)b";
+    t_string "pretty23" (pretty (Times (Variable "b", Num 2))) "b(2)";
+    t_string "pretty23" (pretty (Times (Plus (Num 4, Num 5), Num 8))) "(4 + 5) * 8";
+    t_string "pretty23"
+      (pretty (Times (Plus (Num 4, Times (Plus (Num 12, Variable "c"), Num 8)), Variable "b")))
+      "(4 + (12 + c) * 8)b";
+    t_string "pretty23"
+      (pretty (Times (Times (Plus (Num 4, Plus (Num 12, Variable "c")), Num 8), Variable "b")))
+      "((4 + 12 + c) * 8)b" ]
+;;
+
+let all_arith_tests = get_tests @ contains_tests @ evaluate_tests @ pretty_tests
 (* More tests here *)
 
 let arith_suite = "arithmetic_evaluation" >::: all_arith_tests;;
