@@ -132,7 +132,13 @@ let rec evaluate (a : arith) (vars : env) : int =
   Further, if there is a multiplication of a variable, it should be
   pretty-printed by putting the coefficient adjacent, for example:
 
-    pretty (Plus(Plus(Times(Plus(Num(5), Variable("y")), Variable("x")), Num(2)), Num(1)))
+    pretty (Plus 
+              (Plus 
+                 (Times 
+                    (Plus (Num (5), Variable("y")), 
+                    Variable("x")), 
+                 Num(2)), 
+              Num(1)))
 
   should pretty-print as
 
@@ -148,4 +154,20 @@ let rec evaluate (a : arith) (vars : env) : int =
   should work nicely.  There are several reasonable answers here.
 *)
 
-let rec pretty (a : arith) : string = ""
+(*
+ * Prints the arithmetic expression with infix notation, 
+ * keeping note of multiplication syntax above 
+ *)
+let rec pretty (a : arith) : string =
+  match a with
+  | Num n -> string_of_int n
+  | Variable x -> x
+  | Plus (left, right) -> pretty left ^ " + " ^ pretty right
+  | Times (left, right) -> (
+    match left with
+    | Variable x -> x ^ "(" ^ pretty right ^ ")"
+    | Num _ | Plus _ | Times _ -> (
+      match right with
+      | Variable x -> "(" ^ pretty left ^ ")" ^ x
+      | Num _ | Plus _ | Times _ -> pretty left ^ " * " ^ pretty right ) )
+;;
