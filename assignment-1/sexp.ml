@@ -1,6 +1,4 @@
-open Unix
 open Str
-open Printf
 open List
 
 type 'a tok =
@@ -109,20 +107,21 @@ let parse_toks (toks : pos tok list) : (pos sexp list, string) result =
         if is_empty paren_stack then
           Ok acc
         else
-          failwith
-            (Printf.sprintf "Unmatched left paren at %s"
-               (pos_to_string (List.hd paren_stack) false) )
+          Error ("Unmatched left paren at " ^ pos_to_string (List.hd paren_stack) false)
     | cur_tok :: rest -> (
       match cur_tok with
-      | LPAREN pos -> Nest (parse_toks_helper rest (pos :: paren_stack))
+      | TSym (sym, pos) -> parse_toks_helper rest paren_stack (Sym (sym, pos) :: acc)
+      | TInt (int, pos) -> parse_toks_helper rest paren_stack (Int (int, pos) :: acc)
+      | TBool (bool, pos) -> parse_toks_helper rest paren_stack (Bool (bool, pos) :: acc)
+      | LPAREN pos -> (
+        match parse_toks_helper rest (pos :: paren_stack) acc with
+        | Ok x -> Ok x
+        | Error msg -> Error msg )
       | RPAREN pos ->
           if not (is_empty paren_stack) then
-            parse_toks_helper rest (tl paren_stack)
+            parse_toks_helper rest (tl paren_stack) acc
           else
-            failwith (Printf.sprintf "Illegal closing paren at %s" (pos_to_string pos false))
-      | TSym (sym, pos) -> parse_toks_helper rest paren_stack (Sym (sym, pos) @ acc)
-      | TInt (int, pos) -> parse_toks_helper rest paren_stack (Int (int, pos) @ acc)
-      | TBool (bool, pos) -> parse_toks_helper rest paren_stack (Bool (bool, pos) @ acc) )
+            Error ("Illegal closing paren at " ^ pos_to_string pos false) )
   in
   try parse_toks_helper toks [] []
   with e ->

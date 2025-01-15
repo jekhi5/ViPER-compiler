@@ -173,18 +173,18 @@ let pretty_tests =
     t_string "pretty23"
       (pretty (Times (Plus (Num 12, Num 54), Times (Num ~-9, Num 9))))
       "(12 + 54) * -9 * 9";
-    t_string "pretty23" (pretty (Plus (Num 4, Variable "a"))) "4 + a";
-    t_string "pretty23" (pretty (Plus (Variable "a", Num 4))) "a + 4";
-    t_string "pretty23" (pretty (Plus (Variable "a", Plus (Num 2, Variable "b")))) "a + 2 + b";
-    t_string "pretty23" (pretty (Plus (Plus (Num 2, Variable "b"), Variable "a"))) "2 + b + a";
-    t_string "pretty23" (pretty (Plus (Times (Num 2, Variable "b"), Variable "a"))) "2b + a";
-    t_string "pretty23" (pretty (Times (Num 2, Variable "b"))) "2b";
-    t_string "pretty23" (pretty (Times (Variable "b", Num 2))) "b2";
-    t_string "pretty23" (pretty (Times (Plus (Num 4, Num 5), Num 8))) "(4 + 5) * 8";
-    t_string "pretty23"
+    t_string "pretty24" (pretty (Plus (Num 4, Variable "a"))) "4 + a";
+    t_string "pretty25" (pretty (Plus (Variable "a", Num 4))) "a + 4";
+    t_string "pretty26" (pretty (Plus (Variable "a", Plus (Num 2, Variable "b")))) "a + 2 + b";
+    t_string "pretty27" (pretty (Plus (Plus (Num 2, Variable "b"), Variable "a"))) "2 + b + a";
+    t_string "pretty28" (pretty (Plus (Times (Num 2, Variable "b"), Variable "a"))) "2b + a";
+    t_string "pretty29" (pretty (Times (Num 2, Variable "b"))) "2b";
+    t_string "pretty30" (pretty (Times (Variable "b", Num 2))) "2b";
+    t_string "pretty31" (pretty (Times (Plus (Num 4, Num 5), Num 8))) "(4 + 5) * 8";
+    t_string "pretty32"
       (pretty (Times (Plus (Num 4, Times (Plus (Num 12, Variable "c"), Num 8)), Variable "b")))
       "(4 + (12 + c) * 8)b";
-    t_string "pretty23"
+    t_string "pretty33"
       (pretty (Times (Times (Plus (Num 4, Plus (Num 12, Variable "c")), Num 8), Variable "b")))
       "(4 + 12 + c) * 8b" ]
 ;;
@@ -197,7 +197,32 @@ let arith_suite = "arithmetic_evaluation" >::: all_arith_tests;;
 run_test_tt_main arith_suite
 
 let all_sexp_tests =
-  [  ]
+  [ t_any "parse1" (parse "") (Ok []);
+    t_any "parse2" (parse "1") (Ok [Int (1, (0, 0, 0, 0))]);
+    t_any "parse3" (parse "true") (Ok [Bool (true, (0, 0, 0, 3))]);
+    t_any "parse4" (parse "false") (Ok [Bool (false, (0, 0, 0, 4))]);
+    t_any "parse5" (parse "true false 1 2") (Ok [Bool (false, (0, 0, 0, 4))]);
+    t_any "parse6" (parse "()") (Ok [Nest ([], (0, 0, 0, 1))]);
+    t_any "parse7" (parse "(1)") (Ok [Nest ([Int (1, (0, 0, 0, 0))], (0, 0, 0, 2))]);
+    t_any "parse8" (parse "(true)") (Ok [Nest ([Bool (true, (0, 1, 0, 4))], (0, 0, 0, 5))]);
+    t_any "parse9" (parse "(false)") (Ok [Nest ([Bool (false, (0, 1, 0, 4))], (0, 0, 0, 5))]);
+    t_any "parse10" (parse "(true false)")
+      (Ok [Nest ([Bool (true, (0, 1, 0, 4)); Bool (true, (0, 1, 0, 4))], (0, 0, 0, 5))]);
+    t_any "parse10" (parse "(true 2 3 false)")
+      (Ok
+         [ Nest
+             ( [ Bool (true, (0, 1, 0, 4));
+                 Int (2, (0, 0, 0, 0));
+                 Int (3, (0, 0, 0, 0));
+                 Bool (true, (0, 1, 0, 4)) ],
+               (0, 0, 0, 5) ) ] );
+    t_any "parse11" (parse "(1 (3 2 (5)))")
+      (Ok
+         [ Nest
+             ( [ Int (1, (0, 0, 0, 0));
+                 Nest ([Int (3, (0, 0, 0, 0)); Int (2, (0, 0, 0, 0))], (0, 0, 0, 2)) ],
+               (0, 0, 0, 2) );
+           Int (5, (0, 0, 0, 0)) ] ) ]
 ;;
 
 let sexp_suite = "sexp_parsing" >::: all_sexp_tests;;

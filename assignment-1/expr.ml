@@ -154,26 +154,27 @@ let rec evaluate (a : arith) (vars : env) : int =
   should work nicely.  There are several reasonable answers here.
 *)
 
-let rec pretty_helper (a : arith) (should_wrap : bool) : string =
-  match a with
-  | Num n -> string_of_int n
-  | Variable x -> x
-  | Plus (left, right) ->
-      if should_wrap then
-        "(" ^ pretty_helper left false ^ " + " ^ pretty_helper right false ^ ")"
-      else
-        pretty_helper left false ^ " + " ^ pretty_helper right false
-  | Times (left, right) -> (
-    match left with
-    | Variable x -> pretty_helper right true ^ x
-    | Num _ | Plus _ | Times _ -> (
-      match right with
-      | Variable x -> pretty_helper left true ^ x
-      | Num _ | Plus _ | Times _ -> pretty_helper left true ^ " * " ^ pretty_helper right true ) )
-;;
-
 (*
  * Prints the arithmetic expression with infix notation, 
  * keeping note of multiplication syntax above
  *)
-let rec pretty (a : arith) : string = pretty_helper a false
+let pretty (a : arith) : string =
+  let rec pretty_helper (a : arith) (should_wrap : bool) : string =
+    match a with
+    | Num n -> string_of_int n
+    | Variable x -> x
+    | Plus (left, right) ->
+        if should_wrap then
+          "(" ^ pretty_helper left false ^ " + " ^ pretty_helper right false ^ ")"
+        else
+          pretty_helper left false ^ " + " ^ pretty_helper right false
+    | Times (left, right) -> (
+      match left with
+      | Variable x -> pretty_helper right true ^ x
+      | Num _ | Plus _ | Times _ -> (
+        match right with
+        | Variable x -> pretty_helper left true ^ x
+        | Num _ | Plus _ | Times _ -> pretty_helper left true ^ " * " ^ pretty_helper right true ) )
+  in
+  pretty_helper a false
+;;
