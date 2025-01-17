@@ -24,5 +24,4 @@ fi"
 echo "${script}" > $dirname/run.sh
 chmod 777  $dirname/run.sh
 
-rm -rf "${dirname}.git"
-mv $dirname "$2/${dirname}"
+rm -rf "${dirname}/.git"
