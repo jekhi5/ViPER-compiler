@@ -33,9 +33,36 @@ let expr_of_sexp_tests =
   [ t_any "number" (expr_of_sexp (parse "5")) (Number (5L, (0, 0, 0, 1)));
     t_any "false" (expr_of_sexp (parse "false")) (Id ("false", (0, 0, 0, 5)));
     t_any "true" (expr_of_sexp (parse "true")) (Id ("true", (0, 0, 0, 4)));
-    t_error "add1-error"
+    t_error "add1-error-no-args"
       (fun _ -> expr_of_sexp (parse "add1"))
-      (SyntaxError "Invalid syntax on `add1` at line 0, col 0") ]
+      (SyntaxError "Invalid syntax on `add1` at line 0, col 0");
+    t_error "add1-error-many-args"
+      (fun _ -> expr_of_sexp (parse "(add1 1 2)"))
+      (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
+    t_error "sub1-error-no-args"
+      (fun _ -> expr_of_sexp (parse "sub1"))
+      (SyntaxError "Invalid syntax on `sub1` at line 0, col 0");
+    t_error "sub1-error-many-args"
+      (fun _ -> expr_of_sexp (parse "(sub1 1 2)"))
+      (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
+    t_error "let-error-no-nest"
+      (fun _ -> expr_of_sexp (parse "let"))
+      (SyntaxError "Invalid syntax on `let` at line 0, col 0");
+    t_error "let-error-no-bindings"
+      (fun _ -> expr_of_sexp (parse "(let () 5)"))
+      (SyntaxError "Invalid syntax: A `let` requires at least one binding at line 0, col 5");
+    t_any "let-one-binding"
+      (expr_of_sexp (parse "(let ((x 5)) x)"))
+      (Let ([("x", Number (5L, (0, 9, 0, 10)))], Id ("x", (0, 13, 0, 14)), (0, 0, 0, 15)));
+    t_any "let-many-bindings"
+      (expr_of_sexp (parse "(let ((x 5) (y (sub1 10))) (add1 x))"))
+      (Let
+         ( [ ("x", Number (5L, (0, 9, 0, 10)));
+             ("y", Prim1 (Sub1, Number (10L, (0, 21, 0, 23)), (0, 15, 0, 24))) ],
+           Prim1 (Add1, Id ("x", (0, 33, 0, 34)), (0, 27, 0, 35)),
+           (0, 0, 0, 36) ) )
+    (* TODO: Add a test that shows it will syntax error when theres a syntax error in a let binding *)
+  ]
 ;;
 
 let suite : OUnit2.test =

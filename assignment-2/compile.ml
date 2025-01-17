@@ -77,7 +77,7 @@ let rec expr_of_sexp (s : pos sexp) : pos expr =
       else
         Let (binding_exprs, expr_of_sexp let_body, nest_pos)
   | Sym (id, pos) -> Id (id, pos)
-  | _ -> raise (SyntaxError ("Invalid syntax at " ^ pos_to_string (sexp_info s) false))
+  | _ -> raise (SyntaxError ("Invalid syntax at " ^ pos_to_string (sexp_info s) true))
 ;;
 
 (* Functions that implement the compiler *)
