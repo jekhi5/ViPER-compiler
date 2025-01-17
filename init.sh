@@ -21,7 +21,7 @@ script="if dune build; then
 else
     echo 'Build failure. Aborting...'
 fi"
-echo "${script}" > $dirname/run.sh
-chmod 777  $dirname/run.sh
+echo "${script}" > $dirname/run
+chmod 777  $dirname/run
 
 rm -rf "${dirname}/.git"
