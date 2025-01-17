@@ -48,11 +48,29 @@ type 'a expr =
    Throws a SyntaxError message if there's a problem
 *)
 exception SyntaxError of string
-
 let rec expr_of_sexp (s : pos sexp) : pos expr =
-  (* COMPLETE THIS FUNCTION *)
-  failwith
-    (sprintf "Converting sexp not yet implemented at pos %s" (pos_to_string (sexp_info s) true))
+  let parse_binding (b : ('a sexp)) : (string * 'a expr) =
+    match b with
+    | Nest ([Sym (id, _); bound], _) -> (id, (expr_of_sexp bound))
+    | _ -> raise (SyntaxError ("Invalid binding syntax at " ^ (pos_to_string (sexp_info b) true))) 
+  in
+  match s with
+  | Int (n, pos) -> Number (n, pos)
+  | Bool (b, pos) -> Number ((if b then 1L else 0L), pos)
+  | Sym ("add1", pos) -> raise (SyntaxError ("Invalid syntax on `add1` at position " ^ (pos_to_string pos false)))
+  | Sym ("sub1", pos) -> raise (SyntaxError ("Invalid syntax on `sub1` at position " ^ (pos_to_string pos false)))
+  | Sym ("let", pos) -> raise (SyntaxError ("Invalid syntax on `let` at position " ^ (pos_to_string pos false)))
+  | Nest ([Sym ("add1", _); operand], nest_pos) -> Prim1 (Add1, (expr_of_sexp operand), nest_pos)
+  | Nest ([Sym ("sub1", _); operand], nest_pos) -> Prim1 (Sub1, (expr_of_sexp operand), nest_pos)
+  | Nest ([Sym ("let", _); Nest (bindings, bindings_pos); let_body], nest_pos) -> 
+    let binding_exprs = (List.map parse_binding bindings) in
+    if (List.is_empty binding_exprs) 
+      then 
+        (raise (SyntaxError ("Invalid syntax: A `let` requires at least one binding at " ^ (pos_to_string bindings_pos))))
+      else 
+        Let (binding_exprs, (expr_of_sexp let_body), nest_pos)
+  | Sym (id, pos) -> Id (id, pos)
+  | _ -> raise (SyntaxError "Invalid syntax at " (pos_to_string (sexp_info s)))
 ;;
 
 (* Functions that implement the compiler *)
