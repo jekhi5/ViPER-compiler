@@ -1,0 +1,17 @@
+if dune build; then
+    make clean
+    make test
+    ./test
+    make clean
+
+    if [ $# -gt 0 ]; then
+        zip submission.zip Makefile starter-adder/compile.ml
+starter-adder/main.ml
+starter-adder/runner.ml
+starter-adder/sexp.ml
+starter-adder/test.ml
+        echo 'Saved submission.zip'
+    fi
+else
+    echo 'Build failure. Aborting...'
+fi

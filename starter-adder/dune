@@ -1,0 +1,20 @@
+(library
+ (name adder_impl)
+ (modules compile sexp runner)
+ (libraries ounit2 extlib str)
+ (wrapped false))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries unix str adder_impl))
+
+(test
+ (name test)
+ (modules test)
+ (libraries unix str adder_impl))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

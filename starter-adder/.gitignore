@@ -1,0 +1,10 @@
+_build/
+output/*.run
+output/*.dSYM
+output/*.s
+output/*.o
+test
+main
+*.sw*
+*~
+**/.DS_Store
