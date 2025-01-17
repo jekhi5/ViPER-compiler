@@ -66,11 +66,11 @@ let rec expr_of_sexp (s : pos sexp) : pos expr =
     let binding_exprs = (List.map parse_binding bindings) in
     if (List.is_empty binding_exprs) 
       then 
-        (raise (SyntaxError ("Invalid syntax: A `let` requires at least one binding at " ^ (pos_to_string bindings_pos))))
+        (raise (SyntaxError ("Invalid syntax: A `let` requires at least one binding at " ^ (pos_to_string bindings_pos false))))
       else 
         Let (binding_exprs, (expr_of_sexp let_body), nest_pos)
   | Sym (id, pos) -> Id (id, pos)
-  | _ -> raise (SyntaxError "Invalid syntax at " (pos_to_string (sexp_info s)))
+  | _ -> raise (SyntaxError ("Invalid syntax at " ^ (pos_to_string (sexp_info s) false)))
 ;;
 
 (* Functions that implement the compiler *)
