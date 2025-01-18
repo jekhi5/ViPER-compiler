@@ -8,3 +8,4 @@ main
 *.sw*
 *~
 **/.DS_Store
+**/.vscode

@@ -1,4 +1,4 @@
-if dune build; then
+if dune build @ocaml-index; then
     make clean
     make test
     ./test

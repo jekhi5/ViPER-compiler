@@ -86,22 +86,28 @@ let rec expr_of_sexp (s : pos sexp) : pos expr =
    one datatype at a time.  Only one function has been fully implemented
    for you. *)
 let reg_to_asm_string (r : reg) : string =
-  (* COMPLETE THIS FUNCTION *)
-  failwith "Not yet implemented"
+  match r with
+    | RAX -> "RAX"
+    | RSP -> "RSP"
 ;;
 
-let arg_to_asm_string (a : arg) : string =
+let rec arg_to_asm_string (a : arg) : string =
   match a with
   | Const n -> sprintf "%Ld" n
-  (* COMPLETE THIS FUNCTION *)
-  | _ -> failwith "Other args not yet implemented"
+  | Reg r -> reg_to_asm_string r
+  (* Not sure if the  conversion to int64 is necessary. Surely they print out the same?*)
+  | RegOffset (o, RSP) -> 
+    "[RSP - 8*" ^ (sprintf "%Ld" (Int64.of_int o)) ^ "]"
+  | RegOffset (_, r) -> 
+      (* It seems like a bad idea to have offsets from registers other than RSP. *)
+      failwith ("Internal compiler error: Offset of non-RAX register: " ^ (reg_to_asm_string r))
 ;;
 
 let instruction_to_asm_string (i : instruction) : string =
   match i with
   | IMov (dest, value) -> sprintf "\tmov %s, %s" (arg_to_asm_string dest) (arg_to_asm_string value)
-  (* COMPLETE THIS FUNCTION *)
-  | _ -> failwith "Other instructions not yet implemented"
+  | IAdd (reg, value)  -> sprintf "\tadd %s, %s" (arg_to_asm_string reg)  (arg_to_asm_string value)
+  | IRet -> "\tret"
 ;;
 
 let to_asm_string (is : instruction list) : string =
