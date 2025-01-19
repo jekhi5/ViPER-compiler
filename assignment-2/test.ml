@@ -140,9 +140,16 @@ let integration_tests = [
   t "let2" "(let ((a 1) (b 2)) b)" "2";
   t "let3" "(let ((a 1) (b (add1 a))) b)" "2";
 
+  t "no_reserved_words1" "(let ((add1 1)) (add1 add1))" "2";
+  t "no_reserved_words2" "(let ((true 1)) (add1 true))" "2";
+  t "no_reserved_words3" "(let ((let 1)) (add1 (let ((a 1)) a)))" "2";
+
+
+
   (* Nested `let` tests *)
   t "let_nested_body1" "(let ((a 1) (b 5)) (let ((c (add1 b))) c))" "6";
   t "let_nested_binding1" "(let ((a 1) (b (let ((c (add1 a))) c))) (add1 b))" "3";
+  t "simple_shadow" "(let ((a 1)) (let ((a 2)) a))" "2";
 
 
   (* `let` error tests *)
