@@ -34,20 +34,20 @@ let expr_of_sexp_tests =
     t_any "false" (expr_of_sexp (parse "false")) (Id ("false", (0, 0, 0, 5)));
     t_any "true" (expr_of_sexp (parse "true")) (Id ("true", (0, 0, 0, 4)));
     (* t_error "add1-error-no-args"
-      (fun _ -> expr_of_sexp (parse "add1"))
-      (SyntaxError "Invalid syntax on `add1` at line 0, col 0");
-    t_error "add1-error-many-args"
-      (fun _ -> expr_of_sexp (parse "(add1 1 2)"))
-      (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
-    t_error "sub1-error-no-args"
-      (fun _ -> expr_of_sexp (parse "sub1"))
-      (SyntaxError "Invalid syntax on `sub1` at line 0, col 0");
-    t_error "sub1-error-many-args"
-      (fun _ -> expr_of_sexp (parse "(sub1 1 2)"))
-      (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
-    t_error "let-error-no-nest"
-      (fun _ -> expr_of_sexp (parse "let"))
-      (SyntaxError "Invalid syntax on `let` at line 0, col 0"); *)
+         (fun _ -> expr_of_sexp (parse "add1"))
+         (SyntaxError "Invalid syntax on `add1` at line 0, col 0");
+       t_error "add1-error-many-args"
+         (fun _ -> expr_of_sexp (parse "(add1 1 2)"))
+         (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
+       t_error "sub1-error-no-args"
+         (fun _ -> expr_of_sexp (parse "sub1"))
+         (SyntaxError "Invalid syntax on `sub1` at line 0, col 0");
+       t_error "sub1-error-many-args"
+         (fun _ -> expr_of_sexp (parse "(sub1 1 2)"))
+         (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
+       t_error "let-error-no-nest"
+         (fun _ -> expr_of_sexp (parse "let"))
+         (SyntaxError "Invalid syntax on `let` at line 0, col 0"); *)
     t_any "let-one-binding"
       (expr_of_sexp (parse "(let ((x 5)) x)"))
       (Let ([("x", Number (5L, (0, 9, 0, 10)))], Id ("x", (0, 13, 0, 14)), (0, 0, 0, 15)));
@@ -57,48 +57,45 @@ let expr_of_sexp_tests =
          ( [ ("x", Number (5L, (0, 9, 0, 10)));
              ("y", Prim1 (Sub1, Number (10L, (0, 21, 0, 23)), (0, 15, 0, 24))) ],
            Prim1 (Add1, Id ("x", (0, 33, 0, 34)), (0, 27, 0, 35)),
-           (0, 0, 0, 36)));
-
+           (0, 0, 0, 36) ) );
     t_any "let_shadowed_bindings"
       (expr_of_sexp (parse "(let ((x 5) (x (sub1 10))) (add1 x))"))
       (Let
-       ( [ ("x", Number (5L, (0, 9, 0, 10)));
-           ("x", Prim1 (Sub1, Number (10L, (0, 21, 0, 23)), (0, 15, 0, 24))) ],
-         Prim1 (Add1, Id ("x", (0, 33, 0, 34)), (0, 27, 0, 35)),
-         (0, 0, 0, 36)));
-
-    t_any "nested_let" 
+         ( [ ("x", Number (5L, (0, 9, 0, 10)));
+             ("x", Prim1 (Sub1, Number (10L, (0, 21, 0, 23)), (0, 15, 0, 24))) ],
+           Prim1 (Add1, Id ("x", (0, 33, 0, 34)), (0, 27, 0, 35)),
+           (0, 0, 0, 36) ) );
+    t_any "nested_let"
       (expr_of_sexp (parse "(let ((a (let ((b 5)) b)))(let ((d a)) d))"))
       (Let
-        ([ ("a", (Let ([("b", Number (5L, (0,18,0,19)))], (Id ("b", (0,22,0,23))), (0,9,0,24))))],
-        (Let ([("d", Id ("a", (0,35,0,36)))], (Id ("d", (0,39,0,40))), (0,26,0,41))),
-        (0,0,0,42)));
-    
-
+         ( [ ( "a",
+               Let ([("b", Number (5L, (0, 18, 0, 19)))], Id ("b", (0, 22, 0, 23)), (0, 9, 0, 24))
+             ) ],
+           Let ([("d", Id ("a", (0, 35, 0, 36)))], Id ("d", (0, 39, 0, 40)), (0, 26, 0, 41)),
+           (0, 0, 0, 42) ) );
     (* Various let syntax errors: *)
     t_error "let-binding_non_id"
       (fun _ -> expr_of_sexp (parse "(let ((5 4)) 5)"))
-      (SyntaxError "Invalid binding syntax, can only bind to identifiers, at line 0, col 7--line 0, col 8");
-    
+      (SyntaxError
+         "Invalid binding syntax, can only bind to identifiers, at line 0, col 7--line 0, col 8" );
     t_error "let-error-no-bindings"
       (fun _ -> expr_of_sexp (parse "(let () 5)"))
       (SyntaxError "Invalid syntax: A `let` requires at least one binding at line 0, col 5");
-    t_error "let_binding_no_inner_parens" 
+    t_error "let_binding_no_inner_parens"
       (fun _ -> expr_of_sexp (parse "(let (a 1) a)"))
-      (SyntaxError ("Invalid binding syntax at line 0, col 6--line 0, col 7"));
-    t_error "let_binding_too_few_vals" 
+      (SyntaxError "Invalid binding syntax at line 0, col 6--line 0, col 7");
+    t_error "let_binding_too_few_vals"
       (fun _ -> expr_of_sexp (parse "(let ((a)) a)"))
-      (SyntaxError ("Invalid binding syntax at line 0, col 6--line 0, col 9"));
-    t_error "let_binding_too_many_vals" 
+      (SyntaxError "Invalid binding syntax at line 0, col 6--line 0, col 9");
+    t_error "let_binding_too_many_vals"
       (fun _ -> expr_of_sexp (parse "(let ((a 1 2)) a)"))
-      (SyntaxError ("Invalid binding syntax at line 0, col 6--line 0, col 13"));
-    t_error "let_propagate_error_binding" 
+      (SyntaxError "Invalid binding syntax at line 0, col 6--line 0, col 13");
+    t_error "let_propagate_error_binding"
       (fun _ -> expr_of_sexp (parse "(let ((a (let ((a 2 3)) a))) a)"))
-      (SyntaxError ("Invalid binding syntax at line 0, col 15--line 0, col 22"));
-    t_error "let_propagate_error_expr" 
+      (SyntaxError "Invalid binding syntax at line 0, col 15--line 0, col 22");
+    t_error "let_propagate_error_expr"
       (fun _ -> expr_of_sexp (parse "(let ((a 1)) (let ((a 1 2)) a) )"))
-      (SyntaxError ("Invalid binding syntax at line 0, col 19--line 0, col 26"));
-
+      (SyntaxError "Invalid binding syntax at line 0, col 19--line 0, col 26");
     t_any "let-bool-binding"
       (expr_of_sexp (parse "(let ((true 5)) true)"))
       (Let ([("true", Number (5L, (0, 12, 0, 13)))], Id ("true", (0, 16, 0, 20)), (0, 0, 0, 21)));
@@ -108,36 +105,56 @@ let expr_of_sexp_tests =
     t_any "let-let-binding"
       (expr_of_sexp (parse "(let ((let 5)) let)"))
       (Let ([("let", Number (5L, (0, 11, 0, 12)))], Id ("let", (0, 15, 0, 18)), (0, 0, 0, 19)));
-    t_any "invalid_identifier" (parse "4a_b") (Sym ("4a_b", (0,0,0,4)));
-  ]
+    t_any "invalid_identifier" (parse "4a_b") (Sym ("4a_b", (0, 0, 0, 4))) ]
 ;;
 
-let reg_to_asm_string_tests = [
-  t_any "RAX_to_str" (reg_to_asm_string RAX) "RAX";
-  t_any "RSP_to_str" (reg_to_asm_string RSP) "RSP";
+let reg_to_asm_string_tests =
+  [ t_any "RAX_to_str" (reg_to_asm_string RAX) "RAX";
+    t_any "RSP_to_str" (reg_to_asm_string RSP) "RSP" ]
+;;
+
+let arg_to_asm_string_tests =
+  [ t_any "const_to_str" (arg_to_asm_string (Const 1L)) "1";
+    t_any "const_to_str_neg" (arg_to_asm_string (Const (-1L))) "-1";
+    t_any "arg_RAX_to_str" (arg_to_asm_string (Reg RAX)) "RAX";
+    t_any "arg_RSP_to_str" (arg_to_asm_string (Reg RSP)) "RSP";
+    t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (1, RSP))) "[RSP - 8*1]";
+    t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (10, RSP))) "[RSP - 8*10]";
+    t_any "RSP_offset_to_str_neg" (arg_to_asm_string (RegOffset (-1, RSP))) "[RSP - 8*-1]";
+    t_error "RAX_offset"
+      (fun _ -> arg_to_asm_string (RegOffset (1, RAX)))
+      (Failure "ICE: Offset of non-RSP register: RAX") ]
+;;
+
+let instruction_to_asm_string_tests = [];;
+
+let integration_tests = [
+  t "one" "1" "1";
+  t "add1" "(add1 0)" "1";
+  t "sub1" "(sub1 0)" "-1";
+
+  te "unbound_id1" "helloxDxD" "Unbound identifier";
+
+  (* Simple `let` tests *)
+  t "let1" "(let ((a 1)) a)" "1";
+  t "let2" "(let ((a 1) (b 2)) b)" "2";
+  t "let3" "(let ((a 1) (b (add1 a))) b)" "2";
+
+  (* Nested `let` tests *)
+  t "let_nested_body1" "(let ((a 1) (b 5)) (let ((c (add1 b))) c))" "6";
+  t "let_nested_binding1" "(let ((a 1) (b (let ((c (add1 a))) c))) (add1 b))" "3";
+
+
+  (* `let` error tests *)
+  te "duplicate_bindings_1" "(let ((a 1) (a 2)) a)" "Duplicate binding";
 ];;
-
-
-let arg_to_asm_string_tests = [
-  t_any "const_to_str" (arg_to_asm_string (Const 1L)) "1";
-  t_any "const_to_str_neg" (arg_to_asm_string (Const (-1L))) "-1";
-  t_any "arg_RAX_to_str" (arg_to_asm_string (Reg RAX)) "RAX";
-  t_any "arg_RSP_to_str" (arg_to_asm_string (Reg RSP)) "RSP";
-
-  t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (1, RSP))) "[RSP - 8*1]";
-  t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (10, RSP))) "[RSP - 8*10]";
-  t_any "RSP_offset_to_str_neg" (arg_to_asm_string (RegOffset ((-1), RSP))) "[RSP - 8*-1]";
-  t_error "RAX_offset" (fun _ -> (arg_to_asm_string (RegOffset (1, RAX))))
-    (Failure "Internal compiler error: Offset of non-RAX register: RAX");
-];;
-
 
 let suite : OUnit2.test =
   "suite"
   >::: (*[te "forty_one" "41" "not yet implemented"; te "nyi" "(let ((x 10)) x)" "not yet implemented"]*)
-       expr_of_sexp_tests
-       @ reg_to_asm_string_tests
-       @ arg_to_asm_string_tests
+  expr_of_sexp_tests @ reg_to_asm_string_tests @ arg_to_asm_string_tests
+  @ instruction_to_asm_string_tests (* TODO *)
+  @ integration_tests
 ;;
 
 let () = run_test_tt_main suite
