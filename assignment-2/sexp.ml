@@ -1,5 +1,5 @@
 open Str
-open Printf
+(* open Printf *)
 
 type 'a tok =
   | LPAREN of 'a

@@ -1,6 +1,6 @@
 open Compile
 open Runner
-open Printf
+(* open Printf *)
 open OUnit2
 open Sexp
 open ExtLib
@@ -33,7 +33,7 @@ let expr_of_sexp_tests =
   [ t_any "number" (expr_of_sexp (parse "5")) (Number (5L, (0, 0, 0, 1)));
     t_any "false" (expr_of_sexp (parse "false")) (Id ("false", (0, 0, 0, 5)));
     t_any "true" (expr_of_sexp (parse "true")) (Id ("true", (0, 0, 0, 4)));
-    t_error "add1-error-no-args"
+    (* t_error "add1-error-no-args"
       (fun _ -> expr_of_sexp (parse "add1"))
       (SyntaxError "Invalid syntax on `add1` at line 0, col 0");
     t_error "add1-error-many-args"
@@ -47,10 +47,7 @@ let expr_of_sexp_tests =
       (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
     t_error "let-error-no-nest"
       (fun _ -> expr_of_sexp (parse "let"))
-      (SyntaxError "Invalid syntax on `let` at line 0, col 0");
-    t_error "let-error-no-bindings"
-      (fun _ -> expr_of_sexp (parse "(let () 5)"))
-      (SyntaxError "Invalid syntax: A `let` requires at least one binding at line 0, col 5");
+      (SyntaxError "Invalid syntax on `let` at line 0, col 0"); *)
     t_any "let-one-binding"
       (expr_of_sexp (parse "(let ((x 5)) x)"))
       (Let ([("x", Number (5L, (0, 9, 0, 10)))], Id ("x", (0, 13, 0, 14)), (0, 0, 0, 15)));
@@ -61,13 +58,57 @@ let expr_of_sexp_tests =
              ("y", Prim1 (Sub1, Number (10L, (0, 21, 0, 23)), (0, 15, 0, 24))) ],
            Prim1 (Add1, Id ("x", (0, 33, 0, 34)), (0, 27, 0, 35)),
            (0, 0, 0, 36)));
-    (* TODO: Add a test that shows it will syntax error when theres a syntax error in a let binding *)
+
+    t_any "let_shadowed_bindings"
+      (expr_of_sexp (parse "(let ((x 5) (x (sub1 10))) (add1 x))"))
+      (Let
+       ( [ ("x", Number (5L, (0, 9, 0, 10)));
+           ("x", Prim1 (Sub1, Number (10L, (0, 21, 0, 23)), (0, 15, 0, 24))) ],
+         Prim1 (Add1, Id ("x", (0, 33, 0, 34)), (0, 27, 0, 35)),
+         (0, 0, 0, 36)));
+
+    t_any "nested_let" 
+      (expr_of_sexp (parse "(let ((a (let ((b 5)) b)))(let ((d a)) d))"))
+      (Let
+        ([ ("a", (Let ([("b", Number (5L, (0,18,0,19)))], (Id ("b", (0,22,0,23))), (0,9,0,24))))],
+        (Let ([("d", Id ("a", (0,35,0,36)))], (Id ("d", (0,39,0,40))), (0,26,0,41))),
+        (0,0,0,42)));
+    
+
+    (* Various let syntax errors: *)
+    t_error "let-binding_non_id"
+      (fun _ -> expr_of_sexp (parse "(let ((5 4)) 5)"))
+      (SyntaxError "Invalid binding syntax, can only bind to identifiers, at line 0, col 7--line 0, col 8");
+    
+    t_error "let-error-no-bindings"
+      (fun _ -> expr_of_sexp (parse "(let () 5)"))
+      (SyntaxError "Invalid syntax: A `let` requires at least one binding at line 0, col 5");
+    t_error "let_binding_no_inner_parens" 
+      (fun _ -> expr_of_sexp (parse "(let (a 1) a)"))
+      (SyntaxError ("Invalid binding syntax at line 0, col 6--line 0, col 7"));
+    t_error "let_binding_too_few_vals" 
+      (fun _ -> expr_of_sexp (parse "(let ((a)) a)"))
+      (SyntaxError ("Invalid binding syntax at line 0, col 6--line 0, col 9"));
+    t_error "let_binding_too_many_vals" 
+      (fun _ -> expr_of_sexp (parse "(let ((a 1 2)) a)"))
+      (SyntaxError ("Invalid binding syntax at line 0, col 6--line 0, col 13"));
     t_error "let_propagate_error_binding" 
-      (fun _ -> expr_of_sexp (parse "(let ((a (add1(sub1)))) a)"))
-      (SyntaxError ("Invalid syntax at line 0, col 14--line 0, col 20"));
+      (fun _ -> expr_of_sexp (parse "(let ((a (let ((a 2 3)) a))) a)"))
+      (SyntaxError ("Invalid binding syntax at line 0, col 15--line 0, col 22"));
     t_error "let_propagate_error_expr" 
-      (fun _ -> expr_of_sexp (parse "(let ((a 1)) (sub1(add1)))"))
-      (SyntaxError ("Invalid syntax at line 0, col 18--line 0, col 24"));
+      (fun _ -> expr_of_sexp (parse "(let ((a 1)) (let ((a 1 2)) a) )"))
+      (SyntaxError ("Invalid binding syntax at line 0, col 19--line 0, col 26"));
+
+    t_any "let-bool-binding"
+      (expr_of_sexp (parse "(let ((true 5)) true)"))
+      (Let ([("true", Number (5L, (0, 12, 0, 13)))], Id ("true", (0, 16, 0, 20)), (0, 0, 0, 21)));
+    t_any "let-add1-binding"
+      (expr_of_sexp (parse "(let ((add1 5)) add1)"))
+      (Let ([("add1", Number (5L, (0, 12, 0, 13)))], Id ("add1", (0, 16, 0, 20)), (0, 0, 0, 21)));
+    t_any "let-let-binding"
+      (expr_of_sexp (parse "(let ((let 5)) let)"))
+      (Let ([("let", Number (5L, (0, 11, 0, 12)))], Id ("let", (0, 15, 0, 18)), (0, 0, 0, 19)));
+    t_any "invalid_identifier" (parse "4a_b") (Sym ("4a_b", (0,0,0,4)));
   ]
 ;;
 

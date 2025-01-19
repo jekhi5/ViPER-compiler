@@ -52,7 +52,11 @@ exception SyntaxError of string
 let rec expr_of_sexp (s : pos sexp) : pos expr =
   let parse_binding (b : 'a sexp) : string * 'a expr =
     match b with
-    | Nest ([Sym (id, _); bound], _) -> (id, expr_of_sexp bound)
+    | Nest ([binding; bound], _) -> 
+      (match expr_of_sexp binding with
+        | Id (id, _) -> (id, expr_of_sexp bound)
+        | _ -> raise 
+          (SyntaxError ("Invalid binding syntax, can only bind to identifiers, at " ^ (pos_to_string (sexp_info binding) true))))
     | _ -> raise (SyntaxError ("Invalid binding syntax at " ^ pos_to_string (sexp_info b) true))
   in
   match s with
@@ -60,11 +64,13 @@ let rec expr_of_sexp (s : pos sexp) : pos expr =
   (* This language has no concept of booleans. If the user wrote this string, it should be parsed as a symbol*)
   | Bool (true, pos) -> Id ("true", pos)
   | Bool (false, pos) -> Id ("false", pos)
-  | Sym ("add1", pos) ->
+  (* We can keep these as reserved words... or we can just ha *)
+  (* | Sym ("add1", pos) ->
       raise (SyntaxError ("Invalid syntax on `add1` at " ^ pos_to_string pos false))
   | Sym ("sub1", pos) ->
       raise (SyntaxError ("Invalid syntax on `sub1` at " ^ pos_to_string pos false))
-  | Sym ("let", pos) -> raise (SyntaxError ("Invalid syntax on `let` at " ^ pos_to_string pos false))
+  | Sym ("let", pos) -> 
+    raise (SyntaxError ("Invalid syntax on `let` at " ^ pos_to_string pos false)) *)
   | Nest ([Sym ("add1", _); operand], nest_pos) -> Prim1 (Add1, expr_of_sexp operand, nest_pos)
   | Nest ([Sym ("sub1", _); operand], nest_pos) -> Prim1 (Sub1, expr_of_sexp operand, nest_pos)
   | Nest ([Sym ("let", _); Nest (bindings, bindings_pos); let_body], nest_pos) ->
