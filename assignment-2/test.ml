@@ -1,5 +1,6 @@
 open Compile
 open Runner
+
 (* open Printf *)
 open OUnit2
 open Sexp
@@ -105,7 +106,13 @@ let expr_of_sexp_tests =
     t_any "let-let-binding"
       (expr_of_sexp (parse "(let ((let 5)) let)"))
       (Let ([("let", Number (5L, (0, 11, 0, 12)))], Id ("let", (0, 15, 0, 18)), (0, 0, 0, 19)));
-    t_any "invalid_identifier" (parse "4a_b") (Sym ("4a_b", (0, 0, 0, 4))) ]
+    t_any "invalid_identifier" (parse "4a_b") (Sym ("4a_b", (0, 0, 0, 4)));
+    t_any "add1"
+      (expr_of_sexp (parse "(add1 5)"))
+      (Prim1 (Add1, Number (5L, (0, 6, 0, 7)), (0, 0, 0, 8)));
+    t_any "sub1"
+      (expr_of_sexp (parse "(sub1 5)"))
+      (Prim1 (Sub1, Number (5L, (0, 6, 0, 7)), (0, 0, 0, 8))) ]
 ;;
 
 let reg_to_asm_string_tests =
@@ -126,42 +133,34 @@ let arg_to_asm_string_tests =
       (Failure "ICE: Offset of non-RSP register: RAX") ]
 ;;
 
-let instruction_to_asm_string_tests = [];;
+let instruction_to_asm_string_tests = []
 
-let integration_tests = [
-  t "one" "1" "1";
-  t "add1" "(add1 0)" "1";
-  t "sub1" "(sub1 0)" "-1";
-
-  te "unbound_id1" "helloxDxD" "Unbound identifier";
-
-  (* Simple `let` tests *)
-  t "let1" "(let ((a 1)) a)" "1";
-  t "let2" "(let ((a 1) (b 2)) b)" "2";
-  t "let3" "(let ((a 1) (b (add1 a))) b)" "2";
-
-  t "no_reserved_words1" "(let ((add1 1)) (add1 add1))" "2";
-  t "no_reserved_words2" "(let ((true 1)) (add1 true))" "2";
-  t "no_reserved_words3" "(let ((let 1)) (add1 (let ((a 1)) a)))" "2";
-
-
-
-  (* Nested `let` tests *)
-  t "let_nested_body1" "(let ((a 1) (b 5)) (let ((c (add1 b))) c))" "6";
-  t "let_nested_binding1" "(let ((a 1) (b (let ((c (add1 a))) c))) (add1 b))" "3";
-  t "simple_shadow" "(let ((a 1)) (let ((a 2)) a))" "2";
-
-
-  (* `let` error tests *)
-  te "duplicate_bindings_1" "(let ((a 1) (a 2)) a)" "Duplicate binding";
-];;
+let integration_tests =
+  [ t "one" "1" "1";
+    t "add1" "(add1 0)" "1";
+    t "sub1" "(sub1 0)" "-1";
+    te "unbound_id1" "helloxDxD" "Unbound identifier";
+    (* Simple `let` tests *)
+    t "let1" "(let ((a 1)) a)" "1";
+    t "let2" "(let ((a 1) (b 2)) b)" "2";
+    t "let3" "(let ((a 1) (b (add1 a))) b)" "2";
+    t "no_reserved_words1" "(let ((add1 1)) (add1 add1))" "2";
+    t "no_reserved_words2" "(let ((true 1)) (add1 true))" "2";
+    t "no_reserved_words3" "(let ((let 1)) (add1 (let ((a 1)) a)))" "2";
+    (* Nested `let` tests *)
+    t "let_nested_body1" "(let ((a 1) (b 5)) (let ((c (add1 b))) c))" "6";
+    t "let_nested_binding1" "(let ((a 1) (b (let ((c (add1 a))) c))) (add1 b))" "3";
+    t "simple_shadow" "(let ((a 1)) (let ((a 2)) a))" "2";
+    (* `let` error tests *)
+    te "duplicate_bindings_1" "(let ((a 1) (a 2)) a)" "Duplicate binding" ]
+;;
 
 let suite : OUnit2.test =
   "suite"
-  >::: (*[te "forty_one" "41" "not yet implemented"; te "nyi" "(let ((x 10)) x)" "not yet implemented"]*)
+  >:::
+  (*[te "forty_one" "41" "not yet implemented"; te "nyi" "(let ((x 10)) x)" "not yet implemented"]*)
   expr_of_sexp_tests @ reg_to_asm_string_tests @ arg_to_asm_string_tests
-  @ instruction_to_asm_string_tests (* TODO *)
-  @ integration_tests
+  @ instruction_to_asm_string_tests (* TODO *) @ integration_tests
 ;;
 
 let () = run_test_tt_main suite

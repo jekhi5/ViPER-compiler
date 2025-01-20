@@ -52,11 +52,14 @@ exception SyntaxError of string
 let rec expr_of_sexp (s : pos sexp) : pos expr =
   let parse_binding (b : 'a sexp) : string * 'a expr =
     match b with
-    | Nest ([binding; bound], _) -> 
-      (match expr_of_sexp binding with
-        | Id (id, _) -> (id, expr_of_sexp bound)
-        | _ -> raise 
-          (SyntaxError ("Invalid binding syntax, can only bind to identifiers, at " ^ (pos_to_string (sexp_info binding) true))))
+    | Nest ([binding; bound], _) -> (
+      match expr_of_sexp binding with
+      | Id (id, _) -> (id, expr_of_sexp bound)
+      | _ ->
+          raise
+            (SyntaxError
+               ( "Invalid binding syntax, can only bind to identifiers, at "
+               ^ pos_to_string (sexp_info binding) true ) ) )
     | _ -> raise (SyntaxError ("Invalid binding syntax at " ^ pos_to_string (sexp_info b) true))
   in
   match s with
@@ -93,8 +96,8 @@ let rec expr_of_sexp (s : pos sexp) : pos expr =
    for you. *)
 let reg_to_asm_string (r : reg) : string =
   match r with
-    | RAX -> "RAX"
-    | RSP -> "RSP"
+  | RAX -> "RAX"
+  | RSP -> "RSP"
 ;;
 
 let arg_to_asm_string (a : arg) : string =
@@ -102,17 +105,16 @@ let arg_to_asm_string (a : arg) : string =
   | Const n -> sprintf "%Ld" n
   | Reg r -> reg_to_asm_string r
   (* Not sure if the  conversion to int64 is necessary. Surely they print out the same?*)
-  | RegOffset (o, RSP) -> 
-    "[RSP - 8*" ^ (sprintf "%Ld" (Int64.of_int o)) ^ "]"
-  | RegOffset (_, r) -> 
+  | RegOffset (o, RSP) -> "[RSP - 8*" ^ sprintf "%Ld" (Int64.of_int o) ^ "]"
+  | RegOffset (_, r) ->
       (* It seems like a bad idea to have offsets from registers other than RSP. *)
-      failwith ("ICE: Offset of non-RSP register: " ^ (reg_to_asm_string r))
+      failwith ("ICE: Offset of non-RSP register: " ^ reg_to_asm_string r)
 ;;
 
 let instruction_to_asm_string (i : instruction) : string =
   match i with
   | IMov (dest, value) -> sprintf "\tmov %s, %s" (arg_to_asm_string dest) (arg_to_asm_string value)
-  | IAdd (reg, value)  -> sprintf "\tadd %s, %s" (arg_to_asm_string reg)  (arg_to_asm_string value)
+  | IAdd (reg, value) -> sprintf "\tadd %s, %s" (arg_to_asm_string reg) (arg_to_asm_string value)
   | IRet -> "\tret"
 ;;
 
@@ -137,15 +139,14 @@ let rec find (ls : (string * 'a) list) (x : string) : 'a option =
 let rec duplicate_bindings (ls : (string * pos expr) list) : string option =
   match ls with
   | [] -> None
-  | (id, _) :: rest -> 
+  | (id, _) :: rest -> (
     match duplicate_bindings rest with
     | Some x -> Some x
-    | None -> 
-      match find rest id with 
-        | None -> None
-        | Some _ -> Some id
-    ;;
-
+    | None -> (
+      match find rest id with
+      | None -> None
+      | Some _ -> Some id ) )
+;;
 
 (* The exception to be thrown when some sort of problem is found with names *)
 exception BindingError of string
@@ -165,23 +166,26 @@ let rec compile_env
   | Number (n, _) -> [IMov (Reg RAX, Const n)]
   | Prim1 (Add1, e, _) -> compile_env e stack_index env @ [IAdd (Reg RAX, Const 1L)]
   | Prim1 (Sub1, e, _) -> compile_env e stack_index env @ [IAdd (Reg RAX, Const (-1L))]
-  | Id (id, pos) ->
-    (match find env id with
-    (* TODO: Update for stack slot*)
-      | Some n -> [IMov (Reg RAX, RegOffset (n, RSP))]
-      | None -> raise (BindingError ("Unbound identifier: `" ^ id ^ "` at " ^ (pos_to_string pos true)))
+  | Id (id, pos) -> (
+    match find env id with
+    | Some n -> [IMov (Reg RAX, RegOffset (n, RSP))]
+    | None -> raise (BindingError ("Unbound identifier: `" ^ id ^ "` at " ^ pos_to_string pos true))
     )
-  | Let ((id, bound) :: [], body, _) -> 
-    compile_env bound stack_index env
-    @ [IMov (RegOffset (stack_index, RSP), Reg RAX)]
-    @ compile_env body (stack_index + 1) ((id, stack_index)::env)
-  | Let (first::rest, body, pos) ->
+  | Let ((id, bound) :: [], body, _) ->
+      compile_env bound stack_index env
+      @ [IMov (RegOffset (stack_index, RSP), Reg RAX)]
+      @ compile_env body (stack_index + 1) ((id, stack_index) :: env)
+  | Let (first :: rest, body, pos) -> (
     (* Check for duplicate bindings, since we are reducing this to syntactic sugar. *)
-    (match duplicate_bindings (first::rest) with
-    | Some id -> raise (BindingError ("Duplicate binding: `" ^ id ^ "` within `let` at " ^ (pos_to_string pos true)))
-    | None ->
-      compile_env (Let ([first], Let (rest, body, pos), pos)) stack_index env)
-  | Let ([], _, pos) -> raise (BindingError ("ICE: `let` has no bindings at compile time, at" ^ (pos_to_string pos true)))
+    match duplicate_bindings (first :: rest) with
+    | Some id ->
+        raise
+          (BindingError ("Duplicate binding: `" ^ id ^ "` within `let` at " ^ pos_to_string pos true)
+          )
+    | None -> compile_env (Let ([first], Let (rest, body, pos), pos)) stack_index env )
+  | Let ([], _, pos) ->
+      raise
+        (BindingError ("ICE: `let` has no bindings at compile time, at" ^ pos_to_string pos true))
 ;;
 
 let compile (p : pos expr) : instruction list =
