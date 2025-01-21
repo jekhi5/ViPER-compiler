@@ -127,39 +127,51 @@ let arg_to_asm_string_tests =
     t_any "arg_RSP_to_str" (arg_to_asm_string (Reg RSP)) "RSP";
     t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (1, RSP))) "[RSP - 8*1]";
     t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (10, RSP))) "[RSP - 8*10]";
-    t_any "RSP_offset_to_str_neg" (arg_to_asm_string (RegOffset (-1, RSP))) "[RSP - 8*-1]";
-    t_error "RAX_offset"
-      (fun _ -> arg_to_asm_string (RegOffset (1, RAX)))
-      (Failure "ICE: Offset of non-RSP register: RAX") ]
+    t_any "RSP_offset_to_str_neg" (arg_to_asm_string (RegOffset (-1, RSP))) "[RSP - 8*-1]"
+    (* t_error "RAX_offset"
+       (fun _ -> arg_to_asm_string (RegOffset (1, RAX)))
+       (Failure "ICE: Offset of non-RSP register: RAX") ] *) ]
 ;;
 
-let instruction_to_asm_string_tests = [
-  t_any "move_const_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Const 1L))) "\tmov RAX, 1";
-  t_any "move_const_to_rsp" (instruction_to_asm_string (IMov (Reg RSP, Const 1L))) "\tmov RSP, 1";
-
-  (* Questionably legal cases *)
-  t_any "move_reg_to_const" (instruction_to_asm_string (IMov (Const 1L, Reg RAX))) "\tmov 1, RAX";
-  t_any "move_reg_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Reg RSP))) "\tmov RAX, RSP";
-  t_any "move_const_to_const" (instruction_to_asm_string (IMov (Const 1L, Const 2L))) "\tmov 1, 2";
-  t_any "move_reg_reg_offset" (instruction_to_asm_string (IMov (Reg RAX, RegOffset (1, RSP)))) "\tmov RAX, [RSP - 8*1]";
-  t_any "move_reg_offset, Reg" (instruction_to_asm_string (IMov (RegOffset (1, RSP), Reg RAX))) "\tmov [RSP - 8*1], RAX";
-  t_any "move_const_reg_offset" (instruction_to_asm_string (IMov (Const 1L, RegOffset (1, RSP)))) "\tmov 1, [RSP - 8*1]";
-  t_any "move_reg_offset_const" (instruction_to_asm_string (IMov (RegOffset (1, RSP), Const 1L))) "\tmov [RSP - 8*1], 1";
-  
-  t_any "add_const_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Const 1L))) "\tmov RAX, 1";
-  t_any "add_const_to_rsp" (instruction_to_asm_string (IMov (Reg RSP, Const 1L))) "\tmov RSP, 1";
-
-  (* Questionably legal cases *)
-  t_any "add_reg_to_const" (instruction_to_asm_string (IAdd (Const 1L, Reg RAX))) "\tadd 1, RAX";
-  t_any "add_reg_to_reg" (instruction_to_asm_string (IAdd (Reg RAX, Reg RSP))) "\tadd RAX, RSP";
-  t_any "add_const_to_const" (instruction_to_asm_string (IAdd (Const 1L, Const 2L))) "\tadd 1, 2";
-  t_any "add_reg_reg_offset" (instruction_to_asm_string (IAdd (Reg RAX, RegOffset (1, RSP)))) "\tadd RAX, [RSP - 8*1]";
-  t_any "add_reg_offset, Reg" (instruction_to_asm_string (IAdd (RegOffset (1, RSP), Reg RAX))) "\tadd [RSP - 8*1], RAX";
-  t_any "add_const_reg_offset" (instruction_to_asm_string (IAdd (Const 1L, RegOffset (1, RSP)))) "\tadd 1, [RSP - 8*1]";
-  t_any "add_reg_offset_const" (instruction_to_asm_string (IAdd (RegOffset (1, RSP), Const 1L))) "\tadd [RSP - 8*1], 1";
-  
-  t_any "ret" (instruction_to_asm_string IRet) "\tret";
-];;
+let instruction_to_asm_string_tests =
+  [ t_any "move_const_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Const 1L))) "\tmov RAX, 1";
+    t_any "move_const_to_rsp" (instruction_to_asm_string (IMov (Reg RSP, Const 1L))) "\tmov RSP, 1";
+    (* Questionably legal cases *)
+    t_any "move_reg_to_const" (instruction_to_asm_string (IMov (Const 1L, Reg RAX))) "\tmov 1, RAX";
+    t_any "move_reg_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Reg RSP))) "\tmov RAX, RSP";
+    t_any "move_const_to_const" (instruction_to_asm_string (IMov (Const 1L, Const 2L))) "\tmov 1, 2";
+    t_any "move_reg_reg_offset"
+      (instruction_to_asm_string (IMov (Reg RAX, RegOffset (1, RSP))))
+      "\tmov RAX, [RSP - 8*1]";
+    t_any "move_reg_offset, Reg"
+      (instruction_to_asm_string (IMov (RegOffset (1, RSP), Reg RAX)))
+      "\tmov [RSP - 8*1], RAX";
+    t_any "move_const_reg_offset"
+      (instruction_to_asm_string (IMov (Const 1L, RegOffset (1, RSP))))
+      "\tmov 1, [RSP - 8*1]";
+    t_any "move_reg_offset_const"
+      (instruction_to_asm_string (IMov (RegOffset (1, RSP), Const 1L)))
+      "\tmov [RSP - 8*1], 1";
+    t_any "add_const_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Const 1L))) "\tmov RAX, 1";
+    t_any "add_const_to_rsp" (instruction_to_asm_string (IMov (Reg RSP, Const 1L))) "\tmov RSP, 1";
+    (* Questionably legal cases *)
+    t_any "add_reg_to_const" (instruction_to_asm_string (IAdd (Const 1L, Reg RAX))) "\tadd 1, RAX";
+    t_any "add_reg_to_reg" (instruction_to_asm_string (IAdd (Reg RAX, Reg RSP))) "\tadd RAX, RSP";
+    t_any "add_const_to_const" (instruction_to_asm_string (IAdd (Const 1L, Const 2L))) "\tadd 1, 2";
+    t_any "add_reg_reg_offset"
+      (instruction_to_asm_string (IAdd (Reg RAX, RegOffset (1, RSP))))
+      "\tadd RAX, [RSP - 8*1]";
+    t_any "add_reg_offset, Reg"
+      (instruction_to_asm_string (IAdd (RegOffset (1, RSP), Reg RAX)))
+      "\tadd [RSP - 8*1], RAX";
+    t_any "add_const_reg_offset"
+      (instruction_to_asm_string (IAdd (Const 1L, RegOffset (1, RSP))))
+      "\tadd 1, [RSP - 8*1]";
+    t_any "add_reg_offset_const"
+      (instruction_to_asm_string (IAdd (RegOffset (1, RSP), Const 1L)))
+      "\tadd [RSP - 8*1], 1";
+    t_any "ret" (instruction_to_asm_string IRet) "\tret" ]
+;;
 
 let integration_tests =
   [ t "one" "1" "1";
@@ -177,26 +189,51 @@ let integration_tests =
     t "let_nested_body1" "(let ((a 1) (b 5)) (let ((c (add1 b))) c))" "6";
     t "let_nested_binding1" "(let ((a 1) (b (let ((c (add1 a))) c))) (add1 b))" "3";
     t "simple_shadow" "(let ((a 1)) (let ((a 2)) a))" "2";
-    t "big_let_1" 
-      "(let ((a 1)
-             (b (let ((c (add1 a))) (add1 c)))
-             (c (sub1 (sub1 (sub1 b)))))
-          (let ((e (sub1 c)))
-            (add1 b)))"
-      "4";
-
+    t "big_let_1"
+      "(let ((a 1)\n\
+      \             (b (let ((c (add1 a))) (add1 c)))\n\
+      \             (c (sub1 (sub1 (sub1 b)))))\n\
+      \          (let ((e (sub1 c)))\n\
+      \            (add1 b)))" "4";
+    (* Since we don't have >1-ary functions, 
+     * here are a bunch of tests that show we don't get confused 
+     * about the values bound to identifiers 
+     *)
+    t "deep_nesting1"
+      "(let ((a 1))\n\
+      \  (let ((b 2))\n\
+      \    (let ((c 3))\n\
+      \      (let ((d 4))\n\
+      \        (let ((e 5))\n\
+      \           a)))))" "1";
+    t "deep_nesting2"
+      "(let ((a 1))\n\
+      \        (let ((b 2))\n\
+      \          (let ((c 3))\n\
+      \            (let ((d 4))\n\
+      \              (let ((e 5))\n\
+      \                 b)))))" "2";
+    t "deep_nesting3"
+      "(let ((a 1))\n\
+      \  (let ((b 2))\n\
+      \    (let ((c 3))\n\
+      \      (let ((d 4))\n\
+      \        (let ((e 5))\n\
+      \           e)))))" "5";
+    (* These two should always be the exact same. *)
+    ti "nested_bindings_1.adder" "1";
+    ti "nested_bindings_2.adder" "1";
     (* `let` error tests *)
     te "duplicate_bindings_1" "(let ((a 1) (a 2)) a)" "Duplicate binding";
-
     (* Internal Compiler Errors - Notice that we can't run a program normally here. *)
-    t_error "no_bindings_🤔" (fun _ -> compile (Let ([], Number (1L, (0,0,0,0)), (0,0,0,0)))) (BindingError "ICE: `let` has no bindings at compile time, atline 0, col 0--line 0, col 0") ;
-]
+    t_error "no_bindings_🤔"
+      (fun _ -> compile (Let ([], Number (1L, (0, 0, 0, 0)), (0, 0, 0, 0))))
+      (BindingError "ICE: `let` has no bindings at compile time, atline 0, col 0--line 0, col 0") ]
 ;;
 
 let suite : OUnit2.test =
   "suite"
-  >:::
-  (*[te "forty_one" "41" "not yet implemented"; te "nyi" "(let ((x 10)) x)" "not yet implemented"]*)
+  >::: (*[te "forty_one" "41" "not yet implemented"; te "nyi" "(let ((x 10)) x)" "not yet implemented"]*)
   expr_of_sexp_tests @ reg_to_asm_string_tests @ arg_to_asm_string_tests
   @ instruction_to_asm_string_tests (* TODO *) @ integration_tests
 ;;

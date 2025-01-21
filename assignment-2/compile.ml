@@ -104,12 +104,10 @@ let arg_to_asm_string (a : arg) : string =
   match a with
   | Const n -> sprintf "%Ld" n
   | Reg r -> reg_to_asm_string r
-  (* Not sure if the  conversion to int64 is necessary. Surely they print out the same?*)
-  (* FYI -- I don't think we should have this clause since this function is only a view. *)
-  | RegOffset (o, RSP) -> "[RSP - 8*" ^ sprintf "%Ld" (Int64.of_int o) ^ "]"
-  | RegOffset (_, r) ->
-      (* It seems like a bad idea to have offsets from registers other than RSP. *)
-      failwith ("ICE: Offset of non-RSP register: " ^ reg_to_asm_string r)
+  (* It feels kind of weird to allow an offset of other registers, such as RAX. *)
+  (* However, this concern would be better addressed in a more structural way, *)
+  (* as opposed to in the print function. *)
+  | RegOffset (o, r) -> "[" ^ (reg_to_asm_string r)  ^ " - 8*" ^ sprintf "%Ld" (Int64.of_int o) ^ "]"
 ;;
 
 let instruction_to_asm_string (i : instruction) : string =
@@ -136,7 +134,10 @@ let rec find (ls : (string * 'a) list) (x : string) : 'a option =
         find rest x
 ;;
 
-(* Are there any duplicates in the list? If there are, returns a duplicate id and position *)
+(* Are there any duplicates in the list? If there are, returns the duplicate id
+ * This is not the most efficient way of writing this function,
+ * since the worst case involves looking back over the list a bunch of times.
+ *)
 let rec duplicate_bindings (ls : (string * pos expr) list) : string option =
   match ls with
   | [] -> None
@@ -177,7 +178,14 @@ let rec compile_env
       @ [IMov (RegOffset (stack_index, RSP), Reg RAX)]
       @ compile_env body (stack_index + 1) ((id, stack_index) :: env)
   | Let (first :: rest, body, pos) -> (
-    (* Check for duplicate bindings, since we are reducing this to syntactic sugar. *)
+    (* Check for duplicate bindings, since we are reducing this to syntactic sugar. 
+     * Our understanding is that `(let ((a 1) (a 2)) 1)` is disallowed,
+     * but that `(let ((a 1)) (let ((a 1)) 1))` is allowed.
+     * I.e. we can have shadowed IDs, just not inside of the let clauses.
+     * Therefore, we compile multiple binding `let`s in two steps:
+     * 1) Check for duplicate IDs
+     * 2) If OK, rewrite in terms of one-binding `let`s. 
+     *)
     match duplicate_bindings (first :: rest) with
     | Some id ->
         raise
