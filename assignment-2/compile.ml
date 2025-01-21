@@ -105,6 +105,7 @@ let arg_to_asm_string (a : arg) : string =
   | Const n -> sprintf "%Ld" n
   | Reg r -> reg_to_asm_string r
   (* Not sure if the  conversion to int64 is necessary. Surely they print out the same?*)
+  (* FYI -- I don't think we should have this clause since this function is only a view. *)
   | RegOffset (o, RSP) -> "[RSP - 8*" ^ sprintf "%Ld" (Int64.of_int o) ^ "]"
   | RegOffset (_, r) ->
       (* It seems like a bad idea to have offsets from registers other than RSP. *)
@@ -180,8 +181,7 @@ let rec compile_env
     match duplicate_bindings (first :: rest) with
     | Some id ->
         raise
-          (BindingError ("Duplicate binding: `" ^ id ^ "` within `let` at " ^ pos_to_string pos true)
-          )
+          (BindingError ("Duplicate binding: `" ^ id ^ "` within `let` at " ^ pos_to_string pos true))
     | None -> compile_env (Let ([first], Let (rest, body, pos), pos)) stack_index env )
   | Let ([], _, pos) ->
       raise

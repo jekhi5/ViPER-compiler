@@ -133,7 +133,33 @@ let arg_to_asm_string_tests =
       (Failure "ICE: Offset of non-RSP register: RAX") ]
 ;;
 
-let instruction_to_asm_string_tests = []
+let instruction_to_asm_string_tests = [
+  t_any "move_const_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Const 1L))) "\tmov RAX, 1";
+  t_any "move_const_to_rsp" (instruction_to_asm_string (IMov (Reg RSP, Const 1L))) "\tmov RSP, 1";
+
+  (* Questionably legal cases *)
+  t_any "move_reg_to_const" (instruction_to_asm_string (IMov (Const 1L, Reg RAX))) "\tmov 1, RAX";
+  t_any "move_reg_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Reg RSP))) "\tmov RAX, RSP";
+  t_any "move_const_to_const" (instruction_to_asm_string (IMov (Const 1L, Const 2L))) "\tmov 1, 2";
+  t_any "move_reg_reg_offset" (instruction_to_asm_string (IMov (Reg RAX, RegOffset (1, RSP)))) "\tmov RAX, [RSP - 8*1]";
+  t_any "move_reg_offset, Reg" (instruction_to_asm_string (IMov (RegOffset (1, RSP), Reg RAX))) "\tmov [RSP - 8*1], RAX";
+  t_any "move_const_reg_offset" (instruction_to_asm_string (IMov (Const 1L, RegOffset (1, RSP)))) "\tmov 1, [RSP - 8*1]";
+  t_any "move_reg_offset_const" (instruction_to_asm_string (IMov (RegOffset (1, RSP), Const 1L))) "\tmov [RSP - 8*1], 1";
+  
+  t_any "add_const_to_reg" (instruction_to_asm_string (IMov (Reg RAX, Const 1L))) "\tmov RAX, 1";
+  t_any "add_const_to_rsp" (instruction_to_asm_string (IMov (Reg RSP, Const 1L))) "\tmov RSP, 1";
+
+  (* Questionably legal cases *)
+  t_any "add_reg_to_const" (instruction_to_asm_string (IAdd (Const 1L, Reg RAX))) "\tadd 1, RAX";
+  t_any "add_reg_to_reg" (instruction_to_asm_string (IAdd (Reg RAX, Reg RSP))) "\tadd RAX, RSP";
+  t_any "add_const_to_const" (instruction_to_asm_string (IAdd (Const 1L, Const 2L))) "\tadd 1, 2";
+  t_any "add_reg_reg_offset" (instruction_to_asm_string (IAdd (Reg RAX, RegOffset (1, RSP)))) "\tadd RAX, [RSP - 8*1]";
+  t_any "add_reg_offset, Reg" (instruction_to_asm_string (IAdd (RegOffset (1, RSP), Reg RAX))) "\tadd [RSP - 8*1], RAX";
+  t_any "add_const_reg_offset" (instruction_to_asm_string (IAdd (Const 1L, RegOffset (1, RSP)))) "\tadd 1, [RSP - 8*1]";
+  t_any "add_reg_offset_const" (instruction_to_asm_string (IAdd (RegOffset (1, RSP), Const 1L))) "\tadd [RSP - 8*1], 1";
+  
+  t_any "ret" (instruction_to_asm_string IRet) "\tret";
+];;
 
 let integration_tests =
   [ t "one" "1" "1";
@@ -152,7 +178,11 @@ let integration_tests =
     t "let_nested_binding1" "(let ((a 1) (b (let ((c (add1 a))) c))) (add1 b))" "3";
     t "simple_shadow" "(let ((a 1)) (let ((a 2)) a))" "2";
     (* `let` error tests *)
-    te "duplicate_bindings_1" "(let ((a 1) (a 2)) a)" "Duplicate binding" ]
+    te "duplicate_bindings_1" "(let ((a 1) (a 2)) a)" "Duplicate binding";
+
+    (* Internal Compiler Errors - Notice that we can't run a program normally here. *)
+    t_error "no_bindings_🤔" (fun _ -> compile (Let ([], Number (1L, (0,0,0,0)), (0,0,0,0)))) (BindingError "ICE: `let` has no bindings at compile time, atline 0, col 0--line 0, col 0") ;
+]
 ;;
 
 let suite : OUnit2.test =
