@@ -177,6 +177,14 @@ let integration_tests =
     t "let_nested_body1" "(let ((a 1) (b 5)) (let ((c (add1 b))) c))" "6";
     t "let_nested_binding1" "(let ((a 1) (b (let ((c (add1 a))) c))) (add1 b))" "3";
     t "simple_shadow" "(let ((a 1)) (let ((a 2)) a))" "2";
+    t "big_let_1" 
+      "(let ((a 1)
+             (b (let ((c (add1 a))) (add1 c)))
+             (c (sub1 (sub1 (sub1 b)))))
+          (let ((e (sub1 c)))
+            (add1 b)))"
+      "4";
+
     (* `let` error tests *)
     te "duplicate_bindings_1" "(let ((a 1) (a 2)) a)" "Duplicate binding";
 
