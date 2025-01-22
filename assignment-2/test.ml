@@ -34,21 +34,6 @@ let expr_of_sexp_tests =
   [ t_any "number" (expr_of_sexp (parse "5")) (Number (5L, (0, 0, 0, 1)));
     t_any "false" (expr_of_sexp (parse "false")) (Id ("false", (0, 0, 0, 5)));
     t_any "true" (expr_of_sexp (parse "true")) (Id ("true", (0, 0, 0, 4)));
-    (* t_error "add1-error-no-args"
-         (fun _ -> expr_of_sexp (parse "add1"))
-         (SyntaxError "Invalid syntax on `add1` at line 0, col 0");
-       t_error "add1-error-many-args"
-         (fun _ -> expr_of_sexp (parse "(add1 1 2)"))
-         (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
-       t_error "sub1-error-no-args"
-         (fun _ -> expr_of_sexp (parse "sub1"))
-         (SyntaxError "Invalid syntax on `sub1` at line 0, col 0");
-       t_error "sub1-error-many-args"
-         (fun _ -> expr_of_sexp (parse "(sub1 1 2)"))
-         (SyntaxError "Invalid syntax at line 0, col 0--line 0, col 10");
-       t_error "let-error-no-nest"
-         (fun _ -> expr_of_sexp (parse "let"))
-         (SyntaxError "Invalid syntax on `let` at line 0, col 0"); *)
     t_any "let-one-binding"
       (expr_of_sexp (parse "(let ((x 5)) x)"))
       (Let ([("x", Number (5L, (0, 9, 0, 10)))], Id ("x", (0, 13, 0, 14)), (0, 0, 0, 15)));
@@ -127,10 +112,7 @@ let arg_to_asm_string_tests =
     t_any "arg_RSP_to_str" (arg_to_asm_string (Reg RSP)) "RSP";
     t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (1, RSP))) "[RSP - 8*1]";
     t_any "RSP_offset_to_str" (arg_to_asm_string (RegOffset (10, RSP))) "[RSP - 8*10]";
-    t_any "RSP_offset_to_str_neg" (arg_to_asm_string (RegOffset (-1, RSP))) "[RSP - 8*-1]"
-    (* t_error "RAX_offset"
-       (fun _ -> arg_to_asm_string (RegOffset (1, RAX)))
-       (Failure "ICE: Offset of non-RSP register: RAX") ] *) ]
+    t_any "RSP_offset_to_str_neg" (arg_to_asm_string (RegOffset (-1, RSP))) "[RSP - 8*-1]" ]
 ;;
 
 let instruction_to_asm_string_tests =
@@ -194,7 +176,8 @@ let integration_tests =
       \             (b (let ((c (add1 a))) (add1 c)))\n\
       \             (c (sub1 (sub1 (sub1 b)))))\n\
       \          (let ((e (sub1 c)))\n\
-      \            (add1 b)))" "4";
+      \            (add1 b)))"
+      "4";
     (* Since we don't have >1-ary functions, 
      * here are a bunch of tests that show we don't get confused 
      * about the values bound to identifiers 
@@ -205,21 +188,24 @@ let integration_tests =
       \    (let ((c 3))\n\
       \      (let ((d 4))\n\
       \        (let ((e 5))\n\
-      \           a)))))" "1";
+      \           a)))))"
+      "1";
     t "deep_nesting2"
       "(let ((a 1))\n\
       \        (let ((b 2))\n\
       \          (let ((c 3))\n\
       \            (let ((d 4))\n\
       \              (let ((e 5))\n\
-      \                 b)))))" "2";
+      \                 b)))))"
+      "2";
     t "deep_nesting3"
       "(let ((a 1))\n\
       \  (let ((b 2))\n\
       \    (let ((c 3))\n\
       \      (let ((d 4))\n\
       \        (let ((e 5))\n\
-      \           e)))))" "5";
+      \           e)))))"
+      "5";
     (* These two should always be the exact same. *)
     ti "nested_bindings_1.adder" "1";
     ti "nested_bindings_2.adder" "1";
@@ -228,14 +214,14 @@ let integration_tests =
     (* Internal Compiler Errors - Notice that we can't run a program normally here. *)
     t_error "no_bindings_🤔"
       (fun _ -> compile (Let ([], Number (1L, (0, 0, 0, 0)), (0, 0, 0, 0))))
-      (BindingError "ICE: `let` has no bindings at compile time, atline 0, col 0--line 0, col 0") ]
+      (BindingError "ICE: `let` has no bindings at compile time, at line 0, col 0--line 0, col 0")
+  ]
 ;;
 
 let suite : OUnit2.test =
   "suite"
-  >::: (*[te "forty_one" "41" "not yet implemented"; te "nyi" "(let ((x 10)) x)" "not yet implemented"]*)
-  expr_of_sexp_tests @ reg_to_asm_string_tests @ arg_to_asm_string_tests
-  @ instruction_to_asm_string_tests (* TODO *) @ integration_tests
+  >::: expr_of_sexp_tests @ reg_to_asm_string_tests @ arg_to_asm_string_tests
+       @ instruction_to_asm_string_tests @ integration_tests
 ;;
 
 let () = run_test_tt_main suite

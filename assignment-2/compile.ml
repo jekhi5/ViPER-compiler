@@ -64,16 +64,9 @@ let rec expr_of_sexp (s : pos sexp) : pos expr =
   in
   match s with
   | Int (n, pos) -> Number (n, pos)
-  (* This language has no concept of booleans. If the user wrote this string, it should be parsed as a symbol*)
+  (* This language has no concept of booleans. If the user wrote this string, it should be parsed as a symbol *)
   | Bool (true, pos) -> Id ("true", pos)
   | Bool (false, pos) -> Id ("false", pos)
-  (* We can keep these as reserved words... or we can just ha *)
-  (* | Sym ("add1", pos) ->
-      raise (SyntaxError ("Invalid syntax on `add1` at " ^ pos_to_string pos false))
-  | Sym ("sub1", pos) ->
-      raise (SyntaxError ("Invalid syntax on `sub1` at " ^ pos_to_string pos false))
-  | Sym ("let", pos) -> 
-    raise (SyntaxError ("Invalid syntax on `let` at " ^ pos_to_string pos false)) *)
   | Nest ([Sym ("add1", _); operand], nest_pos) -> Prim1 (Add1, expr_of_sexp operand, nest_pos)
   | Nest ([Sym ("sub1", _); operand], nest_pos) -> Prim1 (Sub1, expr_of_sexp operand, nest_pos)
   | Nest ([Sym ("let", _); Nest (bindings, bindings_pos); let_body], nest_pos) ->
@@ -85,6 +78,8 @@ let rec expr_of_sexp (s : pos sexp) : pos expr =
              ^ pos_to_string bindings_pos false ) )
       else
         Let (binding_exprs, expr_of_sexp let_body, nest_pos)
+  (* We do not reserve words like `add1`. 
+   * If we see them outside of the usual syntax, we assume they're an identifier *)
   | Sym (id, pos) -> Id (id, pos)
   | _ -> raise (SyntaxError ("Invalid syntax at " ^ pos_to_string (sexp_info s) true))
 ;;
@@ -107,7 +102,7 @@ let arg_to_asm_string (a : arg) : string =
   (* It feels kind of weird to allow an offset of other registers, such as RAX. *)
   (* However, this concern would be better addressed in a more structural way, *)
   (* as opposed to in the print function. *)
-  | RegOffset (o, r) -> "[" ^ (reg_to_asm_string r)  ^ " - 8*" ^ sprintf "%Ld" (Int64.of_int o) ^ "]"
+  | RegOffset (o, r) -> "[" ^ reg_to_asm_string r ^ " - 8*" ^ sprintf "%Ld" (Int64.of_int o) ^ "]"
 ;;
 
 let instruction_to_asm_string (i : instruction) : string =
@@ -189,11 +184,12 @@ let rec compile_env
     match duplicate_bindings (first :: rest) with
     | Some id ->
         raise
-          (BindingError ("Duplicate binding: `" ^ id ^ "` within `let` at " ^ pos_to_string pos true))
+          (BindingError ("Duplicate binding: `" ^ id ^ "` within `let` at " ^ pos_to_string pos true)
+          )
     | None -> compile_env (Let ([first], Let (rest, body, pos), pos)) stack_index env )
   | Let ([], _, pos) ->
       raise
-        (BindingError ("ICE: `let` has no bindings at compile time, at" ^ pos_to_string pos true))
+        (BindingError ("ICE: `let` has no bindings at compile time, at " ^ pos_to_string pos true))
 ;;
 
 let compile (p : pos expr) : instruction list =
