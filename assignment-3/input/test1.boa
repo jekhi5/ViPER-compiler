@@ -1,0 +1,6 @@
+let x =
+  if sub1(55):
+    (if 1: add1(2) else: add1(3))
+  else:
+    (if 0: sub1(4) else: sub1(5))
+in x

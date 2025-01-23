@@ -1,0 +1,26 @@
+(library
+ (name boa_impl)
+ (modules compile runner exprs lexer parser pretty)
+ (libraries ounit2 extlib str)
+ (wrapped false))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries unix str boa_impl))
+
+(ocamlyacc
+ (modules parser))
+
+(ocamllex
+ (modules lexer))
+
+(test
+ (name test)
+ (modules test)
+ (libraries unix str boa_impl))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))
