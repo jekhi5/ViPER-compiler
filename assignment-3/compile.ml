@@ -21,15 +21,92 @@ and is_imm e =
 (* This function should encapsulate the binding-error checking from Boa *)
 exception BindingError of string
 
-let rec check_scope (e : (Lexing.position * Lexing.position) expr) : unit =
-  failwith "check_scope: Implement this"
+(* Convenience function to raise a Binding error of a given identifier and position. 
+ * `desc` is the description of the error and should lead into the id.
+ * E.g. "bad id" "x" <pos> -> "Binding Error: bad id `x` at <pos>"
+ *)
+let raise_BE (desc : string) (id : string) (p : Lexing.position * Lexing.position) =
+  raise (BindingError ("Binding Error: " ^ desc ^ " `" ^ id ^ "` at " ^ string_of_pos p))
+;;
+
+let check_scope (e : (Lexing.position * Lexing.position) expr) : unit =
+  (* Helper to keep track of  bound identifiers.*)
+  let rec check_scope_env (e : (Lexing.position * Lexing.position) expr) (env : string list) : unit
+      =
+    match e with
+    (* For each non-binding id, ensure it is in the environment already.*)
+    | EId (id, p) ->
+        if List.mem id env then
+          ()
+        else
+          raise_BE "unbound identifier" id p
+    | ELet (bindings, body, _) ->
+        (* Our accumulator stores two environments:
+         * 1) The bindings in this particular let
+         * 2) The global environment.
+         * For each binding, make sure the id is not in the local env.
+         * Make sure the bound expression is OK.
+         * Then, add the id to both envs.
+         *)
+        let _, let_env =
+          List.fold_left
+            (fun (local_env, global_env) (id, exp, p) ->
+              if List.mem id env then
+                raise_BE "duplicate `let` binding in" id p
+              else
+                ignore (check_scope_env exp global_env);
+              (id :: local_env, id :: global_env) )
+            ([], env) bindings
+        in
+        check_scope_env body let_env
+    (* The rest of the cases are uninteresting. *)
+    | ENumber _ -> ()
+    | EPrim1 (_, child, _) -> check_scope_env child env
+    | EPrim2 (_, child1, child2, _) -> check_scope_env child1 env; check_scope_env child2 env
+    | EIf (c, t, f, _) -> check_scope_env c env; check_scope_env t env; check_scope_env f env
+  in
+  check_scope_env e []
 ;;
 
 type tag = int
 
 (* PROBLEM 2 *)
 (* This function assigns a unique tag to every subexpression and let binding *)
-let tag (e : 'a expr) : tag expr = failwith "tag: Implement this"
+let tag (e : 'a expr) : tag expr =
+  (* Helper for tagging a list of bindings. *)
+  (* TODO: Scrutinize this with tests... not not sure if foldl or foldr. *)
+  let rec tag_bindings (lst : 'a bind list) (start_tag : tag) : tag bind list * tag =
+    List.fold_left
+      (fun (tagged, next_tag) (id, bound, _) ->
+        let tagged_bound, next_tag = help bound next_tag in
+        ((id, tagged_bound, next_tag) :: tagged, next_tag + 1) )
+      ([], start_tag) lst
+  and help (e : 'a expr) (cur : tag) : tag expr * tag =
+    match e with
+    | EId (id, _) -> (EId (id, cur), cur + 1)
+    | ENumber (n, _) -> (ENumber (n, cur), cur + 1)
+    | EPrim1 (op, e, _) ->
+        let tag_e, next_tag = help e (cur + 1) in
+        (EPrim1 (op, tag_e, cur), next_tag)
+    | EPrim2 (op, e1, e2, _) ->
+        (* Tag starting with the the leftmost innermost. *)
+        let tag_e1, next_tag = help e1 (cur + 1) in
+        let tag_e2, next_tag = help e2 next_tag in
+        (EPrim2 (op, tag_e1, tag_e2, cur), next_tag)
+    | EIf (c, t, f, _) ->
+        (* Tag the condition, then the true case, then the false case. *)
+        let tag_c, next_tag = help c (cur + 1) in
+        let tag_t, next_tag = help t next_tag in
+        let tag_f, next_tag = help f next_tag in
+        (EIf (tag_c, tag_t, tag_f, cur), next_tag)
+    | ELet (bindings, body, _) ->
+        let tagged_bindings, next_tag = tag_bindings bindings (cur + 1) in
+        let tagged_body, next_tag = help body next_tag in
+        (ELet (tagged_bindings, tagged_body, cur), next_tag)
+  in
+  let tagged, _ = help e 1 in
+  tagged
+;;
 
 (* This function removes all tags, and replaces them with the unit value.
    This might be convenient for testing, when you don't care about the tag info. *)
@@ -46,19 +123,41 @@ let rec untag (e : 'a expr) : unit expr =
 
 (* PROBLEM 3 *)
 let rename (e : tag expr) : tag expr =
-  let rec help (env : (string * string) list) (e : tag expr) =
+  let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
+      (string * string) list * tag bind list =
+    List.fold_left
+      (fun (env, renamed_bindings) (id, bound, tag) ->
+        let renamed_bound = help env bound in
+        (* rename e consistently *)
+        let renamed_id = sprintf "%s#%d" id tag in
+        (* create new unique name for x *)
+        let renamed_binding = (renamed_id, renamed_bound, tag) in
+        ((id, renamed_id) :: env, renamed_binding :: renamed_bindings) )
+      (env, []) bindings
+  and help (env : (string * string) list) (e : tag expr) =
     match e with
-    | EId (x, tag) -> EId (failwith "implement this", tag)
-    | ELet (binds, body, tag) ->
-        failwith
-          "Extend env by renaming each binding in binds, then rename the expressions and body"
-    | _ -> failwith "finish the other cases recursively"
+    | EId (x, tag) ->
+        (* Lookup x in the environment and replace it with the environment's renamed version.
+         * Since we only call `rename` *after* scope checking, x is guaranteed to be in env.
+         *)
+        EId (List.assoc x env, tag)
+    | ELet (bindings, body, tag) ->
+        (* "Extend env by renaming each binding in binds, then rename the expressions and body" *)
+        let new_env, renamed_bindings = rename_bindings env bindings in
+        let renamed_body = help new_env body in
+        ELet (renamed_bindings, renamed_body, tag)
+    (* Less interesting cases... *)
+    | ENumber (a, t) -> ENumber (a, t)
+    | EPrim1 (op, a, t) -> EPrim1 (op, help env a, t)
+    | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a, help env b, t)
+    | EIf (c, t, f, ta) -> EIf (help env c, help env t, help env f, ta)
   in
   help [] e
 ;;
 
 (* PROBLEM 4 & 5 *)
 (* This function converts a tagged expression into an untagged expression in A-normal form *)
+(* Renaming convention: <id> <tag> => "<id>#<tag>" *)
 let anf (e : tag expr) : unit expr = failwith "anf: Implement this"
 
 (* Helper functions *)

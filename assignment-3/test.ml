@@ -40,6 +40,12 @@ let forty_one = "41"
 
 let forty_one_a = ENumber (41L, ())
 
+let check_scope_tests = [ (* TODO... *) ]
+
+let tag_tests = [ (* TODO... *) ]
+
+let rename_tests = [ (* TODO... *) ]
+
 let suite =
   "suite"
   >::: [ tanf "forty_one_anf" (ENumber (41L, ())) forty_one_a;
@@ -57,6 +63,7 @@ let suite =
          (* Some useful if tests to start you off *)
          t "if_truthy_int" "if 5: 4 else: 2" "4";
          t "if_falsy_int" "if 0: 4 else: 2" "2" ]
+       @ check_scope_tests @ tag_tests @ rename_tests
 ;;
 
 let () = run_test_tt_main suite
