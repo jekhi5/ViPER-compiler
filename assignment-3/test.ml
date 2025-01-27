@@ -47,16 +47,48 @@ let tag_tests = [ (* TODO... *) ]
 let rename_tests = [ (* TODO... *) ]
 
 let anf_tests =
-  [ tanf "constant" (ENumber (1L, ())) (ENumber (1L, ()));
+  [ (* TODO: Call is_anf on all of these tests to ensure the function is meaningful *)
+    tanf "constant" (ENumber (1L, ())) (ENumber (1L, ()));
     tanf "add1"
       (EPrim1 (Add1, ENumber (1L, ()), ()))
-      (ELet ([("add1#1", EPrim1 (Add1, ENumber (1L, ()), ()), ())], 
-        EId ("add1#1", ()), ())) ]
+      (ELet ([("add1#1", EPrim1 (Add1, ENumber (1L, ()), ()), ())], EId ("add1#1", ()), ()));
+    tanf "sub1"
+      (EPrim1 (Sub1, ENumber (1L, ()), ()))
+      (ELet ([("sub1#1", EPrim1 (Sub1, ENumber (1L, ()), ()), ())], EId ("sub1#1", ()), ()));
+    tanf "if_basic"
+      (EIf (ENumber (0L, ()), ENumber (5L, ()), ENumber (10L, ()), ()))
+      (ELet
+         ( [("if#1", EIf (ENumber (0L, ()), ENumber (5L, ()), ENumber (10L, ()), ()), ())],
+           EId ("if#1", ()),
+           () ) );
+    tanf "let_basic"
+      (ELet ([("x", ENumber (10L, ()), ())], EId ("x", ()), ()))
+      (ELet ([("x", ENumber (10L, ()), ())], EId ("x", ()), ()));
+    tanf "plus_basic"
+      (EPrim2 (Plus, ENumber (5L, ()), ENumber (4L, ()), ()))
+      (ELet
+         ([("+#1", EPrim2 (Plus, ENumber (5L, ()), ENumber (4L, ()), ()), ())], EId ("+#1", ()), ())
+      );
+
+      (* TODO: Fill in this test *)
+    tanf "let_from_lecture"
+      (ELet
+         ( [ ( "x",
+               EIf
+                 ( ENumber (0L, ()),
+                   EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()),
+                   EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
+                   () ),
+               () ) ],
+           BODY,
+           () ) )
+      () ]
 ;;
 
 let suite =
   "suite"
-  >::: (* [ 
+  >:::
+  (* [ 
     tanf "forty_one_anf" (ENumber (41L, ())) forty_one_a;
          (* For CS4410 students, with unnecessary let-bindings *)
          tanf "prim1_anf_4410"
@@ -72,8 +104,7 @@ let suite =
          (* Some useful if tests to start you off *)
          t "if_truthy_int" "if 5: 4 else: 2" "4";
          t "if_falsy_int" "if 0: 4 else: 2" "2"  *)
-      check_scope_tests @ tag_tests @ rename_tests @ anf_tests
-
+  check_scope_tests @ tag_tests @ rename_tests @ anf_tests
 ;;
 
 let () = run_test_tt_main suite

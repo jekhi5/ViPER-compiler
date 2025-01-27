@@ -158,26 +158,40 @@ let rename (e : tag expr) : tag expr =
 (* PROBLEM 4 & 5 *)
 (* This function converts a tagged expression into an untagged expression in A-normal form *)
 (* Renaming convention: <id> <tag> => "<id>#<tag>" *)
-let anf (e : tag expr) : unit expr =
-  let rec anf_help (e : tag expr) : unit expr * (string * unit expr) list = 
+let rec anf (e : tag expr) : unit expr =
+  let rec anf_help (e : tag expr) : unit expr * (string * unit expr) list =
     match e with
     | ENumber (n, _) -> (ENumber (n, ()), [])
     | EId (x, _) -> (EId (x, ()), [])
     | EPrim1 (op, body, tag) ->
-      let (body_ans, body_context) = (anf_help body) in
-      let temp = (sprintf  "%s#%d" (string_of_op1 op) tag) in
-      (EId (temp, ()), body_context @ [(temp, EPrim1(op, body_ans, ()))])
-    | _ -> failwith "todo"
+        let body_ans, body_context = anf_help body in
+        let temp = sprintf "%s#%d" (string_of_op1 op) tag in
+        (EId (temp, ()), body_context @ [(temp, EPrim1 (op, body_ans, ()))])
+    | EPrim2 (op, left, right, tag) ->
+        let left_ans, left_context = anf_help left in
+        let right_ans, right_context = anf_help right in
+        let temp = sprintf "%s#%d" (string_of_op2 op) tag in
+        ( EId (temp, ()),
+          left_context @ right_context @ [(temp, EPrim2 (op, left_ans, right_ans, ()))] )
+    | ELet (bindings, body, _) ->
+        let anf_bindings = List.map (fun (id, bound, _) -> (id, anf bound, ())) bindings in
+        let anf_body = anf body in
+        (ELet (anf_bindings, anf_body, ()), [])
+    | EIf (c, t, f, tag) ->
+        let c_ans, c_context = anf_help c in
+        let anf_t = anf t in
+        let anf_f = anf f in
+        let temp = sprintf "if#%d" tag in
+        (EId (temp, ()), c_context @ [(temp, EIf (c_ans, anf_t, anf_f, ()))])
   in
   let incorporate_context (e : unit expr * (string * unit expr) list) : unit expr =
     match e with
-    | ENumber (number, _), _ -> ENumber(number, ())
-    | EId (name, _), context -> 
-      ELet (
-        (List.map (fun (id, bound) -> (id, bound, ())) context)
-        
-        , EId (name, ()), ())
-    | _ -> failwith "ICE"
+    | ENumber (number, _), _ -> ENumber (number, ())
+    | EId (name, _), [] -> EId (name, ())
+    | EId (name, _), context ->
+        ELet (List.map (fun (id, bound) -> (id, bound, ())) context, EId (name, ()), ())
+    | ELet (bindings, body, _), _ -> ELet (bindings, body, ())
+    | _ -> failwith ("ICE: Given expression failed to become ANF: " ^ string_of_expr (fst e))
   in
   incorporate_context (anf_help e)
 ;;
