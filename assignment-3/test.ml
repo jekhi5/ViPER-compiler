@@ -48,8 +48,6 @@ let rename_tests = [ (* TODO... *) ]
 
 let anf_tests =
   [ tanf "constant" (ENumber (1L, ())) (ENumber (1L, ()));
-    (* TODO: This test is not what we want. When we see an ID, it must have some context *)
-    tanf "id" (EId ("x", ())) (EId ("x", ()));
     tanf "add1"
       (EPrim1 (Add1, ENumber (1L, ()), ()))
       (ELet ([("add1#1", EPrim1 (Add1, ENumber (1L, ()), ()), ())], 
