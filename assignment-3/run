@@ -2,16 +2,8 @@ if dune build; then
     make clean
     make test
     ./test
-    make clean
-
     if [ $# -gt 0 ]; then
-        zip submission.zip Makefile starter-boa/compile.ml
-starter-boa/exprs.ml
-starter-boa/main.ml
-starter-boa/pretty.ml
-starter-boa/runner.ml
-starter-boa/test.ml
-        echo 'Saved submission.zip'
+        make clean
     fi
 else
     echo 'Build failure. Aborting...'

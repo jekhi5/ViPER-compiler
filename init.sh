@@ -12,7 +12,9 @@ script="if dune build; then
     make clean
     make test
     ./test
-    make clean
+    if [ $# -gt 0 ]; then
+        make clean
+    fi
 
     if [ \$# -gt 0 ]; then
         zip submission.zip Makefile ${files}

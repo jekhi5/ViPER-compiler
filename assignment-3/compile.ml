@@ -169,8 +169,9 @@ let anf (e : tag expr) : unit expr =
       (EId (temp, ()), body_context @ [(temp, EPrim1(op, body_ans, ()))])
     | _ -> failwith "todo"
   in
-  let let_context (e : unit expr * (string * unit expr) list) : unit expr =
+  let incorporate_context (e : unit expr * (string * unit expr) list) : unit expr =
     match e with
+    | ENumber (number, _), _ -> ENumber(number, ())
     | EId (name, _), context -> 
       ELet (
         (List.map (fun (id, bound) -> (id, bound, ())) context)
@@ -178,7 +179,7 @@ let anf (e : tag expr) : unit expr =
         , EId (name, ()), ())
     | _ -> failwith "ICE"
   in
-  let_context (anf_help e)
+  incorporate_context (anf_help e)
 ;;
 
 (* Helper functions *)
