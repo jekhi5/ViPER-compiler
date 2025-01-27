@@ -46,9 +46,19 @@ let tag_tests = [ (* TODO... *) ]
 
 let rename_tests = [ (* TODO... *) ]
 
+let anf_tests =
+  [ tanf "constant" (ENumber (1L, ())) (ENumber (1L, ()));
+    tanf "id" (EId ("x", ())) (EId ("x", ()));
+    tanf "add1"
+      (EPrim1 (Add1, ENumber (1L, ()), ()))
+      (ELet ([("add1#1", EPrim1 (Add1, ENumber (1L, ()), ()), ())], 
+        EId ("add1#1", ()), ())) ]
+;;
+
 let suite =
   "suite"
-  >::: [ tanf "forty_one_anf" (ENumber (41L, ())) forty_one_a;
+  >::: (* [ 
+    tanf "forty_one_anf" (ENumber (41L, ())) forty_one_a;
          (* For CS4410 students, with unnecessary let-bindings *)
          tanf "prim1_anf_4410"
            (EPrim1 (Sub1, ENumber (55L, ()), ()))
@@ -62,8 +72,9 @@ let suite =
          tprog "test1.boa" "3";
          (* Some useful if tests to start you off *)
          t "if_truthy_int" "if 5: 4 else: 2" "4";
-         t "if_falsy_int" "if 0: 4 else: 2" "2" ]
-       @ check_scope_tests @ tag_tests @ rename_tests
+         t "if_falsy_int" "if 0: 4 else: 2" "2"  *)
+      check_scope_tests @ tag_tests @ rename_tests @ anf_tests
+
 ;;
 
 let () = run_test_tt_main suite

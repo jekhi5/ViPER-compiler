@@ -158,7 +158,28 @@ let rename (e : tag expr) : tag expr =
 (* PROBLEM 4 & 5 *)
 (* This function converts a tagged expression into an untagged expression in A-normal form *)
 (* Renaming convention: <id> <tag> => "<id>#<tag>" *)
-let anf (e : tag expr) : unit expr = failwith "anf: Implement this"
+let anf (e : tag expr) : unit expr =
+  let rec anf_help (e : tag expr) : unit expr * (string * unit expr) list = 
+    match e with
+    | ENumber (n, _) -> (ENumber (n, ()), [])
+    | EId (x, _) -> (EId (x, ()), [])
+    | EPrim1 (op, body, tag) ->
+      let (body_ans, body_context) = (anf_help body) in
+      let temp = (sprintf  "%s#%d" (string_of_op1 op) tag) in
+      (EId (temp, ()), body_context @ [(temp, EPrim1(op, body_ans, ()))])
+    | _ -> failwith "todo"
+  in
+  let let_context (e : unit expr * (string * unit expr) list) : unit expr =
+    match e with
+    | EId (name, _), context -> 
+      ELet (
+        (List.map (fun (id, bound) -> (id, bound, ())) context)
+        
+        , EId (name, ()), ())
+    | _ -> failwith "ICE"
+  in
+  let_context (anf_help e)
+;;
 
 (* Helper functions *)
 let r_to_asm (r : reg) : string =
