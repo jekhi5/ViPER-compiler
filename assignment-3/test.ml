@@ -69,8 +69,7 @@ let anf_tests =
       (ELet
          ([("+#1", EPrim2 (Plus, ENumber (5L, ()), ENumber (4L, ()), ()), ())], EId ("+#1", ()), ())
       );
-
-      (* TODO: Fill in this test *)
+    (* TODO: Fill in this test *)
     tanf "let_from_lecture"
       (ELet
          ( [ ( "x",
@@ -80,7 +79,16 @@ let anf_tests =
                    EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
                    () ),
                () ) ],
-           BODY,
+           ELet
+             ( [ ( "y",
+                   EIf
+                     ( ENumber (1L, ()),
+                       EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
+                       EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()),
+                       () ),
+                   () ) ],
+               EId ("y", ()),
+               () ),
            () ) )
       () ]
 ;;
