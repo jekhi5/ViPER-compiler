@@ -114,6 +114,14 @@ let anf_tests =
            () ) ) ]
 ;;
 
+let compile_tests = [
+  t "test1" 
+  "(let x = (if sub1(1): 5 + 5 else: 6 * 2) in
+  (let y = (if add1(4): x * 3 else: x + 5) in
+    (x + y)))"
+  "48"
+];;
+
 let suite =
   "suite"
   >:::
@@ -133,7 +141,7 @@ let suite =
          (* Some useful if tests to start you off *)
          t "if_truthy_int" "if 5: 4 else: 2" "4";
          t "if_falsy_int" "if 0: 4 else: 2" "2"  *)
-  check_scope_tests @ tag_tests @ rename_tests @ anf_tests
+  check_scope_tests @ tag_tests @ rename_tests @ anf_tests @ compile_tests
 ;;
 
 let () = run_test_tt_main suite

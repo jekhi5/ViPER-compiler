@@ -256,43 +256,41 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       match op with
       | Add1 -> [IMov (Reg RAX, e_reg); IAdd (Reg RAX, Const 1L)]
       | Sub1 -> [IMov (Reg RAX, e_reg); IAdd (Reg RAX, Const Int64.minus_one)] )
-  | EPrim2 (op, left, right, _) ->
-    (let left_reg = compile_imm left env in
-    let right_reg = compile_imm right env in
-    match op with
+  | EPrim2 (op, left, right, _) -> (
+      let left_reg = compile_imm left env in
+      let right_reg = compile_imm right env in
+      match op with
       | Plus -> [IMov (Reg RAX, left_reg); IAdd (Reg RAX, right_reg)]
-      | Times -> [IMov (Reg RAX, left_reg); IMul (Reg RAX, right_reg)] 
-      | Minus -> [IMov (Reg RAX, left_reg); ISub (Reg RAX, right_reg)])
-  | EIf (cond, thn, els, tag) -> (
-    let else_label = sprintf "if_false_%d" tag in
-    let done_label = sprintf "done_%d" tag in
-    let cond_reg = compile_imm cond env in
-    [
-      IComment (sprintf "Begin conditional %d" tag);
-      IComment "  condition:";
-      (* We don't call compile_expr on the cond because it is immediate... *)
-      IMov (Reg RAX, cond_reg);
-      ICmp (Reg RAX, Const 0L);
-      IJe else_label;
-      IComment "  if true:";
-    ]
-    (* We DO use compile_expr for thn and else, because they are not immediate, but are in ANF. *)
-    @ (compile_expr thn si env) @
-    [
-      IJmp done_label;
-      IComment "  if false:";
-      ILabel else_label;
-    ]
-    @ (compile_expr els si env) @
-    [
-      ILabel done_label;
-      IComment (sprintf "End conditional %d" tag);
-    ]
-  )
-  | ELet ([(id, e, _)], body, _) -> 
-    (* Implement the fold that Ben discussed in class. *)
-    failwith "trololol"
-  | _ -> failwith "Impossible: Not in ANF"
+      | Times -> [IMov (Reg RAX, left_reg); IMul (Reg RAX, right_reg)]
+      | Minus -> [IMov (Reg RAX, left_reg); ISub (Reg RAX, right_reg)] )
+  | EIf (cond, thn, els, tag) ->
+      let else_label = sprintf "if_false#%d" tag in
+      let done_label = sprintf "done#%d" tag in
+      let cond_reg = compile_imm cond env in
+      [ IComment (sprintf "Begin conditional %d" tag);
+        IComment "  condition:";
+        (* We don't call compile_expr on the cond because it is immediate... *)
+        IMov (Reg RAX, cond_reg);
+        ICmp (Reg RAX, Const 0L);
+        IJe else_label;
+        IComment "  if true:" ]
+      (* We DO use compile_expr for thn and else, because they are not immediate, but are in ANF. *)
+      @ compile_expr thn si env
+      @ [IJmp done_label; IComment "  if false:"; ILabel else_label]
+      @ compile_expr els si env
+      @ [ILabel done_label; IComment (sprintf "End conditional %d" tag)]
+  | ELet (bindings, body, _) ->
+      (* Implement the fold that Ben discussed in class. *)
+      let binding_instrs, next_si, new_env =
+        List.fold_right
+          (fun (id, bound, _) (instrs, si, env) ->
+            ( compile_expr bound si env @ [IMov (RegOffset (si, RSP), Reg RAX)] @ instrs,
+              si + 1,
+              (id, si) :: env ) )
+          bindings ([], si, env)
+      in
+      binding_instrs
+      @ (compile_expr body next_si new_env)
 
 and compile_imm e env =
   match e with
