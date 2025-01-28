@@ -71,7 +71,8 @@ let anf_tests =
       );
     (* TODO: Fill in this test *)
     tanf "let_from_lecture"
-      (ELet
+
+    (ELet
          ( [ ( "x",
                EIf
                  ( ENumber (0L, ()),
@@ -90,7 +91,26 @@ let anf_tests =
                EId ("y", ()),
                () ),
            () ) )
-      () ]
+
+      (ELet
+         ( [ ( "x",
+              (ELet ([("if#1", 
+                EIf ( ENumber (0L, ()),
+                   EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()),
+                   EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
+                   () ), ())], EId ("if#1", ()), ())),
+               () ) ],
+           (ELet
+             ( [ ( "y",
+                    (ELet ([("if#2", 
+                      EIf ( ENumber (1L, ()),
+                       EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
+                       EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()),
+                       () ), ())], EId ("if#2", ()), ())), 
+                () ) ],
+               EId ("y", ()),
+               () )),
+           () ) ) ]
 ;;
 
 let suite =
