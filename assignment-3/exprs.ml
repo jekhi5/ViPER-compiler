@@ -22,6 +22,7 @@ type instruction =
   | IJne of string
   | IJe of string
   | IJmp of string
+  | IComment of string (* We added this one *)
   | IRet
 
 type prim1 =

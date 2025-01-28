@@ -218,8 +218,15 @@ let i_to_asm (i : instruction) : string =
   match i with
   | IMov (dest, value) -> sprintf "  mov %s, %s" (arg_to_asm dest) (arg_to_asm value)
   | IAdd (dest, to_add) -> sprintf "  add %s, %s" (arg_to_asm dest) (arg_to_asm to_add)
+  | ISub (dest, to_add) -> sprintf "  sub %s, %s" (arg_to_asm dest) (arg_to_asm to_add)
+  | IMul (dest, to_add) -> sprintf "  mul %s, %s" (arg_to_asm dest) (arg_to_asm to_add)
+  | ILabel s -> s ^ ":"
+  | ICmp (l, r) -> sprintf "  cmp %s, %s" (arg_to_asm l) (arg_to_asm r)
+  | IJne s -> "  jne " ^ s
+  | IJe s -> "  je " ^ s
+  | IJmp s -> "  jmp " ^ s
+  | IComment s -> "; " ^ s
   | IRet -> "  ret"
-  | _ -> failwith "i_to_asm: Implement this"
 ;;
 
 let to_asm (is : instruction list) : string =
@@ -249,9 +256,42 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       match op with
       | Add1 -> [IMov (Reg RAX, e_reg); IAdd (Reg RAX, Const 1L)]
       | Sub1 -> [IMov (Reg RAX, e_reg); IAdd (Reg RAX, Const Int64.minus_one)] )
-  | EPrim2 (op, left, right, _) -> failwith "compile_expr:eprim2: Implement this"
-  | EIf (cond, thn, els, tag) -> failwith "compile_expr:eif: Implement this"
-  | ELet ([(id, e, _)], body, _) -> failwith "compile_expr:elet: Implement this"
+  | EPrim2 (op, left, right, _) ->
+    (let left_reg = compile_imm left env in
+    let right_reg = compile_imm right env in
+    match op with
+      | Plus -> [IMov (Reg RAX, left_reg); IAdd (Reg RAX, right_reg)]
+      | Times -> [IMov (Reg RAX, left_reg); IMul (Reg RAX, right_reg)] 
+      | Minus -> [IMov (Reg RAX, left_reg); ISub (Reg RAX, right_reg)])
+  | EIf (cond, thn, els, tag) -> (
+    let else_label = sprintf "if_false_%d" tag in
+    let done_label = sprintf "done_%d" tag in
+    let cond_reg = compile_imm cond env in
+    [
+      IComment (sprintf "Begin conditional %d" tag);
+      IComment "  condition:";
+      (* We don't call compile_expr on the cond because it is immediate... *)
+      IMov (Reg RAX, cond_reg);
+      ICmp (Reg RAX, Const 0L);
+      IJe else_label;
+      IComment "  if true:";
+    ]
+    (* We DO use compile_expr for thn and else, because they are not immediate, but are in ANF. *)
+    @ (compile_expr thn si env) @
+    [
+      IJmp done_label;
+      IComment "  if false:";
+      ILabel else_label;
+    ]
+    @ (compile_expr els si env) @
+    [
+      ILabel done_label;
+      IComment (sprintf "End conditional %d" tag);
+    ]
+  )
+  | ELet ([(id, e, _)], body, _) -> 
+    (* Implement the fold that Ben discussed in class. *)
+    failwith "trololol"
   | _ -> failwith "Impossible: Not in ANF"
 
 and compile_imm e env =

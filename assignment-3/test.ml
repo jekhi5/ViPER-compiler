@@ -40,7 +40,8 @@ let forty_one = "41"
 
 let forty_one_a = ENumber (41L, ())
 
-let check_scope_tests = [ (* TODO... *) ]
+let check_scope_tests = [ 
+  (* TODO... *) ]
 
 let tag_tests = [ (* TODO... *) ]
 
@@ -94,19 +95,19 @@ let anf_tests =
 
       (ELet
          ( [ ( "x",
-              (ELet ([("if#1", 
+              (ELet ([("if#2", 
                 EIf ( ENumber (0L, ()),
-                   EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()),
-                   EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
-                   () ), ())], EId ("if#1", ()), ())),
+                  (ELet ([("+#4", EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()), ())], EId ("+#4", ()), ())),
+                  (ELet ([("*#7", EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()), ())], EId ("*#7", ()), ())),
+                   () ), ())], EId ("if#2", ()), ())),
                () ) ],
            (ELet
              ( [ ( "y",
-                    (ELet ([("if#2", 
+                    (ELet ([("if#12", 
                       EIf ( ENumber (1L, ()),
-                       EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
-                       EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()),
-                       () ), ())], EId ("if#2", ()), ())), 
+                       (ELet ([("*#14", EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()), ())], EId ("*#14", ()), ())),
+                  (ELet ([("+#17", EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()), ())], EId ("+#17", ()), ())),
+                       () ), ())], EId ("if#12", ()), ())), 
                 () ) ],
                EId ("y", ()),
                () )),
