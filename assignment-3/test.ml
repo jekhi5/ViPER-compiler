@@ -229,6 +229,19 @@ let compile_tests =
     t "nested_binops2" "(1 + 2) + 3" "6";
     t "nested_prim1" "add1(sub1(add1(sub1(add1(5)))))" "6"; 
     t "commutative_binops" "(1 - (3 + 7) * 12)" "-108";
+
+    t "let_add1_body" "(let a = 2 in add1(a))" "3";
+    t "let_sub1_body" "(let a = 2 in sub1(a))" "1";
+    t "let_plus_body" "(let a = 2 in a + a)" "4";
+    t "let_minus_body" "(let a = 2 in a - a)" "0";
+    t "let_times_body" "(let a = 2 in a * a * a)" "8";
+
+    t "let_add1_bound" "(let a = add1(4) in a)" "5";
+    t "let_plus_bound" "(let a = 4 + 2 in a)" "6";
+    t "let_times_bound" "(let a = 8 * 3 in a)" "24";
+    t "let_minus_bound" "(let a = 2 - 7 in a)" "-5";
+
+    t "let_complex_body" "(let a = 4, b = -3 in a + ((b * add1(a)) - sub1(b)) + 6)" "-1";
     
     
     ]
