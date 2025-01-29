@@ -51,7 +51,7 @@ let check_scope (e : (Lexing.position * Lexing.position) expr) : unit =
         let _, let_env =
           List.fold_left
             (fun (local_env, global_env) (id, exp, p) ->
-              if List.mem id env then
+              if List.mem id local_env then
                 raise_BE "duplicate `let` binding in" id p
               else
                 ignore (check_scope_env exp global_env);
