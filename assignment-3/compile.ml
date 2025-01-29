@@ -125,15 +125,15 @@ let rec untag (e : 'a expr) : unit expr =
 let rename (e : tag expr) : tag expr =
   let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
       (string * string) list * tag bind list =
-    List.fold_left
-      (fun (env, renamed_bindings) (id, bound, tag) ->
-        let renamed_bound = help env bound in
+    List.fold_right
+      (fun (id, bound, tag)(new_env, renamed_bindings)  ->
+        let renamed_bound = help new_env bound in
         (* rename e consistently *)
         let renamed_id = sprintf "%s#%d" id tag in
         (* create new unique name for x *)
         let renamed_binding = (renamed_id, renamed_bound, tag) in
-        ((id, renamed_id) :: env, renamed_binding :: renamed_bindings) )
-      (env, []) bindings
+        ((id, renamed_id) :: new_env, renamed_bindings @ [renamed_binding]) )
+        bindings (env, []) 
   and help (env : (string * string) list) (e : tag expr) =
     match e with
     | EId (x, tag) ->
@@ -152,7 +152,7 @@ let rename (e : tag expr) : tag expr =
     | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a, help env b, t)
     | EIf (c, t, f, ta) -> EIf (help env c, help env t, help env f, ta)
   in
-  help [] e
+  help [("test","debug")] e
 ;;
 
 (* PROBLEM 4 & 5 *)
