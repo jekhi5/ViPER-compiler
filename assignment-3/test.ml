@@ -74,7 +74,7 @@ let check_scope_tests =
     t "simple_let" "(let x = 1 in x)" "1";
     t "3nested_let" "(let x = 1 in let y = 2 in let z = 3 in x + y + z)" "6";
     t "shadowing_OK" "(let x = 1 in let x = 2 in x)" "2";
-    t "multi_bindings_together" "(let x = 1, y = x in x)" "1";
+    t "multi_bindings_together" "(let x = 1, y = x, z = x, a = z in x + y + a + z)" "4";
     ]
 ;;
 
