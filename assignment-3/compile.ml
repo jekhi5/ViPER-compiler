@@ -284,7 +284,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       let binding_instrs, next_si, new_env =
         List.fold_right
           (fun (id, bound, _) (instrs, si, env) ->
-            ( compile_expr bound si env @ [IMov (RegOffset (si, RSP), Reg RAX)] @ instrs,
+            (instrs @ compile_expr bound si env @ [IMov (RegOffset (~-si, RSP), Reg RAX)],
               si + 1,
               (id, si) :: env ) )
           bindings ([], si, env)
@@ -311,8 +311,8 @@ let compile_to_string prog =
   let tagged : tag expr = tag prog in
   let renamed : tag expr = rename tagged in
   let anfed : tag expr = tag (anf renamed) in
-  (* printf "Prog:\n%s\n" (ast_of_expr prog); *)
-  (* printf "Tagged:\n%s\n" (format_expr tagged string_of_int); *)
-  (* printf "ANFed/tagged:\n%s\n" (format_expr anfed string_of_int); *)
+  (* printf "Prog:\n%s\n" (ast_of_expr prog);
+  printf "Tagged:\n%s\n" (format_expr tagged string_of_int);
+  printf "ANFed/tagged:\n%s\n" (format_expr anfed string_of_int); *)
   compile_anf_to_string anfed
 ;;

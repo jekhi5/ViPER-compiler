@@ -5,6 +5,9 @@ if dune build; then
     if [ $# -gt 0 ]; then
         make clean
     fi
+    dune build >/dev/null 2>&1
+
 else
     echo 'Build failure. Aborting...'
 fi
+
