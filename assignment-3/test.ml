@@ -218,14 +218,20 @@ let compile_tests =
     t "constant" "1" "1";
     t "add1" "add1(0)" "1";
     t "sub1" "sub1(0)" "-1";
-    t "plus" "(1 + 2)" "3";
+    t "plus1" "(1 + 2)" "3";
+    t "plus2" "(2 + 1)" "3";
     t "minus1" "(2 - 1)" "1";
     t "minus2" "(1 - 2)" "-1";
-    t "times" "(8 * 3)" "24";
+    t "times1" "(8 * 3)" "24";
+    t "times2" "(3 * 8)" "24";
     t "let_imm" "(let x = 1 in x)" "1";
     t "nested_binops1" "1 + 2 + 3" "6";
     t "nested_binops2" "(1 + 2) + 3" "6";
-    t "nested_prim1" "add1(sub1(add1(sub1(add1(5)))))" "6"; ]
+    t "nested_prim1" "add1(sub1(add1(sub1(add1(5)))))" "6"; 
+    t "commutative_binops" "(1 - (3 + 7) * 12)" "-108";
+    
+    
+    ]
 ;;
 
 let suite =
