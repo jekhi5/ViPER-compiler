@@ -77,7 +77,7 @@ let tag (e : 'a expr) : tag expr =
   (* TODO: Scrutinize this with tests... not not sure if foldl or foldr. *)
   let rec tag_bindings (lst : 'a bind list) (start_tag : tag) : tag bind list * tag =
     List.fold_left
-      (fun  (tagged, next_tag) (id, bound, _) ->
+      (fun (tagged, next_tag) (id, bound, _) ->
         let tagged_bound, next_tag = help bound next_tag in
         ((id, tagged_bound, next_tag) :: tagged, next_tag + 1) )
       ([], start_tag) lst
