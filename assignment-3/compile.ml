@@ -126,14 +126,14 @@ let rename (e : tag expr) : tag expr =
   let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
       (string * string) list * tag bind list =
     List.fold_right
-      (fun (id, bound, tag)(new_env, renamed_bindings)  ->
+      (fun (id, bound, tag) (new_env, renamed_bindings) ->
         let renamed_bound = help new_env bound in
         (* rename e consistently *)
         let renamed_id = sprintf "%s#%d" id tag in
         (* create new unique name for x *)
         let renamed_binding = (renamed_id, renamed_bound, tag) in
         ((id, renamed_id) :: new_env, renamed_bindings @ [renamed_binding]) )
-        bindings (env, []) 
+      bindings (env, [])
   and help (env : (string * string) list) (e : tag expr) =
     match e with
     | EId (x, tag) ->
@@ -152,7 +152,7 @@ let rename (e : tag expr) : tag expr =
     | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a, help env b, t)
     | EIf (c, t, f, ta) -> EIf (help env c, help env t, help env f, ta)
   in
-  help [("test","debug")] e
+  help [] e
 ;;
 
 (* PROBLEM 4 & 5 *)
@@ -284,13 +284,12 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       let binding_instrs, next_si, new_env =
         List.fold_right
           (fun (id, bound, _) (instrs, si, env) ->
-            (instrs @ compile_expr bound si env @ [IMov (RegOffset (~-si, RSP), Reg RAX)],
+            ( instrs @ compile_expr bound si env @ [IMov (RegOffset (~-si, RSP), Reg RAX)],
               si + 1,
               (id, si) :: env ) )
           bindings ([], si, env)
       in
-      binding_instrs
-      @ (compile_expr body next_si new_env)
+      binding_instrs @ compile_expr body next_si new_env
 
 and compile_imm e env =
   match e with

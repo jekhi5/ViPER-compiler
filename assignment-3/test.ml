@@ -1,6 +1,5 @@
 open Compile
 open Runner
-open Printf
 open OUnit2
 open Pretty
 open Exprs
@@ -58,15 +57,16 @@ let check_scope_tests =
     te "free_id_in_let_body" "(let x = 1 in y)" "Binding Error: unbound identifier `y`";
     te "free_id_in_binding" "(let x = y in x)" "Binding Error: unbound identifier `y`";
     te "free_id_in_binding2" "(let x = x in 1)" "Binding Error: unbound identifier `x`";
-    te "free_id_in_nested_binding" "(let x = (let y = x in y) in 1)" "Binding Error: unbound identifier `x`";
-    te "free_id_in_multi_bindings1" "(let x = 1, y = z, z = 2 in z + y + x)" "Binding Error: unbound identifier `z`";
-    te "free_id_in_multi_bindings2" "(let x = (let a = 1 in a), y = a in y + x)" "Binding Error: unbound identifier `a`";
-    
-    
+    te "free_id_in_nested_binding" "(let x = (let y = x in y) in 1)"
+      "Binding Error: unbound identifier `x`";
+    te "free_id_in_multi_bindings1" "(let x = 1, y = z, z = 2 in z + y + x)"
+      "Binding Error: unbound identifier `z`";
+    te "free_id_in_multi_bindings2" "(let x = (let a = 1 in a), y = a in y + x)"
+      "Binding Error: unbound identifier `a`";
     (* Duplicate binding errors *)
     te "free_id_in_binding1" "(let x = 1, x = 2 in x)" "Binding Error: duplicate `let` binding";
-    te "free_id_in_binding2" "(let x = 1, y = 2, x = 3 in y)" "Binding Error: duplicate `let` binding";
-
+    te "free_id_in_binding2" "(let x = 1, y = 2, x = 3 in y)"
+      "Binding Error: duplicate `let` binding";
     (* OK cases 
      * Realistically these tests should be "assert not error",
      * since this function doesn't care that the outputs are correct.
@@ -74,8 +74,7 @@ let check_scope_tests =
     t "simple_let" "(let x = 1 in x)" "1";
     t "3nested_let" "(let x = 1 in let y = 2 in let z = 3 in x + y + z)" "6";
     t "shadowing_OK" "(let x = 1 in let x = 2 in x)" "2";
-    t "multi_bindings_together" "(let x = 1, y = x, z = x, a = z in x + y + a + z)" "4";
-    ]
+    t "multi_bindings_together" "(let x = 1, y = x, z = x, a = z in x + y + a + z)" "4" ]
 ;;
 
 let tag_tests = [ (* TODO... *) ]
@@ -105,7 +104,6 @@ let anf_tests =
       (ELet
          ([("+#1", EPrim2 (Plus, ENumber (5L, ()), ENumber (4L, ()), ()), ())], EId ("+#1", ()), ())
       );
-    (* TODO: Fill in this test *)
     tanf "let_from_lecture"
       (ELet
          ( [ ( "x",
@@ -214,7 +212,8 @@ let compile_tests =
   [ t "test1"
       "(let x = (if sub1(1): 5 + 5 else: 6 * 2) in\n\
       \  (let y = (if add1(4): x * 3 else: x + 5) in\n\
-      \    (x + y)))" "48";
+      \    (x + y)))"
+      "48";
     t "constant" "1" "1";
     t "add1" "add1(0)" "1";
     t "sub1" "sub1(0)" "-1";
@@ -227,45 +226,61 @@ let compile_tests =
     t "let_imm" "(let x = 1 in x)" "1";
     t "nested_binops1" "1 + 2 + 3" "6";
     t "nested_binops2" "(1 + 2) + 3" "6";
-    t "nested_prim1" "add1(sub1(add1(sub1(add1(5)))))" "6"; 
+    t "nested_prim1" "add1(sub1(add1(sub1(add1(5)))))" "6";
     t "commutative_binops" "(1 - (3 + 7) * 12)" "-108";
-
     t "let_add1_body" "(let a = 2 in add1(a))" "3";
     t "let_sub1_body" "(let a = 2 in sub1(a))" "1";
     t "let_plus_body" "(let a = 2 in a + a)" "4";
     t "let_minus_body" "(let a = 2 in a - a)" "0";
     t "let_times_body" "(let a = 2 in a * a * a)" "8";
-
     t "let_add1_bound" "(let a = add1(4) in a)" "5";
     t "let_plus_bound" "(let a = 4 + 2 in a)" "6";
     t "let_times_bound" "(let a = 8 * 3 in a)" "24";
     t "let_minus_bound" "(let a = 2 - 7 in a)" "-5";
-
     t "let_complex_body" "(let a = 4, b = -3 in a + ((b * add1(a)) - sub1(b)) + 6)" "-1";
-    
-    
-    ]
+    (* Read the name of these tests as: "<CONDITIONAL-VALUE>_if_<INTERESTING-EXPR>_<LOCATION-OF-INTERESTING-EXPR-IN-IF>"*)
+    t "true_case_if_basic" "(if 1: 1 else: 2)" "1";
+    t "trues_case_if_basic_" "(if 0: 1 else: 2)" "2";
+    t "true_case_if_add1_true" "(if 143: add1(7) else: 2)" "8";
+    t "true_case_if_sub1_true" "(if 112: sub1(7) else: 2)" "6";
+    t "true_case_if_plus_true" "(if 4: 1 + 4 else: 2)" "5";
+    t "true_case_if_minus_true" "(if 4: 1 - 4 else: 2)" "-3";
+    t "true_case_if_times_true" "(if 4: 8 * 2 else: 2)" "16";
+    t "true_case_if_add1_false" "(if 900: 5 else: add1(7))" "5";
+    t "true_case_if_sub1_false" "(if 900: 4 else: sub1(7))" "4";
+    t "true_case_if_plus_false" "(if 900: 6 else: 1 + 4)" "6";
+    t "true_case_if_minus_false" "(if 900: 2 else: 1 - 4)" "2";
+    t "true_case_if_times_false" "(if 900: 1 else: 8 * 2)" "1";
+    t "false_case_if_add1_true" "(if 0: add1(7) else: 2)" "2";
+    t "false_case_if_sub1_true" "(if 0: sub1(7) else: 2)" "2";
+    t "false_case_if_plus_true" "(if 0: 1 + 4 else: 2)" "2";
+    t "false_case_if_minus_true" "(if 0: 1 - 4 else: 2)" "2";
+    t "false_case_if_times_true" "(if 0: 8 * 2 else: 2)" "2";
+    t "false_case_if_add1_false" "(if 0: 5 else: add1(7))" "8";
+    t "false_case_if_sub1_false" "(if 0: 4 else: sub1(7))" "6";
+    t "false_case_if_plus_false" "(if 0: 6 else: 1 + 4)" "5";
+    t "false_case_if_minus_false" "(if 0: 2 else: 1 - 4)" "-3";
+    t "false_case_if_times_false" "(if 0: 1 else: 8 * 2)" "16";
+    t "true_case_if_add1_cond" "(if add1(0): 1 else: 4)" "1";
+    t "true_case_if_sub1_cond" "(if sub1(8): 1 else: 4)" "1";
+    t "true_case_if_plus_cond" "(if -4 + 7: 1 else: 4)" "1";
+    t "true_case_if_minus_cond" "(if -4 - 7: 1 else: 4)" "1";
+    t "true_case_if_times_cond" "(if 6 * 3: 1 else: 4)" "1";
+    t "false_case_if_add1_cond" "(if add1(-1): 1 else: 4)" "4";
+    t "false_case_if_sub1_cond" "(if sub1(1): 1 else: 4)" "4";
+    t "false_case_if_plus_cond" "(if -4 + 4: 1 else: 4)" "4";
+    t "false_case_if_minus_cond" "(if -4 - -4: 1 else: 4)" "4";
+    t "false_case_if_times_cond" "(if 6 * 0: 1 else: 4)" "4";
+    t "true_case_if_let_true" "(if 4: (let x = 6, y = add1(4), z = 9 in x * y + z) else: 9)" "39";
+    t "false_case_if_let_true" "(if 0: (let x = 6, y = add1(4), z = 9 in x * y + z) else: 9)" "9";
+    t "true_case_if_let_false" "(if 4: 9 else: (let x = 6, y = add1(4), z = 9 in x * y + z))" "9";
+    t "false_case_if_let_false" "(if 0: 9 else: (let x = 6, y = add1(4), z = 9 in x * y + z))" "39";
+    t "true_case_if_let_cond" "(if (let x = 6, y = add1(4), z = 9 in x * y + z): 9 else: 5)" "9";
+    t "false_case_if_let_cond" "(if (let x = 6, y = add1(4), z = 9 in (x * y + z) - 39): 9 else: 5)"
+      "5";
+    t "complex_if" "(if 5 + (4 - 2) * (4 - 2): add1(6 - 3) else: sub1(5 * 5))" "4" ]
 ;;
 
-let suite =
-  "suite"
-  >::: (* [
-          tanf "forty_one_anf" (ENumber (41L, ())) forty_one_a;
-               (* For CS4410 students, with unnecessary let-bindings *)
-               tanf "prim1_anf_4410"
-                 (EPrim1 (Sub1, ENumber (55L, ()), ()))
-                 (ELet ([("unary_1", EPrim1 (Sub1, ENumber (55L, ()), ()), ())], EId ("unary_1", ()), ()));
-               (* For CS6410 students, with optimized let-bindings *)
-               tanf "prim1_anf_6410"
-                 (EPrim1 (Sub1, ENumber (55L, ()), ()))
-                 (EPrim1 (Sub1, ENumber (55L, ()), ()));
-               ta "tag_forty_one_run_anf" (tag forty_one_a) "41";
-               t "int_literal_forty_one" forty_one "41";
-               tprog "test1.boa" "3";
-               (* Some useful if tests to start you off *)
-               t "if_truthy_int" "if 5: 4 else: 2" "4";
-               t "if_falsy_int" "if 0: 4 else: 2" "2" *)
-  check_scope_tests @ tag_tests @ rename_tests @ anf_tests @ compile_tests
-;;
+let suite = "suite" >::: check_scope_tests @ tag_tests @ rename_tests @ anf_tests @ compile_tests
 
 let () = run_test_tt_main suite
