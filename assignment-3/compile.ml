@@ -173,10 +173,12 @@ let rec anf (e : tag expr) : unit expr =
         let temp = sprintf "%s#%d" (string_of_op2 op) tag in
         ( EId (temp, ()),
           left_context @ right_context @ [(temp, EPrim2 (op, left_ans, right_ans, ()))] )
-    | ELet (bindings, body, _) ->
-        let anf_bindings = List.map (fun (id, bound, _) -> (id, anf bound, ())) bindings in
+    | ELet (bindings, body, tag) ->
+        let anf_bindings = List.map (fun (id, bound, _) -> (id, anf bound)) bindings in
         let anf_body = anf body in
-        (ELet (anf_bindings, anf_body, ()), [])
+        let temp = sprintf "let#%d" tag in
+        (EId (temp, ()), anf_bindings @ [(temp, anf_body)])
+        (* (ELet (anf_bindings, anf_body, ()), []) *)
     | EIf (c, t, f, tag) ->
         let c_ans, c_context = anf_help c in
         let anf_t = anf t in
@@ -295,7 +297,7 @@ and compile_imm e env =
   match e with
   | ENumber (n, _) -> Const n
   | EId (x, _) -> RegOffset (~-(find env x), RSP)
-  | _ -> failwith "Impossible: not an immediate"
+  | _ -> failwith ("Impossible: not an immediate: " ^ (string_of_expr e)) 
 ;;
 
 let compile_anf_to_string anfed =

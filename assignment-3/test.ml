@@ -171,7 +171,7 @@ let anf_tests =
            () ) );
     tanf "let_basic"
       (ELet ([("x", ENumber (10L, ()), ())], EId ("x", ()), ()))
-      (ELet ([("x", ENumber (10L, ()), ())], EId ("x", ()), ()));
+      (ELet ([("x", ENumber (10L, ()), ()); ("let#1", EId ("x", ()), ())], EId ("let#1", ()), ()));
     tanf "plus_basic"
       (EPrim2 (Plus, ENumber (5L, ()), ENumber (4L, ()), ()))
       (ELet
