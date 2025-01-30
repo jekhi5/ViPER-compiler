@@ -29,6 +29,48 @@ let teq (name : string) (actual : string) (expected : string) =
   name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> s)
 ;;
 
+(* Printer for tag expr *)
+let rec string_of_tag_expr (e : tag expr) : string =
+  match e with
+  | ENumber (n, t) -> sprintf "%s : %d" (Int64.to_string n) t 
+  | EId (x, t) -> sprintf "%s : %d" x t
+  | EPrim1 (op, e, t) -> sprintf "%s(%s) : %d" (string_of_op1 op) (string_of_tag_expr e) t
+  | EPrim2 (op, left, right, t) ->
+      sprintf "(%s %s %s)  : %d" (string_of_tag_expr left) (string_of_op2 op) (string_of_tag_expr right) t
+  | ELet (binds, body, t) ->
+      let binds_strs = List.map (fun (x, e, ta) -> (sprintf "(%s = %s) : %d" x (string_of_tag_expr e)) ta) binds in
+      let binds_str = List.fold_left ( ^ ) "" (intersperse binds_strs ", ") in
+      sprintf "(let %s in %s) : %d" binds_str (string_of_tag_expr body) t
+  | EIf (cond, thn, els, t) ->
+      sprintf "(if %s: %s else: %s) : %d" (string_of_tag_expr cond) (string_of_tag_expr thn) (string_of_tag_expr els) t
+;;
+
+(* Checks if two exprs are equal *)
+  let texp (name : string) (actual : 'a expr) (expected : 'b expr) =
+    name >:: fun _ -> assert_equal expected actual ~printer:string_of_tag_expr
+  ;;
+
+(* Printer for tag expr *)
+let rec string_of_tag_expr (e : tag expr) : string =
+  match e with
+  | ENumber (n, t) -> sprintf "%s : %d" (Int64.to_string n) t 
+  | EId (x, t) -> sprintf "%s : %d" x t
+  | EPrim1 (op, e, t) -> sprintf "%s(%s) : %d" (string_of_op1 op) (string_of_tag_expr e) t
+  | EPrim2 (op, left, right, t) ->
+      sprintf "(%s %s %s)  : %d" (string_of_tag_expr left) (string_of_op2 op) (string_of_tag_expr right) t
+  | ELet (binds, body, t) ->
+      let binds_strs = List.map (fun (x, e, ta) -> (sprintf "(%s = %s) : %d" x (string_of_tag_expr e)) ta) binds in
+      let binds_str = List.fold_left ( ^ ) "" (intersperse binds_strs ", ") in
+      sprintf "(let %s in %s) : %d" binds_str (string_of_tag_expr body) t
+  | EIf (cond, thn, els, t) ->
+      sprintf "(if %s: %s else: %s) : %d" (string_of_tag_expr cond) (string_of_tag_expr thn) (string_of_tag_expr els) t
+;;
+
+(* Checks if two exprs are equal *)
+  let texp (name : string) (actual : 'a expr) (expected : 'b expr) =
+    name >:: fun _ -> assert_equal expected actual ~printer:string_of_tag_expr
+  ;;
+
 (* Runs a program, given as the name of a file in the input/ directory, and compares its output to expected *)
 let tprog (filename : string) (expected : string) = filename >:: test_run_input filename expected
 
@@ -74,10 +116,40 @@ let check_scope_tests =
     t "simple_let" "(let x = 1 in x)" "1";
     t "3nested_let" "(let x = 1 in let y = 2 in let z = 3 in x + y + z)" "6";
     t "shadowing_OK" "(let x = 1 in let x = 2 in x)" "2";
-    t "multi_bindings_together" "(let x = 1, y = x, z = x, a = z in x + y + a + z)" "4" ]
+    t "multi_bindings_together" "(let x = 1, y = x, z = x, a = z in x + y + a + z)" "4";
+    t "dupled_nested_lests" "(let x = (let y = 1 in y), z = (let y = 2 in y) in x + z)" "3";
+    ]
 ;;
 
-let tag_tests = [ (* TODO... *) ]
+(* Helper values to make testing nicer. *)
+let dummy = ENumber (0L, ());;
+let tagged (t) = ENumber (0L, t);;
+
+let tag_tests = [
+  (* Simple cases *)
+  texp "tag_constant" (tag (ENumber (1L, ()))) (ENumber (1L, 1));
+  texp "tag_id" (tag (EId ("x", ()))) (EId ("x", 1));
+  texp "tag_prim1" 
+  (tag (EPrim1 (Add1, dummy, ()))) 
+  (tag (EPrim1 (Add1, tagged 2, 1)));
+  texp "tag_prim2" 
+  (tag (EPrim2 (Plus, dummy, dummy, ()))) 
+  (tag (EPrim2 (Plus, tagged 2, tagged 3, 1))) ;
+  texp "tag_if" 
+  (tag (EIf (dummy, dummy, dummy, ())))
+  (tag (EIf (tagged 1, tagged 2, tagged 3, 1)));
+
+  texp "tag_let_one_binding"
+    (tag (ELet ([("x", dummy, ())], dummy, ())))
+    (ELet ([("x", tagged 2, 3)], tagged 4, 1));
+  texp "tag_let_multi_bindings"
+    (tag (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], dummy, ())))
+    (ELet ([("x", tagged 2, 3); ("y", tagged 4, 5); ("z", tagged 6, 7)], tagged 8, 1));
+    
+
+  (* Nested cases *)
+  
+]
 
 let rename_tests = [ (* TODO... *) ]
 

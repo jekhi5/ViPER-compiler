@@ -77,7 +77,7 @@ let tag (e : 'a expr) : tag expr =
   (* TODO: Scrutinize this with tests... not not sure if foldl or foldr. *)
   let rec tag_bindings (lst : 'a bind list) (start_tag : tag) : tag bind list * tag =
     List.fold_left
-      (fun (tagged, next_tag) (id, bound, _) ->
+      (fun  (tagged, next_tag) (id, bound, _) ->
         let tagged_bound, next_tag = help bound next_tag in
         ((id, tagged_bound, next_tag) :: tagged, next_tag + 1) )
       ([], start_tag) lst
@@ -147,7 +147,7 @@ let rename (e : tag expr) : tag expr =
         let renamed_body = help new_env body in
         ELet (renamed_bindings, renamed_body, tag)
     (* Less interesting cases... *)
-    | ENumber (a, t) -> ENumber (a, t)
+    | ENumber (_, _) -> e
     | EPrim1 (op, a, t) -> EPrim1 (op, help env a, t)
     | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a, help env b, t)
     | EIf (c, t, f, ta) -> EIf (help env c, help env t, help env f, ta)
