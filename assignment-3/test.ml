@@ -3,6 +3,7 @@ open Runner
 open OUnit2
 open Pretty
 open Exprs
+open Printf
 
 (* Runs a program, given as a source string, and compares its output to expected *)
 let t (name : string) (program : string) (expected : string) =
