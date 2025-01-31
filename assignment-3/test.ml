@@ -88,10 +88,6 @@ let t_error name expr (expected : exn) = name >:: fun _ -> assert_raises expecte
 (* Tests for a boolean condition *)
 let tb name expr = name >:: fun _ -> assert_bool "nested_arith" expr
 
-let forty_one = "41"
-
-let forty_one_a = ENumber (41L, ())
-
 let check_scope_tests =
   [ (* We use the entire compile pipeline here for convenience,
      * but the purpose of these tests is to demonstrate that we catch all scope errors.
