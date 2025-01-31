@@ -79,7 +79,7 @@ let tag (e : 'a expr) : tag expr =
     List.fold_left
       (fun (tagged, next_tag) (id, bound, _) ->
         let tagged_bound, next_tag = help bound next_tag in
-        (tagged @ [(id, tagged_bound, next_tag)] , next_tag + 1) )
+        (tagged @ [(id, tagged_bound, next_tag)], next_tag + 1) )
       ([], start_tag) lst
   and help (e : 'a expr) (cur : tag) : tag expr * tag =
     match e with
@@ -133,7 +133,7 @@ let rename (e : tag expr) : tag expr =
         (* create new unique name for x *)
         let renamed_binding = (renamed_id, renamed_bound, tag) in
         ((id, renamed_id) :: new_env, renamed_bindings @ [renamed_binding]) )
-     (env, []) bindings
+      (env, []) bindings
   and help (env : (string * string) list) (e : tag expr) =
     match e with
     | EId (x, tag) ->
@@ -290,7 +290,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             ( instrs @ compile_expr bound si env @ [IMov (RegOffset (~-si, RSP), Reg RAX)],
               si + 1,
               (id, si) :: env ) )
-           ([], si, env) bindings
+          ([], si, env) bindings
       in
       binding_instrs @ compile_expr body next_si new_env
 
@@ -298,7 +298,7 @@ and compile_imm e env =
   match e with
   | ENumber (n, _) -> Const n
   | EId (x, _) -> RegOffset (~-(find env x), RSP)
-  | _ -> failwith ("Impossible: not an immediate: " ^ (string_of_expr e)) 
+  | _ -> failwith ("Impossible: not an immediate: " ^ string_of_expr e)
 ;;
 
 let compile_anf_to_string anfed =

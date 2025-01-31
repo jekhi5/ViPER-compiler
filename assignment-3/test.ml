@@ -150,8 +150,21 @@ let tag_tests =
       (ELet ([("x", tagged 2, 3)], tagged 4, 1));
     texp "tag_let_multi_bindings"
       (tag (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], dummy, ())))
-      (ELet ([("x", tagged 2, 3); ("y", tagged 4, 5); ("z", tagged 6, 7)], tagged 8, 1))
-    (* Nested cases *) ]
+      (ELet ([("x", tagged 2, 3); ("y", tagged 4, 5); ("z", tagged 6, 7)], tagged 8, 1));
+    texp "tag_let_multi_bindings_depth"
+      (tag
+         (ELet
+            ( [ ("x", dummy, ());
+                ("y", ELet ([("a", dummy, ()); ("b", dummy, ())], dummy, ()), ());
+                ("z", dummy, ()) ],
+              ELet ([("p", dummy, ()); ("q", dummy, ()); ("r", dummy, ())], dummy, ()),
+              () ) ) )
+      (ELet
+         ( [ ("x", tagged 2, 3);
+             ("y", ELet ([("a", tagged 5, 6); ("b", tagged 7, 8)], tagged 9, 4), 10);
+             ("z", tagged 11, 12) ],
+           ELet ([("p", tagged 14, 15); ("q", tagged 16, 17); ("r", tagged 18, 19)], tagged 20, 13),
+           1 ) ) ]
 ;;
 
 let rename_tests =
@@ -162,7 +175,11 @@ let rename_tests =
     texp "rename_let_multi"
       (rename
          (tag (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ()))) )
-      (ELet ([("x#3", tagged 2, 3); ("y#5", tagged 4, 5); ("z#7", tagged 6, 7)], EId ("x#3", 8), 1))
+      (ELet ([("x#3", tagged 2, 3); ("y#5", tagged 4, 5); ("z#7", tagged 6, 7)], EId ("x#3", 8), 1));
+    texp "rename_let_if_one_binding" 
+      (rename 
+        (tag (ELet ([("x", EIf (dummy, dummy, dummy, ()), ())], EId("x", ()), ())))) 
+      (ELet ([("x#6", EIf (tagged 3, tagged 4, tagged 5, 2), 6)], EId("x#6", 7), 1));
   ]
 ;;
 
@@ -292,16 +309,11 @@ let anf_tests =
                     EPrim2 (Plus, ENumber (3L, ()), ENumber (4L, ()), ()),
                     () ) ) ) ) );
     tanf "let_multi_bindings"
-    (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())],
-                EId ("x", ()),
-                 ()))
+      (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ()))
       (ELet
-         ( [ ("x", dummy, ());
-             ("y", dummy, ());
-             ("z", dummy, ());
-             ("let#1", EId ("x", ()), ()); ],
+         ( [("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ()); ("let#1", EId ("x", ()), ())],
            EId ("let#1", ()),
-           () ) );
+           () ) )
     (* tanf "let_multi_bindings2"
       (anf
          (rename
@@ -315,14 +327,15 @@ let anf_tests =
              ("let#1", EId ("let#1", ()), ()) ],
            EId ("let#1", ()),
            () ) )  *)
-           ]
+  ]
 ;;
 
 let compile_tests =
   [ t "test1"
       "(let x = (if sub1(1): 5 + 5 else: 6 * 2) in\n\
       \  (let y = (if add1(4): x * 3 else: x + 5) in\n\
-      \    (x + y)))" "48";
+      \    (x + y)))"
+      "48";
     t "constant" "1" "1";
     t "add1" "add1(0)" "1";
     t "sub1" "sub1(0)" "-1";
@@ -392,7 +405,8 @@ let compile_tests =
     t "true_case_if_let_cond" "(if (let x = 6, y = add1(4), z = 9 in x * y + z): 9 else: 5)" "9";
     t "false_case_if_let_cond" "(if (let x = 6, y = add1(4), z = 9 in (x * y + z) - 39): 9 else: 5)"
       "5";
-    t "complex_if" "(if 5 + (4 - 2) * (4 - 2): add1(6 - 3) else: sub1(5 * 5))" "4" ]
+    t "complex_if" "(if 5 + (4 - 2) * (4 - 2): add1(6 - 3) else: sub1(5 * 5))" "4";
+      ]
 ;;
 
 let suite = "suite" >::: check_scope_tests @ tag_tests @ rename_tests @ anf_tests @ compile_tests
