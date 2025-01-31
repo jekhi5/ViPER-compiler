@@ -75,7 +75,6 @@ let rec string_of_tag_expr (e : tag expr) : string =
         (string_of_tag_expr els) t
 ;;
 
-
 (* Runs a program, given as the name of a file in the input/ directory, and compares its output to expected *)
 let tprog (filename : string) (expected : string) = filename >:: test_run_input filename expected
 
@@ -263,7 +262,8 @@ let compile_tests =
   [ t "test1"
       "(let x = (if sub1(1): 5 + 5 else: 6 * 2) in\n\
       \  (let y = (if add1(4): x * 3 else: x + 5) in\n\
-      \    (x + y)))" "48";
+      \    (x + y)))"
+      "48";
     t "constant" "1" "1";
     t "add1" "add1(0)" "1";
     t "sub1" "sub1(0)" "-1";
@@ -341,12 +341,11 @@ let compile_tests =
     (* Test that if only evaluates one side by threatening to throw an error due to overflow. *)
     (* Wait, actually this doesn't work. It just overflows, instead of throwing and error. *)
     t "if_not_evaluate_both" (sprintf "if 1: 1 else: (%d * %d)" Int.max_int Int.max_int) "1";
-      
     (* Some more nested let tests to show how the scope works *)
     t "shadow1" "let x = 1 in let x = 5 in x + x" "10";
     t "shadow2" "(let x = 1 in x) + (let x = 5 in x)" "6";
     t "shadow3" "(let x = 1, y = x * 2 in x + y) + (let y = 6, x = y in x - 1 - y)" "2";
-    t "shadow4" "let a=((5 - 4) * (11 - 10)),b=a,c=a,d=5 in let a = (5 * 4) in (b + c + a + d)" "27";
+    t "shadow4" "let a=((5 - 4) * (11 - 10)),b=a,c=a,d=5 in let a = (5 * 4) in (b + c + a + d)" "27"
   ]
 ;;
 
