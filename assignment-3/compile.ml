@@ -74,7 +74,6 @@ type tag = int
 (* This function assigns a unique tag to every subexpression and let binding *)
 let tag (e : 'a expr) : tag expr =
   (* Helper for tagging a list of bindings. *)
-  (* TODO: Scrutinize this with tests... not not sure if foldl or foldr. *)
   let rec tag_bindings (lst : 'a bind list) (start_tag : tag) : tag bind list * tag =
     List.fold_left
       (fun (tagged, next_tag) (id, bound, _) ->

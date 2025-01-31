@@ -180,8 +180,7 @@ let anf_full e = anf (rename (tag e))
 let let_tester = ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ())
 
 let anf_tests =
-  [ (* TODO: Call is_anf on all of these tests to ensure the function is meaningful *)
-    tanf "constant" (ENumber (1L, ())) (ENumber (1L, ()));
+  [ tanf "constant" (ENumber (1L, ())) (ENumber (1L, ()));
     tanf "add1"
       (EPrim1 (Add1, ENumber (1L, ()), ()))
       (ELet ([("add1#1", EPrim1 (Add1, ENumber (1L, ()), ()), ())], EId ("add1#1", ()), ()));
