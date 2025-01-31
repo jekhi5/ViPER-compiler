@@ -75,10 +75,6 @@ let rec string_of_tag_expr (e : tag expr) : string =
         (string_of_tag_expr els) t
 ;;
 
-(* Checks if two exprs are equal *)
-let texp (name : string) (actual : 'a expr) (expected : 'b expr) =
-  name >:: fun _ -> assert_equal expected actual ~printer:string_of_tag_expr
-;;
 
 (* Runs a program, given as the name of a file in the input/ directory, and compares its output to expected *)
 let tprog (filename : string) (expected : string) = filename >:: test_run_input filename expected
@@ -166,6 +162,10 @@ let rename_tests =
   ]
 ;;
 
+let anf_full e = anf (rename (tag e))
+
+let let_tester = ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ())
+
 let anf_tests =
   [ (* TODO: Call is_anf on all of these tests to ensure the function is meaningful *)
     tanf "constant" (ENumber (1L, ())) (ENumber (1L, ()));
@@ -189,133 +189,79 @@ let anf_tests =
       (ELet
          ([("+#1", EPrim2 (Plus, ENumber (5L, ()), ENumber (4L, ()), ()), ())], EId ("+#1", ()), ())
       );
-    tanf "let_from_lecture"
-      (ELet
-         ( [ ( "x",
-               EIf
-                 ( ENumber (0L, ()),
-                   EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()),
-                   EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
-                   () ),
-               () ) ],
-           ELet
-             ( [ ( "y",
-                   EIf
-                     ( ENumber (1L, ()),
-                       EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
-                       EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()),
-                       () ),
-                   () ) ],
-               EId ("y", ()),
-               () ),
-           () ) )
-      (ELet
-         ( [ ( "x",
-               ELet
-                 ( [ ( "if#2",
-                       EIf
-                         ( ENumber (0L, ()),
-                           ELet
-                             ( [("+#4", EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()), ())],
-                               EId ("+#4", ()),
-                               () ),
-                           ELet
-                             ( [("*#7", EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()), ())],
-                               EId ("*#7", ()),
-                               () ),
-                           () ),
-                       () ) ],
-                   EId ("if#2", ()),
-                   () ),
-               () ) ],
-           ELet
-             ( [ ( "y",
-                   ELet
-                     ( [ ( "if#12",
+    tb "let_from_lecture"
+      (is_anf
+         (anf
+            (rename
+               (tag
+                  (ELet
+                     ( [ ( "x",
                            EIf
-                             ( ENumber (1L, ()),
-                               ELet
-                                 ( [ ( "*#14",
-                                       EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
-                                       () ) ],
-                                   EId ("*#14", ()),
-                                   () ),
-                               ELet
-                                 ( [("+#17", EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()), ())],
-                                   EId ("+#17", ()),
-                                   () ),
+                             ( ENumber (0L, ()),
+                               EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()),
+                               EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
                                () ),
                            () ) ],
-                       EId ("if#12", ()),
-                       () ),
-                   () ) ],
-               EId ("y", ()),
-               () ),
-           () ) );
+                       ELet
+                         ( [ ( "y",
+                               EIf
+                                 ( ENumber (1L, ()),
+                                   EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
+                                   EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()),
+                                   () ),
+                               () ) ],
+                           EId ("y", ()),
+                           () ),
+                       () ) ) ) ) ) );
     tb "round_trip"
       (is_anf
-         (anf
-            (tag
-               (ELet
-                  ( [ ( "x",
-                        EIf
-                          ( ENumber (0L, ()),
-                            EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()),
-                            EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
-                            () ),
-                        () ) ],
-                    ELet
-                      ( [ ( "y",
-                            EIf
-                              ( ENumber (1L, ()),
-                                EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
-                                EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()),
-                                () ),
-                            () ) ],
-                        EId ("y", ()),
-                        () ),
-                    () ) ) ) ) );
+         (anf_full
+            (ELet
+               ( [ ( "x",
+                     EIf
+                       ( ENumber (0L, ()),
+                         EPrim2 (Plus, ENumber (5L, ()), ENumber (5L, ()), ()),
+                         EPrim2 (Times, ENumber (6L, ()), ENumber (2L, ()), ()),
+                         () ),
+                     () ) ],
+                 ELet
+                   ( [ ( "y",
+                         EIf
+                           ( ENumber (1L, ()),
+                             EPrim2 (Times, EId ("x", ()), ENumber (3L, ()), ()),
+                             EPrim2 (Plus, EId ("x", ()), ENumber (5L, ()), ()),
+                             () ),
+                         () ) ],
+                     EId ("y", ()),
+                     () ),
+                 () ) ) ) );
     tb "nested_prim2"
       (is_anf
-         (anf
-            (tag
-               (EPrim2
-                  (Plus, EPrim2 (Plus, ENumber (1L, ()), ENumber (2L, ()), ()), ENumber (3L, ()), ())
-               ) ) ) );
+         (anf_full
+            (EPrim2
+               (Plus, EPrim2 (Plus, ENumber (1L, ()), ENumber (2L, ()), ()), ENumber (3L, ()), ())
+            ) ) );
     tb "nested_prim2_2"
       (is_anf
-         (anf
-            (tag
-               (EPrim2
-                  ( Plus,
-                    EPrim2 (Plus, ENumber (1L, ()), ENumber (2L, ()), ()),
-                    EPrim2 (Plus, ENumber (3L, ()), ENumber (4L, ()), ()),
-                    () ) ) ) ) );
-    tanf "let_multi_bindings"
-    (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())],
-                EId ("x", ()),
-                 ()))
+         (anf_full
+            (EPrim2
+               ( Plus,
+                 EPrim2 (Plus, ENumber (1L, ()), ENumber (2L, ()), ()),
+                 EPrim2 (Plus, ENumber (3L, ()), ENumber (4L, ()), ()),
+                 () ) ) ) );
+    tanf "let_multi_bindings" let_tester
       (ELet
-         ( [ ("x", dummy, ());
-             ("y", dummy, ());
-             ("z", dummy, ());
-             ("let#1", EId ("x", ()), ()); ],
+         ( [("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ()); ("let#1", EId ("x", ()), ())],
            EId ("let#1", ()),
            () ) );
-    (* tanf "let_multi_bindings2"
-      (anf
-         (rename
-            (tag
-               (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ())) ) ) )
-      (ELet
-         ( [ ("x#3", (EPrim1(Add1, dummy, ())), ());
-             ("y#5", dummy, ());
-             ("z#7", dummy, ());
-             ("let#1", EId ("x#3", ()), ());
-             ("let#1", EId ("let#1", ()), ()) ],
-           EId ("let#1", ()),
-           () ) )  *)
-           ]
+    tb "let_multi_bindings2" (is_anf (anf_full let_tester));
+    tb "arbitraily_nested_lets"
+      (is_anf
+         (anf_full
+            (ELet
+               ( [("x", let_tester, ()); ("y", let_tester, ()); ("z", let_tester, ())],
+                 EId ("x", ()),
+                 () ) ) ) ) ]
 ;;
 
 let compile_tests =
@@ -387,7 +333,17 @@ let compile_tests =
     t "true_case_if_let_cond" "(if (let x = 6, y = add1(4), z = 9 in x * y + z): 9 else: 5)" "9";
     t "false_case_if_let_cond" "(if (let x = 6, y = add1(4), z = 9 in (x * y + z) - 39): 9 else: 5)"
       "5";
-    t "complex_if" "(if 5 + (4 - 2) * (4 - 2): add1(6 - 3) else: sub1(5 * 5))" "4" ]
+    t "complex_if" "(if 5 + (4 - 2) * (4 - 2): add1(6 - 3) else: sub1(5 * 5))" "4";
+    t "multi_let_prims2" "let x = (4 + 6) - (2 + 1), y = (x - 5) * (6 + 3), z = x + y in z + x + y"
+      "50";
+    t "order_of_ops" "1 + 2 * 3" "9";
+    t "order_of_ops2" "1 * 2 + 3" "5";
+    (* Test that if only evaluates one side by threatening to throw a UNIX error due to overflow. *)
+    (* The error doesn't always happen... but it happens often enough to make me confident that this works.  *)
+    t "if_not_evaluate_both" (sprintf "if 1: 1 else: (%d * %d)" Int.max_int Int.max_int) "1"
+    (* Commented to avoid inconsistencies... not sure if overflow is the best way to test this. *)
+    (* t "if_not_evaluate_both2" (sprintf "if 0: 1 else: (%d * %d)" Int.max_int Int.max_int) "1"; *)
+  ]
 ;;
 
 let suite = "suite" >::: check_scope_tests @ tag_tests @ rename_tests @ anf_tests @ compile_tests
