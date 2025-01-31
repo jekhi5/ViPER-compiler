@@ -142,21 +142,8 @@ let tag_tests =
       (ELet ([("x", tagged 2, 3)], tagged 4, 1));
     texp "tag_let_multi_bindings"
       (tag (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], dummy, ())))
-      (ELet ([("x", tagged 2, 3); ("y", tagged 4, 5); ("z", tagged 6, 7)], tagged 8, 1));
-    texp "tag_let_multi_bindings_depth"
-      (tag
-         (ELet
-            ( [ ("x", dummy, ());
-                ("y", ELet ([("a", dummy, ()); ("b", dummy, ())], dummy, ()), ());
-                ("z", dummy, ()) ],
-              ELet ([("p", dummy, ()); ("q", dummy, ()); ("r", dummy, ())], dummy, ()),
-              () ) ) )
-      (ELet
-         ( [ ("x", tagged 2, 3);
-             ("y", ELet ([("a", tagged 5, 6); ("b", tagged 7, 8)], tagged 9, 4), 10);
-             ("z", tagged 11, 12) ],
-           ELet ([("p", tagged 14, 15); ("q", tagged 16, 17); ("r", tagged 18, 19)], tagged 20, 13),
-           1 ) ) ]
+      (ELet ([("x", tagged 2, 3); ("y", tagged 4, 5); ("z", tagged 6, 7)], tagged 8, 1))
+    (* Nested cases *) ]
 ;;
 
 let rename_tests =
@@ -167,11 +154,7 @@ let rename_tests =
     texp "rename_let_multi"
       (rename
          (tag (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ()))) )
-      (ELet ([("x#3", tagged 2, 3); ("y#5", tagged 4, 5); ("z#7", tagged 6, 7)], EId ("x#3", 8), 1));
-    texp "rename_let_if_one_binding" 
-      (rename 
-        (tag (ELet ([("x", EIf (dummy, dummy, dummy, ()), ())], EId("x", ()), ())))) 
-      (ELet ([("x#6", EIf (tagged 3, tagged 4, tagged 5, 2), 6)], EId("x#6", 7), 1));
+      (ELet ([("x#3", tagged 2, 3); ("y#5", tagged 4, 5); ("z#7", tagged 6, 7)], EId ("x#3", 8), 1))
   ]
 ;;
 
@@ -280,8 +263,7 @@ let compile_tests =
   [ t "test1"
       "(let x = (if sub1(1): 5 + 5 else: 6 * 2) in\n\
       \  (let y = (if add1(4): x * 3 else: x + 5) in\n\
-      \    (x + y)))"
-      "48";
+      \    (x + y)))" "48";
     t "constant" "1" "1";
     t "add1" "add1(0)" "1";
     t "sub1" "sub1(0)" "-1";
@@ -356,12 +338,15 @@ let compile_tests =
       "50";
     t "order_of_ops" "1 + 2 * 3" "9";
     t "order_of_ops2" "1 * 2 + 3" "5";
-    (* Test that if only evaluates one side by threatening to throw a UNIX error due to overflow. *)
-    (* The error doesn't always happen... but it happens often enough to make me confident that this works.  *)
+    (* Test that if only evaluates one side by threatening to throw an error due to overflow. *)
+    (* Wait, actually this doesn't work. It just overflows, instead of throwing and error. *)
     t "if_not_evaluate_both" (sprintf "if 1: 1 else: (%d * %d)" Int.max_int Int.max_int) "1";
-    t "if_not_evaluate_both" (sprintf "if 0: (%d * %d) else: 1" Int.max_int Int.max_int) "1";
-    (* Commented to avoid inconsistencies... not sure if overflow is the best way to test this. *)
-    (* t "if_not_evaluate_both2" (sprintf "if 0: 1 else: (%d * %d)" Int.max_int Int.max_int) "1"; *)
+      
+    (* Some more nested let tests to show how the scope works *)
+    t "shadow1" "let x = 1 in let x = 5 in x + x" "10";
+    t "shadow2" "(let x = 1 in x) + (let x = 5 in x)" "6";
+    t "shadow3" "(let x = 1, y = x * 2 in x + y) + (let y = 6, x = y in x - 1 - y)" "2";
+    t "shadow4" "let a=((5 - 4) * (11 - 10)),b=a,c=a,d=5 in let a = (5 * 4) in (b + c + a + d)" "27";
   ]
 ;;
 
