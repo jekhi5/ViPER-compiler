@@ -79,7 +79,7 @@ let tag (e : 'a expr) : tag expr =
     List.fold_left
       (fun (tagged, next_tag) (id, bound, _) ->
         let tagged_bound, next_tag = help bound next_tag in
-        ((id, tagged_bound, next_tag) :: tagged, next_tag + 1) )
+        (tagged @ [(id, tagged_bound, next_tag)] , next_tag + 1) )
       ([], start_tag) lst
   and help (e : 'a expr) (cur : tag) : tag expr * tag =
     match e with
@@ -125,15 +125,15 @@ let rec untag (e : 'a expr) : unit expr =
 let rename (e : tag expr) : tag expr =
   let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
       (string * string) list * tag bind list =
-    List.fold_right
-      (fun (id, bound, tag) (new_env, renamed_bindings) ->
+    List.fold_left
+      (fun (new_env, renamed_bindings) (id, bound, tag) ->
         let renamed_bound = help new_env bound in
         (* rename e consistently *)
         let renamed_id = sprintf "%s#%d" id tag in
         (* create new unique name for x *)
         let renamed_binding = (renamed_id, renamed_bound, tag) in
         ((id, renamed_id) :: new_env, renamed_bindings @ [renamed_binding]) )
-      bindings (env, [])
+     (env, []) bindings
   and help (env : (string * string) list) (e : tag expr) =
     match e with
     | EId (x, tag) ->
@@ -173,10 +173,13 @@ let rec anf (e : tag expr) : unit expr =
         let temp = sprintf "%s#%d" (string_of_op2 op) tag in
         ( EId (temp, ()),
           left_context @ right_context @ [(temp, EPrim2 (op, left_ans, right_ans, ()))] )
-    | ELet (bindings, body, _) ->
-        let anf_bindings = List.map (fun (id, bound, _) -> (id, anf bound, ())) bindings in
+    | ELet (bindings, body, tag) ->
+        let anf_bindings = List.map (fun (id, bound, _) -> (id, anf bound)) bindings in
         let anf_body = anf body in
-        (ELet (anf_bindings, anf_body, ()), [])
+        let temp = sprintf "let#%d" tag in
+        let extra = [(temp, anf_body)] in
+        (EId (temp, ()), anf_bindings @ extra)
+        (* (ELet (anf_bindings, anf_body, ()), []) *)
     | EIf (c, t, f, tag) ->
         let c_ans, c_context = anf_help c in
         let anf_t = anf t in
@@ -190,7 +193,7 @@ let rec anf (e : tag expr) : unit expr =
     | EId (name, _), [] -> EId (name, ())
     | EId (name, _), context ->
         ELet (List.map (fun (id, bound) -> (id, bound, ())) context, EId (name, ()), ())
-    | ELet (bindings, body, _), _ -> ELet (bindings, body, ())
+    (* | ELet (bindings, body, _), _ -> ELet (bindings, body, ()) *)
     | _ -> failwith ("ICE: Given expression failed to become ANF: " ^ string_of_expr (fst e))
   in
   incorporate_context (anf_help e)
@@ -282,12 +285,12 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
   | ELet (bindings, body, _) ->
       (* Implement the fold that Ben discussed in class. *)
       let binding_instrs, next_si, new_env =
-        List.fold_right
-          (fun (id, bound, _) (instrs, si, env) ->
+        List.fold_left
+          (fun (instrs, si, env) (id, bound, _) ->
             ( instrs @ compile_expr bound si env @ [IMov (RegOffset (~-si, RSP), Reg RAX)],
               si + 1,
               (id, si) :: env ) )
-          bindings ([], si, env)
+           ([], si, env) bindings
       in
       binding_instrs @ compile_expr body next_si new_env
 
@@ -295,7 +298,7 @@ and compile_imm e env =
   match e with
   | ENumber (n, _) -> Const n
   | EId (x, _) -> RegOffset (~-(find env x), RSP)
-  | _ -> failwith "Impossible: not an immediate"
+  | _ -> failwith ("Impossible: not an immediate: " ^ (string_of_expr e)) 
 ;;
 
 let compile_anf_to_string anfed =

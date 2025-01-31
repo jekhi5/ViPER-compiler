@@ -154,7 +154,17 @@ let tag_tests =
     (* Nested cases *) ]
 ;;
 
-let rename_tests = [ (* TODO... *) ]
+let rename_tests =
+  [ texp "rename_num" (rename (tag dummy)) (tagged 1);
+    texp "rename_let_one"
+      (rename (tag (ELet ([("x", dummy, ())], dummy, ()))))
+      (ELet ([("x#3", tagged 2, 3)], tagged 4, 1));
+    texp "rename_let_multi"
+      (rename
+         (tag (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ()))) )
+      (ELet ([("x#3", tagged 2, 3); ("y#5", tagged 4, 5); ("z#7", tagged 6, 7)], EId ("x#3", 8), 1))
+  ]
+;;
 
 let anf_tests =
   [ (* TODO: Call is_anf on all of these tests to ensure the function is meaningful *)
@@ -173,7 +183,7 @@ let anf_tests =
            () ) );
     tanf "let_basic"
       (ELet ([("x", ENumber (10L, ()), ())], EId ("x", ()), ()))
-      (ELet ([("x", ENumber (10L, ()), ())], EId ("x", ()), ()));
+      (ELet ([("x", ENumber (10L, ()), ()); ("let#1", EId ("x", ()), ())], EId ("let#1", ()), ()));
     tanf "plus_basic"
       (EPrim2 (Plus, ENumber (5L, ()), ENumber (4L, ()), ()))
       (ELet
@@ -280,15 +290,39 @@ let anf_tests =
                   ( Plus,
                     EPrim2 (Plus, ENumber (1L, ()), ENumber (2L, ()), ()),
                     EPrim2 (Plus, ENumber (3L, ()), ENumber (4L, ()), ()),
-                    () ) ) ) ) ) ]
+                    () ) ) ) ) );
+    tanf "let_multi_bindings"
+    (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())],
+                EId ("x", ()),
+                 ()))
+      (ELet
+         ( [ ("x", dummy, ());
+             ("y", dummy, ());
+             ("z", dummy, ());
+             ("let#1", EId ("x", ()), ()); ],
+           EId ("let#1", ()),
+           () ) );
+    (* tanf "let_multi_bindings2"
+      (anf
+         (rename
+            (tag
+               (ELet ([("x", dummy, ()); ("y", dummy, ()); ("z", dummy, ())], EId ("x", ()), ())) ) ) )
+      (ELet
+         ( [ ("x#3", (EPrim1(Add1, dummy, ())), ());
+             ("y#5", dummy, ());
+             ("z#7", dummy, ());
+             ("let#1", EId ("x#3", ()), ());
+             ("let#1", EId ("let#1", ()), ()) ],
+           EId ("let#1", ()),
+           () ) )  *)
+           ]
 ;;
 
 let compile_tests =
   [ t "test1"
       "(let x = (if sub1(1): 5 + 5 else: 6 * 2) in\n\
       \  (let y = (if add1(4): x * 3 else: x + 5) in\n\
-      \    (x + y)))"
-      "48";
+      \    (x + y)))" "48";
     t "constant" "1" "1";
     t "add1" "add1(0)" "1";
     t "sub1" "sub1(0)" "-1";
