@@ -301,8 +301,8 @@ let compile_tests =
     t "nested_binops2" "(1 + 2) + 3" "6";
     t "nested_prim1" "add1(sub1(add1(sub1(add1(5)))))" "6";
     t "commutative_binops" "(1 - (3 + 7) * 12)" "-108";
-    t "add1_let" "add1((let x = 1 in x))" "1";
-    t "sub1_let" "sub1((let x = 1 in x))" "1";
+    t "add1_let" "add1((let x = 1 in x))" "2";
+    t "sub1_let" "sub1((let x = 1 in x))" "0";
     t "plus_let" "((let x = 1 in x) + (let x = 4 in x))" "5";
     t "minus_let" "((let x = 1 in x) - (let x = 4 in x))" "-3";
     t "times_let" "((let x = 2 in x) * (let x = 4 in x))" "8";
@@ -363,7 +363,8 @@ let compile_tests =
     t "order_of_ops2" "1 * 2 + 3" "5";
     (* Test that if only evaluates one side by threatening to throw a UNIX error due to overflow. *)
     (* The error doesn't always happen... but it happens often enough to make me confident that this works.  *)
-    t "if_not_evaluate_both" (sprintf "if 1: 1 else: (%d * %d)" Int.max_int Int.max_int) "1"
+    t "if_not_evaluate_both" (sprintf "if 1: 1 else: (%d * %d)" Int.max_int Int.max_int) "1";
+    t "if_not_evaluate_both" (sprintf "if 0: (%d * %d) else: 1" Int.max_int Int.max_int) "1";
     (* Commented to avoid inconsistencies... not sure if overflow is the best way to test this. *)
     (* t "if_not_evaluate_both2" (sprintf "if 0: 1 else: (%d * %d)" Int.max_int Int.max_int) "1"; *)
   ]
