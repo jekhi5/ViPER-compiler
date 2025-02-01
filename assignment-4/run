@@ -1,0 +1,23 @@
+if dune build; then
+    make clean
+    make test
+    ./test
+    if [ 1 -gt 0 ]; then
+        make clean
+    fi
+
+    if [ $# -gt 0 ]; then
+        zip submission.zip Makefile starter-cobra/assembly.ml
+starter-cobra/compile.ml
+starter-cobra/errors.ml
+starter-cobra/exprs.ml
+starter-cobra/main.ml
+starter-cobra/phases.ml
+starter-cobra/pretty.ml
+starter-cobra/runner.ml
+starter-cobra/test.ml
+        echo 'Saved submission.zip'
+    fi
+else
+    echo 'Build failure. Aborting...'
+fi
