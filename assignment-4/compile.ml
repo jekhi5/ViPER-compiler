@@ -83,7 +83,38 @@ let check_scope (e : sourcespan expr) : sourcespan expr =
 ;;
 
 let rename (e : tag expr) : tag expr =
-  raise (NotYetImplemented "Copy this from your Boa implementation")
+  let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
+      (string * string) list * tag bind list =
+    List.fold_left
+      (fun (new_env, renamed_bindings) (id, bound, tag) ->
+        let renamed_bound = help new_env bound in
+        (* rename e consistently *)
+        let renamed_id = sprintf "%s#%d" id tag in
+        (* create new unique name for x *)
+        let renamed_binding = (renamed_id, renamed_bound, tag) in
+        ((id, renamed_id) :: new_env, renamed_bindings @ [renamed_binding]) )
+      (env, []) bindings
+  and help (env : (string * string) list) (e : tag expr) =
+    match e with
+    | EId (x, tag) ->
+        (* Lookup x in the environment and replace it with the environment's renamed version.
+         * Since we only call `rename` *after* scope checking, x is guaranteed to be in env.
+         *)
+        EId (List.assoc x env, tag)
+    | ELet (bindings, body, tag) ->
+        (* "Extend env by renaming each binding in binds, then rename the expressions and body" *)
+        let new_env, renamed_bindings = rename_bindings env bindings in
+        let renamed_body = help new_env body in
+        ELet (renamed_bindings, renamed_body, tag)
+    (* Less interesting cases... *)
+    | ENumber (_, _) -> e
+    | EPrim1 (op, a, t) -> EPrim1 (op, help env a, t)
+    | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a, help env b, t)
+    | EIf (c, t, f, ta) -> EIf (help env c, help env t, help env f, ta)
+    (* TODO: Write tests for this case *)
+    | EBool _ -> e
+  in
+  help [] e
 ;;
 
 let tag (e : 'a expr) : tag expr =
@@ -208,15 +239,62 @@ let rec replicate (x : 'a) (i : int) : 'a list =
     x :: replicate x (i - 1)
 ;;
 
+let not_a_number_label = "error_not_number";;
+let not_a_bool_label = "error_not_bool";;
+let check_num = [ITest (Reg (RAX), HexConst (num_tag_mask)); IJnz (not_a_number_label)];;
+let check_bool = [ITest (Reg (RAX), HexConst (bool_tag_mask)); IJnz (not_a_bool_label)];;
+
+
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
   match e with
   | ELet ([(id, e, _)], body, _) ->
       let prelude = compile_expr e (si + 1) env in
       let body = compile_expr body (si + 1) ((id, si) :: env) in
       prelude @ [IMov (RegOffset (~-si, RBP), Reg RAX)] @ body
-  | EPrim1 _ -> raise (NotYetImplemented "Fill in here")
-  | EPrim2 _ -> raise (NotYetImplemented "Fill in here")
-  | EIf _ -> raise (NotYetImplemented "Fill in here")
+  | EPrim1 (op, e, t) -> (
+    let e_reg = compile_imm e env in
+    match op with
+    | Add1 -> check_num @ [IMov (Reg RAX, e_reg); IAdd (Reg RAX, Const 1L)]
+    | Sub1 -> check_num @ [IMov (Reg RAX, e_reg); IAdd (Reg RAX, Const Int64.minus_one)] 
+    | Not -> check_bool @ [IMov (Reg RAX, e_reg); (IXor (Reg RAX, bool_mask))]
+    | IsBool ->
+      let false_label = sprintf "is_bool_false#%d" t in
+      let done_label = sprintf "is_bool_done#%d" t in
+      [
+        ILineComment (sprintf "BEGIN is_bool%d -------------" t);
+        IMov (Reg RAX, e_reg); 
+        IAnd (Reg RAX, HexConst num_tag_mask); 
+        IJz false_label;
+        IMov (Reg RAX, const_true);
+        IJmp done_label;
+        ILabel false_label;
+        IMov (Reg RAX, const_false);
+        ILabel done_label;
+        ILineComment (sprintf "END is_bool%d   -------------" t);
+        ]
+
+      | IsNum ->
+        let false_label = sprintf "is_bool_false#%d" t in
+        let done_label = sprintf "is_bool_done#%d" t in
+        [
+          ILineComment (sprintf "BEGIN is_num%d -------------" t);
+          IMov (Reg RAX, e_reg); 
+          IAnd (Reg RAX, HexConst num_tag_mask); 
+          (* Jump not zero because this is the inverted case from is_bool *)
+          IJnz false_label;
+          IMov (Reg RAX, const_true);
+          IJmp done_label;
+          ILabel false_label;
+          IMov (Reg RAX, const_false);
+          ILabel done_label;
+          ILineComment (sprintf "END is_num%d   -------------" t);
+          ]
+
+    | Print -> raise (NotYetImplemented "Fill in Print here")
+    | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
+    )
+  | EPrim2 _ -> raise (NotYetImplemented "Fill in EPrim2 here")
+  | EIf _ -> raise (NotYetImplemented "Fill in EIf here")
   | ENumber _ -> [IMov (Reg RAX, compile_imm e env)]
   | EBool _ -> [IMov (Reg RAX, compile_imm e env)]
   | EId _ -> [IMov (Reg RAX, compile_imm e env)]
@@ -229,20 +307,33 @@ and compile_imm (e : tag expr) (env : (string * int) list) : arg =
         (* TODO: raise a better error of your choosing here *)
         failwith ("Integer overflow: " ^ Int64.to_string n)
       else
-        raise (NotYetImplemented "Fill in here")
-  | EBool (true, _) -> raise (NotYetImplemented "Fill in here")
-  | EBool (false, _) -> raise (NotYetImplemented "Fill in here")
+        Const (Int64.mul n 2L)
+  | EBool (true, _) -> const_true
+  | EBool (false, _) -> const_false
   | EId (x, _) -> RegOffset (~-(find env x), RBP)
   | _ -> raise (InternalCompilerError "Impossible: not an immediate")
 ;;
 
+(* This is very similar to Racket's `build_list` *)
+let rec build_list (f: int -> 'a) (size: int) : 'a list =
+  if size == 0 then [] else (f size) :: (build_list f (size - 1))
+
 let compile_prog (anfed : tag expr) : string =
-  let prelude = "section .text\nextern error\nextern print\nglobal our_code_starts_here" in
-  let stack_setup = [ (* FILL: insert instructions for setting up stack here *) ] in
+  let prelude = "section .text\nextern error\nextern print\nglobal our_code_starts_here\nour_code_starts_here:" in
+  let stack_setup = (build_list (fun _ -> IPush(Const (0L))) (count_vars anfed)) in
   let postlude =
-    [ IRet
-      (* FILL: insert instructions for cleaning up stack, and maybe
-         some labels for jumping to errors, here *) ]
+    [ IRet;
+
+      ILabel not_a_number_label;
+      (* TODO: Call error function in main.c *)
+      ILineComment "TODO: Call error function in main.c";
+      IRet;
+
+      ILabel not_a_bool_label;
+      (* TODO: Call error function in main.c *)
+      ILineComment "TODO: Call error function in main.c";
+      IRet;
+    ]
   in
   let body = compile_expr anfed 1 [] in
   let as_assembly_string = to_asm (stack_setup @ body @ postlude) in

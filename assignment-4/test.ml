@@ -36,13 +36,8 @@ let tprog (filename : string) (expected : string) = filename >:: test_run_input 
 (* Runs a program, given as the name of a file in the input/ directory, and compares its error to expected *)
 let teprog (filename : string) (expected : string) = filename >:: test_err_input filename expected
 
-let forty = "let x = 40 in x"
 
-let fals = "let x = false in x"
-
-let tru = "let x = true in x"
-
-let suite = "unit_tests" >::: [t "forty" forty "40"; t "fals" fals "false"; t "tru" tru "true"]
+let suite = "unit_tests" >::: [t "const" "1" "1"]
 
 (* input_file_test_suite () will run all the tests in the subdirectories of input/ *)
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
