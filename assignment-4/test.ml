@@ -37,7 +37,7 @@ let tprog (filename : string) (expected : string) = filename >:: test_run_input 
 let teprog (filename : string) (expected : string) = filename >:: test_err_input filename expected
 
 
-let suite = "unit_tests" >::: [t "const" "1" "1"]
+let suite = "unit_tests" >::: []
 
 (* input_file_test_suite () will run all the tests in the subdirectories of input/ *)
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

@@ -16,12 +16,12 @@ uint64_t print(uint64_t val) {
 
   // Number
   if ((val & BOOL_TAG) == 0) { // val is even ==> number
-    printf("%ld", ((int64_t)(val)) / 2); // shift bits right to remove tag
+    printf("%ld\n", ((int64_t)(val)) / 2); // shift bits right to remove tag
   // All else is boolean
   } else if (val == BOOL_TRUE) {
-    printf("true");
+    printf("true\n");
   } else if (val == BOOL_FALSE) {
-    printf("false");
+    printf("false\n");
   } else {
     // printf("BAD %ld\n", val);
     printf("Unknown value: %#018x", val); // print unknown val in hex

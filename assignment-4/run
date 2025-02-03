@@ -1,3 +1,4 @@
+clear
 if dune build; then
     make clean
     make test
