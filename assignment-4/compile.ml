@@ -332,10 +332,20 @@ let rec build_list (f: int -> 'a) (size: int) : 'a list =
 
 let compile_prog (anfed : tag expr) : string =
   let prelude = "section .text\nextern error\nextern print\nglobal our_code_starts_here\nour_code_starts_here:" in
-  let stack_setup = [] in 
+  let stack_setup = [
+    IPush (Reg RBP);
+    IMov (Reg RBP, Reg RSP);
+    ISub (Reg RSP, Const (Int64.of_int (8 * (count_vars anfed))));
+  ] in 
     (* (build_list (fun _ -> IPush(Const (0L))) (count_vars anfed)) in *)
   let postlude =
-    [ IRet;
+    [
+      (* Stack clean-up *)
+      IAdd (Reg RSP, Const 8L);
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RSP);      
+
+      IRet;
 
       ILabel not_a_number_arith_label;
       IMov (Reg RDI, Const err_ARITH_NOT_NUM);
