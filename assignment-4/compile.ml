@@ -247,9 +247,8 @@ let overflow_label = "error_overflow";;
 (* let check_num_arith = [ITest (Reg (RAX), HexConst (num_tag_mask)); IJnz (not_a_number_arith_label)];;
 let check_bool = [ITest (Reg (RAX), HexConst (bool_tag_mask)); IJnz (not_a_bool_label)];; *)
 
-let make_check (mask : int64) (jmp : instruction) : instruction list =
-  [ITest (Reg (RAX), HexConst (mask)); jmp]
-
+let make_check (tag : int64) (jmp : instruction) : instruction list =
+  [ITest (Reg RAX, HexConst tag); jmp]
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
   match e with
@@ -260,10 +259,16 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
   | EPrim1 (op, e, t) -> (
     let e_reg = compile_imm e env in
     match op with
-    | Add1 -> IMov (Reg RAX, e_reg):: (make_check num_tag_mask (IJnz not_a_number_arith_label)) @ [IAdd (Reg RAX, Const 1L)]
-    | Sub1 -> IMov (Reg RAX, e_reg):: (make_check num_tag_mask (IJnz not_a_number_arith_label)) @ [IAdd (Reg RAX, Const Int64.minus_one)]
+    | Add1 -> IMov (Reg RAX, e_reg) ::
+      (make_check num_tag (IJnz not_a_number_arith_label)) 
+      @ [IAdd (Reg RAX, Const 1L)]
+    | Sub1 -> IMov (Reg RAX, e_reg) ::
+      (make_check num_tag (IJnz not_a_number_arith_label)) 
+      @ [IAdd (Reg RAX, Const Int64.minus_one)]
     (* `xor` can't take a 64-bit literal, *)
-    | Not ->  IMov (Reg RAX, e_reg):: (make_check bool_tag_mask (IJnz not_a_bool_logic_label)) @ [(IMov (Reg R11, bool_mask)); (IXor (Reg RAX, Reg R11))]
+    | Not ->  IMov (Reg RAX, e_reg) :: 
+      (make_check bool_tag (IJz not_a_bool_logic_label)) 
+      @ [(IMov (Reg R11, bool_mask)); (IXor (Reg RAX, Reg R11))]
     | IsBool ->
       let false_label = sprintf "is_bool_false#%d" t in
       let done_label = sprintf "is_bool_done#%d" t in
@@ -335,11 +340,13 @@ let compile_prog (anfed : tag expr) : string =
       ILabel not_a_number_arith_label;
       IMov (Reg RDI, Const err_ARITH_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
+      ICall "error";
       IRet;
 
       ILabel not_a_number_comp_label;
       IMov (Reg RDI, Const err_COMP_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
+      ICall "error";
       IRet;
 
       ILabel not_a_bool_logic_label;
@@ -351,11 +358,13 @@ let compile_prog (anfed : tag expr) : string =
       ILabel not_a_bool_if_label;
       IMov (Reg RDI, Const err_IF_NOT_BOOL);
       IMov (Reg RSI, Reg RAX);
+      ICall "error";
       IRet;
 
       ILabel overflow_label;
       IMov (Reg RDI, Const err_OVERFLOW);
       IMov (Reg RSI, Reg RAX);
+      ICall "error";
       IRet;
     ]
   in

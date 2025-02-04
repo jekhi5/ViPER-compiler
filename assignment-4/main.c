@@ -44,15 +44,15 @@ uint64_t print(uint64_t val) {
 
 int64_t error(int64_t code, uint64_t bad_val) {
   if (code == 1) {
-    fprintf(stderr, "Error code 1: Attempted comparison of a non-number\n");
+    fprintf(stderr, "Attempted comparison of a non-number\n");
   } else if (code == 2) {
-    fprintf(stderr, "Error code 2: Attempted arithmetic of a non-number\n");
+    fprintf(stderr, "Attempted arithmetic of a non-number\n");
   } else if (code == 3) {
-    fprintf(stderr, "Error code 3: Attempted logical operation of a non-boolean\n");
+    fprintf(stderr, "Attempted logical operation of a non-boolean\n");
   } else if (code == 4) {
-    fprintf(stderr, "Error code 4: Attempted conditional of a non-boolean\n");
+    fprintf(stderr, "Attempted conditional of a non-boolean\n");
   } else if (code == 5) {
-    fprintf(stderr, "Error code 5: Arithmetic overflow!\n");
+    fprintf(stderr, "Arithmetic overflow!\n");
   } else {
     fprintf(stderr, sprintf("Unknown error code: %ld\n", code));
   }
