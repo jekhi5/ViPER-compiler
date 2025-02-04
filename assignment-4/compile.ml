@@ -343,7 +343,7 @@ let compile_prog (anfed : tag expr) : string =
       (* Stack clean-up *)
       IAdd (Reg RSP, Const 8L);
       IMov (Reg RSP, Reg RBP);
-      IPop (Reg RSP);      
+      IPop (Reg RBP);      
 
       IRet;
 
