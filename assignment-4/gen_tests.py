@@ -1,0 +1,62 @@
+#! /usr/bin/python3
+from pathlib import Path
+from glob import glob
+import argparse
+
+"""
+Looks at all `.cobra` files in the directory.
+Splits them on a delimiter. Places everything past the delimiter into an out file.
+
+Example:
+
+test1.cobra:
+    add1(2 + 3)
+    ;
+    6
+
+=>
+
+test1.cobra:
+    add1(2 + 3)
+
+test1.out:
+    6
+"""
+
+def walk_dir(delimiter=r';',dirname:str='.', verbose=False) -> None :
+    delimiter = f'\n{delimiter}\n'
+    for filepath in glob('**/*.cobra', root_dir=dirname):
+        testfile = dirname / Path(filepath)
+        resultfile = testfile.with_suffix('.out')
+        if resultfile.exists():
+            if verbose:
+                print(f'{str(testfile):.<50}{str(resultfile)} already exists.')
+        else:
+            if verbose:
+                print(f'{str(testfile):.<50}', end='')
+            with open(testfile, 'r+') as tf:
+                contents = tf.read()
+                test, result = contents.split(delimiter, maxsplit=1)
+                tf.seek(0)
+                tf.write(test)
+                tf.truncate()
+
+            with open(resultfile, 'w') as rf:
+                rf.write(result)
+            if verbose:
+                print(f'{str(resultfile)} generated!')
+
+
+
+def main(args):
+    walk_dir(args.splitter, args.dir, args.verbose)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-d', '--dir', type=str, default='input/')
+    parser.add_argument('-s', '--splitter', type=str, default=';')
+    parser.add_argument('-v', '--verbose', action="store_true", default=False)
+
+    args = parser.parse_args()
+    main(args)
