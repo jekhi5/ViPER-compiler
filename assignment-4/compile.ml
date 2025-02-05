@@ -261,10 +261,10 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
     match op with
     | Add1 -> IMov (Reg RAX, e_reg) ::
       (make_check num_tag (IJnz not_a_number_arith_label)) 
-      @ [IAdd (Reg RAX, Const 1L)]
+      @ [IAdd (Reg RAX, Const 2L)]
     | Sub1 -> IMov (Reg RAX, e_reg) ::
       (make_check num_tag (IJnz not_a_number_arith_label)) 
-      @ [IAdd (Reg RAX, Const Int64.minus_one)]
+      @ [IAdd (Reg RAX, Const (-2L))]
     (* `xor` can't take a 64-bit literal, *)
     | Not ->  IMov (Reg RAX, e_reg) :: 
       (make_check bool_tag (IJz not_a_bool_logic_label)) 
@@ -317,7 +317,7 @@ and compile_imm (e : tag expr) (env : (string * int) list) : arg =
   | ENumber (n, _) ->
       if n > Int64.div Int64.max_int 2L || n < Int64.div Int64.min_int 2L then
         (* TODO: raise a better error of your choosing here *)
-        failwith ("Integer overflow: " ^ Int64.to_string n)
+        raise (OverflowError ("Integer overflow: " ^ Int64.to_string n))
       else
         Const (Int64.mul n 2L)
   | EBool (true, _) -> const_true
@@ -333,45 +333,58 @@ let rec build_list (f: int -> 'a) (size: int) : 'a list =
 let compile_prog (anfed : tag expr) : string =
   let prelude = "section .text\nextern error\nextern print\nglobal our_code_starts_here\nour_code_starts_here:" in
   let stack_setup = [
+    ILineComment "==== Stack set-up ====";
     IPush (Reg RBP);
     IMov (Reg RBP, Reg RSP);
     ISub (Reg RSP, Const (Int64.of_int (8 * (count_vars anfed))));
+    ILineComment "======================";
   ] in 
     (* (build_list (fun _ -> IPush(Const (0L))) (count_vars anfed)) in *)
   let postlude =
     [
       (* Stack clean-up *)
+      ILineComment "=== Stack clean-up ===";
       IAdd (Reg RSP, Const 8L);
       IMov (Reg RSP, Reg RBP);
       IPop (Reg RBP);      
-
+      ILineComment "======================";
       IRet;
 
       ILabel not_a_number_arith_label;
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RBP); 
       IMov (Reg RDI, Const err_ARITH_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
 
       ILabel not_a_number_comp_label;
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RBP); 
       IMov (Reg RDI, Const err_COMP_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
 
       ILabel not_a_bool_logic_label;
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RBP); 
       IMov (Reg RDI, Const err_LOGIC_NOT_BOOL);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
 
       ILabel not_a_bool_if_label;
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RBP); 
       IMov (Reg RDI, Const err_IF_NOT_BOOL);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
 
       ILabel overflow_label;
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RBP); 
       IMov (Reg RDI, Const err_OVERFLOW);
       IMov (Reg RSI, Reg RAX);
       ICall "error";

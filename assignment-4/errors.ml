@@ -11,9 +11,11 @@ exception InternalCompilerError of string (* Major failure: message to show *)
 
 exception BindingError of string (* problem with an identifier: message to show *)
 
+exception OverflowError of string (* problem with an identifier: message to show *)
+
 let known_compiletime_exn exn =
   match exn with
-  | ParseError _ | NotYetImplemented _ | InternalCompilerError _ | BindingError _ -> true
+  | ParseError _ | NotYetImplemented _ | InternalCompilerError _ | BindingError _ | OverflowError _ -> true
   | _ -> false
 ;;
 
@@ -23,6 +25,7 @@ let print_error exn =
   | NotYetImplemented msg -> "Not yet implemented: " ^ msg
   | InternalCompilerError msg -> "Internal Compiler Error: " ^ msg
   | BindingError msg -> "Binding error: " ^ msg
+  | OverflowError msg -> "Overflow error: " ^ msg
   | _ -> sprintf "%s" (Printexc.to_string exn)
 ;;
 
