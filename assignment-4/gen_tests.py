@@ -27,7 +27,9 @@ def walk_dir(delimiter=r';',dirname:str='.', verbose=False) -> None :
     delimiter = f'\n{delimiter}\n'
     for filepath in glob('**/*.cobra', root_dir=dirname):
         testfile = dirname / Path(filepath)
-        resultfile = testfile.with_suffix('.out')
+        suffix = '.err' if 'do_err' in str(testfile) else '.out'
+
+        resultfile = testfile.with_suffix(suffix)
         if resultfile.exists():
             if verbose:
                 print(f'{str(testfile):.<50}{str(resultfile)} already exists.')

@@ -315,8 +315,10 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
 and compile_imm (e : tag expr) (env : (string * int) list) : arg =
   match e with
   | ENumber (n, _) ->
+      (* Max:  4611686018427387903
+       * Min: -4611686018427387904
+       *)
       if n > Int64.div Int64.max_int 2L || n < Int64.div Int64.min_int 2L then
-        (* TODO: raise a better error of your choosing here *)
         raise (OverflowError ("Integer overflow: " ^ Int64.to_string n))
       else
         Const (Int64.mul n 2L)
