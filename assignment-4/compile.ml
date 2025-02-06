@@ -410,7 +410,6 @@ let compile_prog (anfed : tag expr) : string =
       ISub (Reg RSP, Const stack_size);
       ILineComment "======================" ]
   in
-  (* (build_list (fun _ -> IPush(Const (0L))) (count_vars anfed)) in *)
   let postlude =
     [ (* Stack clean-up *)
       ILineComment "=== Stack clean-up ===";
