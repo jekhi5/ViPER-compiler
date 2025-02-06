@@ -266,6 +266,7 @@ let check_num (goto : string) : instruction list =
 
 let check_overflow = IJo overflow_label
 
+(* Helper for numerica comparisons *)
 let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   (* Move the first arg into RAX so we can type-check it. *)
   let string_op = "comparison_label" in
@@ -297,6 +298,7 @@ let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction lis
       ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
 ;;
 
+(* Helper for arithmetic operations *)
 let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
   (* Move the first arg into RAX so we can type-check it. *)
   [IMov (Reg RAX, e1)]
@@ -316,6 +318,41 @@ let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
   | Minus -> [IMov (Reg R11, e2); IMov (Reg RAX, e1); ISub (Reg RAX, Reg R11); check_overflow]
   (* Comparison operators *)
   | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
+;;
+
+(* Helper for boolean logic *)
+let logical_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  let true_label = sprintf "true#%d" t in
+  let false_label = sprintf "false#%d" t in
+  let jump =
+    match op with
+    | And -> IJz false_label
+    | Or -> IJnz true_label
+    | _ -> raise (InternalCompilerError "Expected non-eq logical operator.")
+  in
+  let logic_done_label = sprintf "logic_done#%d" t in
+  [ ILineComment (sprintf "BEGIN logic#%d -------------" t);
+    (* Move the first arg into RAX so we can type-check it. *)
+    IMov (Reg RAX, e1) ]
+  @ check_bool not_a_bool_logic_label
+    (* In order to handle short-circuiting, we don't look at the second arg until later.
+     * This means that `false and 5` will NOT raise a type error.
+     *)
+  @ [ IMov (Reg RAX, e1);
+      (* cmp is weird and breaks if we don't use a temp register... *)
+      IMov (Reg R11, bool_mask);
+      ITest (Reg RAX, Reg R11);
+      jump;
+      IMov (Reg RAX, e2) ]
+  @ check_bool not_a_bool_logic_label
+  @ [ jump;
+      ILabel true_label;
+      IMov (Reg RAX, const_true);
+      IJmp logic_done_label;
+      ILabel false_label;
+      IMov (Reg RAX, const_false);
+      ILabel logic_done_label;
+      ILineComment (sprintf "END logic#%d   -------------" t) ]
 ;;
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
@@ -375,7 +412,20 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       match op with
       | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg
       | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1_reg e2_reg t
-      | _ -> raise (NotYetImplemented "Remaining Prim2s") )
+      | And | Or -> logical_prim2 op e1_reg e2_reg t
+      | Eq ->
+          let true_label = sprintf "equal#%d" t in
+          let done_label = sprintf "equal_done#%d" t in
+          (* No typechecking for Eq. We can just see if the two values are equivalent. *)
+          [ IMov (Reg RAX, e1_reg);
+            IMov (Reg R11, e2_reg);
+            ICmp (Reg RAX, Reg R11);
+            IJe true_label;
+            IMov (Reg RAX, const_false);
+            IJmp done_label;
+            ILabel true_label;
+            IMov (Reg RAX, const_true);
+            ILabel done_label ] )
   | EIf _ -> raise (NotYetImplemented "Fill in EIf here")
   | ENumber _ -> [IMov (Reg RAX, compile_imm e env)]
   | EBool _ -> [IMov (Reg RAX, compile_imm e env)]

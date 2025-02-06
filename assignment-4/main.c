@@ -44,13 +44,13 @@ uint64_t print(uint64_t val) {
 
 int64_t error(int64_t code, uint64_t bad_val) {
   if (code == 1) {
-    fprintf(stderr, "Attempted comparison of a non-number\n");
+    fprintf(stderr, "comparison expected a number\n");
   } else if (code == 2) {
-    fprintf(stderr, "Attempted arithmetic of a non-number\n");
+    fprintf(stderr, "arithmetic expected a number\n");
   } else if (code == 3) {
-    fprintf(stderr, "Attempted logical operation of a non-boolean\n");
+    fprintf(stderr, "logic expected a boolean\n");
   } else if (code == 4) {
-    fprintf(stderr, "Attempted conditional of a non-boolean\n");
+    fprintf(stderr, "if expected a boolean\n");
   } else if (code == 5) {
     fprintf(stderr, "Integer overflow!\n");
   } else {
