@@ -256,15 +256,18 @@ let overflow_label = "error_overflow"
 (* We could check a parameterized register, but that creates complexity in reporting the error. *)
 (* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
 let check_bool (goto : string) : instruction list =
-  [ITest (Reg RAX, HexConst num_tag_mask); IJz goto]
+  [IMov (Reg R11, HexConst num_tag_mask); ITest (Reg RAX, Reg R11); IJz goto]
 ;;
 
 (* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
-let check_num (goto : string) : instruction list = [ITest (Reg RAX, HexConst num_tag); IJnz goto]
+let check_num (goto : string) : instruction list =
+  [IMov (Reg R11, HexConst num_tag_mask); ITest (Reg RAX, Reg R11); IJnz goto]
+;;
 
 let check_overflow = IJo overflow_label
 
 let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
   let string_op = "comparison_label" in
   let comp_label = sprintf "%s#%d" string_op t in
   let jump =
@@ -276,21 +279,25 @@ let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction lis
     | _ -> raise (InternalCompilerError "Expected comparison operator.")
   in
   let comp_done_label = sprintf "%s_done#%d" string_op t in
-  [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
-    IMov (Reg RAX, e1);
-    (* cmp is weird and breaks if we don't use a temp register... *)
-    IMov (Reg R11, e2);
-    ICmp (Reg RAX, Reg R11);
-    jump;
-    IMov (Reg RAX, const_false);
-    IJmp comp_done_label;
-    ILabel comp_label;
-    IMov (Reg RAX, const_true);
-    ILabel comp_done_label;
-    ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_comp_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_comp_label
+  @ [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
+      IMov (Reg RAX, e1);
+      (* cmp is weird and breaks if we don't use a temp register... *)
+      IMov (Reg R11, e2);
+      ICmp (Reg RAX, Reg R11);
+      jump;
+      IMov (Reg RAX, const_false);
+      IJmp comp_done_label;
+      ILabel comp_label;
+      IMov (Reg RAX, const_true);
+      ILabel comp_done_label;
+      ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
 ;;
 
-let numeric_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
   (* Move the first arg into RAX so we can type-check it. *)
   [IMov (Reg RAX, e1)]
   @ check_num not_a_number_arith_label
@@ -308,7 +315,6 @@ let numeric_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction lis
    *)
   | Minus -> [IMov (Reg R11, e2); IMov (Reg RAX, e1); ISub (Reg RAX, Reg R11); check_overflow]
   (* Comparison operators *)
-  | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1 e2 t
   | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
 ;;
 
@@ -367,8 +373,8 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       let e1_reg = compile_imm e1 env in
       let e2_reg = compile_imm e2 env in
       match op with
-      | Plus | Minus | Times | Greater | GreaterEq | Less | LessEq ->
-          numeric_prim2 op e1_reg e2_reg t
+      | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg
+      | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1_reg e2_reg t
       | _ -> raise (NotYetImplemented "Remaining Prim2s") )
   | EIf _ -> raise (NotYetImplemented "Fill in EIf here")
   | ENumber _ -> [IMov (Reg RAX, compile_imm e env)]
