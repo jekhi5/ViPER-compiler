@@ -278,7 +278,9 @@ let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction lis
   let comp_done_label = sprintf "%s_done#%d" string_op t in
   [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
     IMov (Reg RAX, e1);
-    ICmp (Reg RAX, e2);
+    (* cmp is weird and breaks if we don't use a temp register... *)
+    IMov (Reg R11, e2);
+    ICmp (Reg RAX, Reg R11);
     jump;
     IMov (Reg RAX, const_false);
     IJmp comp_done_label;
@@ -297,14 +299,14 @@ let numeric_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction lis
   @
   match op with
   (* Arithmetic operators *)
-  | Plus -> [IAdd (Reg RAX, e1); check_overflow]
+  | Plus -> [IMov (Reg R11, e1); IAdd (Reg RAX, Reg R11); check_overflow]
   (* Make sure to check for overflow BEFORE shifting on multiplication! *)
-  | Times -> [IMul (Reg RAX, e1); check_overflow; ISar (Reg RAX, Const 1L)]
+  | Times -> [IMov (Reg R11, e1); IMul (Reg RAX, Reg R11); check_overflow; ISar (Reg RAX, Const 1L)]
   (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
    * while also preserving the order in which our arguments will fail a typecheck.
    * So, `false - true` will fail on `false` every time.
    *)
-  | Minus -> [IMov (Reg RAX, e1); ISub (Reg RAX, e2); check_overflow]
+  | Minus -> [IMov (Reg R11, e2); IMov (Reg RAX, e1); ISub (Reg RAX, Reg R11); check_overflow]
   (* Comparison operators *)
   | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1 e2 t
   | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
