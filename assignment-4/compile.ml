@@ -457,7 +457,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       @ check_bool not_a_bool_if_label
       @ [
         IMov (Reg R11, bool_mask);
-        ICmp (Reg RAX, Reg R11);
+        ITest (Reg RAX, Reg R11);
         IJz else_label;
         ILineComment "  Then case:"
       ]
