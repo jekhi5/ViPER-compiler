@@ -52,7 +52,7 @@ int64_t error(int64_t code, uint64_t bad_val) {
   } else if (code == 4) {
     fprintf(stderr, "Attempted conditional of a non-boolean\n");
   } else if (code == 5) {
-    fprintf(stderr, "Arithmetic overflow!\n");
+    fprintf(stderr, "Integer overflow!\n");
   } else {
     fprintf(stderr, sprintf("Unknown error code: %ld\n", code));
   }
