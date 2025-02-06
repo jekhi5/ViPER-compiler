@@ -239,24 +239,28 @@ let rec replicate (x : 'a) (i : int) : 'a list =
     x :: replicate x (i - 1)
 ;;
 
-let not_a_number_arith_label = "error_not_number_arith";;
-let not_a_number_comp_label = "error_not_number_comp";;
-let not_a_bool_logic_label = "error_not_bool_logic";;
-let not_a_bool_if_label = "error_not_bool_if";;
-let overflow_label = "error_overflow";;
+let not_a_number_arith_label = "error_not_number_arith"
+
+let not_a_number_comp_label = "error_not_number_comp"
+
+let not_a_bool_logic_label = "error_not_bool_logic"
+
+let not_a_bool_if_label = "error_not_bool_if"
+
+let overflow_label = "error_overflow"
+
 (* let check_num_arith = [ITest (Reg (RAX), HexConst (num_tag_mask)); IJnz (not_a_number_arith_label)];;
-let check_bool = [ITest (Reg (RAX), HexConst (bool_tag_mask)); IJnz (not_a_bool_label)];; *)
+   let check_bool = [ITest (Reg (RAX), HexConst (bool_tag_mask)); IJnz (not_a_bool_label)];; *)
 
 (* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
 let check_bool (goto : string) : instruction list =
-  [ITest (Reg RAX, HexConst num_tag_mask); IJz goto];;
+  [ITest (Reg RAX, HexConst num_tag_mask); IJz goto]
+;;
 
- (* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
-let check_num (goto : string) : instruction list =
-  [ITest (Reg RAX, HexConst num_tag); IJnz goto];;
+(* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
+let check_num (goto : string) : instruction list = [ITest (Reg RAX, HexConst num_tag); IJnz goto]
 
-
-let check_overflow = IJo overflow_label;;
+let check_overflow = IJo overflow_label
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
   match e with
@@ -265,54 +269,47 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
       let body = compile_expr body (si + 1) ((id, si) :: env) in
       prelude @ [IMov (RegOffset (~-si, RBP), Reg RAX)] @ body
   | EPrim1 (op, e, t) -> (
-    let e_reg = compile_imm e env in
-    match op with
-    | Add1 -> IMov (Reg RAX, e_reg) ::
-      (check_num not_a_number_arith_label)
-      @ [IAdd (Reg RAX, Const 2L); check_overflow]
-    | Sub1 -> IMov (Reg RAX, e_reg) ::
-      (check_num not_a_number_arith_label)
-      @ [IAdd (Reg RAX, Const (-2L)); check_overflow]
-    (* `xor` can't take a 64-bit literal, *)
-    | Not ->  IMov (Reg RAX, e_reg) :: 
-      (check_bool not_a_bool_logic_label)
-      @ [(IMov (Reg R11, bool_mask)); (IXor (Reg RAX, Reg R11))]
-    | IsBool ->
-      let false_label = sprintf "is_bool_false#%d" t in
-      let done_label = sprintf "is_bool_done#%d" t in
-      [
-        ILineComment (sprintf "BEGIN is_bool%d -------------" t);
-        IMov (Reg RAX, e_reg); 
-        IAnd (Reg RAX, HexConst num_tag_mask); 
-        IJz false_label;
-        IMov (Reg RAX, const_true);
-        IJmp done_label;
-        ILabel false_label;
-        IMov (Reg RAX, const_false);
-        ILabel done_label;
-        ILineComment (sprintf "END is_bool%d   -------------" t);
-        ]
-
+      let e_reg = compile_imm e env in
+      match op with
+      | Add1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const 2L); check_overflow]
+      | Sub1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const (-2L)); check_overflow]
+      (* `xor` can't take a 64-bit literal, *)
+      | Not ->
+          (IMov (Reg RAX, e_reg) :: check_bool not_a_bool_logic_label)
+          @ [IMov (Reg R11, bool_mask); IXor (Reg RAX, Reg R11)]
+      | IsBool ->
+          let false_label = sprintf "is_bool_false#%d" t in
+          let done_label = sprintf "is_bool_done#%d" t in
+          [ ILineComment (sprintf "BEGIN is_bool%d -------------" t);
+            IMov (Reg RAX, e_reg);
+            IAnd (Reg RAX, HexConst num_tag_mask);
+            IJz false_label;
+            IMov (Reg RAX, const_true);
+            IJmp done_label;
+            ILabel false_label;
+            IMov (Reg RAX, const_false);
+            ILabel done_label;
+            ILineComment (sprintf "END is_bool%d   -------------" t) ]
       | IsNum ->
-        let false_label = sprintf "is_num_false#%d" t in
-        let done_label = sprintf "is_num_done#%d" t in
-        [
-          ILineComment (sprintf "BEGIN is_num%d -------------" t);
-          IMov (Reg RAX, e_reg); 
-          IAnd (Reg RAX, HexConst num_tag_mask); 
-          (* Jump not zero because this is the inverted case from is_bool *)
-          IJnz false_label;
-          IMov (Reg RAX, const_true);
-          IJmp done_label;
-          ILabel false_label;
-          IMov (Reg RAX, const_false);
-          ILabel done_label;
-          ILineComment (sprintf "END is_num%d   -------------" t);
-          ]
-
-    | Print -> raise (NotYetImplemented "Fill in Print here")
-    | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
-    )
+          let false_label = sprintf "is_num_false#%d" t in
+          let done_label = sprintf "is_num_done#%d" t in
+          [ ILineComment (sprintf "BEGIN is_num%d -------------" t);
+            IMov (Reg RAX, e_reg);
+            IAnd (Reg RAX, HexConst num_tag_mask);
+            (* Jump not zero because this is the inverted case from is_bool *)
+            IJnz false_label;
+            IMov (Reg RAX, const_true);
+            IJmp done_label;
+            ILabel false_label;
+            IMov (Reg RAX, const_false);
+            ILabel done_label;
+            ILineComment (sprintf "END is_num%d   -------------" t) ]
+      | Print -> raise (NotYetImplemented "Fill in Print here")
+      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here") )
   | EPrim2 _ -> raise (NotYetImplemented "Fill in EPrim2 here")
   | EIf _ -> raise (NotYetImplemented "Fill in EIf here")
   | ENumber _ -> [IMov (Reg RAX, compile_imm e env)]
@@ -337,70 +334,69 @@ and compile_imm (e : tag expr) (env : (string * int) list) : arg =
 ;;
 
 (* This is very similar to Racket's `build_list` *)
-let rec build_list (f: int -> 'a) (size: int) : 'a list =
-  if size == 0 then [] else (f size) :: (build_list f (size - 1))
+let rec build_list (f : int -> 'a) (size : int) : 'a list =
+  if size == 0 then
+    []
+  else
+    f size :: build_list f (size - 1)
+;;
 
 let compile_prog (anfed : tag expr) : string =
-  let prelude = "section .text\nextern error\nextern print\nglobal our_code_starts_here\nour_code_starts_here:" in
-  let stack_size = Int64.of_int (8 * (count_vars anfed)) in
-  let stack_setup = [
-    ILineComment "==== Stack set-up ====";
-    IPush (Reg RBP);
-    IMov (Reg RBP, Reg RSP);
-    ISub (Reg RSP, Const stack_size);
-    ILineComment "======================";
-  ] in 
-    (* (build_list (fun _ -> IPush(Const (0L))) (count_vars anfed)) in *)
+  let prelude =
+    "section .text\nextern error\nextern print\nglobal our_code_starts_here\nour_code_starts_here:"
+  in
+  let stack_size = Int64.of_int (8 * count_vars anfed) in
+  let stack_setup =
+    [ ILineComment "==== Stack set-up ====";
+      IPush (Reg RBP);
+      IMov (Reg RBP, Reg RSP);
+      ISub (Reg RSP, Const stack_size);
+      ILineComment "======================" ]
+  in
+  (* (build_list (fun _ -> IPush(Const (0L))) (count_vars anfed)) in *)
   let postlude =
-    [
-      (* Stack clean-up *)
+    [ (* Stack clean-up *)
       ILineComment "=== Stack clean-up ===";
       IAdd (Reg RSP, Const stack_size);
       IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP);      
+      IPop (Reg RBP);
       ILineComment "======================";
       IRet;
-
       ILabel not_a_number_arith_label;
       IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP); 
+      IPop (Reg RBP);
       IMov (Reg RDI, Const err_ARITH_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
-
       ILabel not_a_number_comp_label;
       IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP); 
+      IPop (Reg RBP);
       IMov (Reg RDI, Const err_COMP_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
-
       ILabel not_a_bool_logic_label;
       IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP); 
+      IPop (Reg RBP);
       IMov (Reg RDI, Const err_LOGIC_NOT_BOOL);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
-
       ILabel not_a_bool_if_label;
       IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP); 
+      IPop (Reg RBP);
       IMov (Reg RDI, Const err_IF_NOT_BOOL);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
-
       ILabel overflow_label;
       IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP); 
+      IPop (Reg RBP);
       IMov (Reg RDI, Const err_OVERFLOW);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
-      IRet;
-    ]
+      IRet ]
   in
   let body = compile_expr anfed 1 [] in
   let as_assembly_string = to_asm (stack_setup @ body @ postlude) in
