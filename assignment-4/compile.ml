@@ -253,14 +253,35 @@ let overflow_label = "error_overflow"
    let check_bool = [ITest (Reg (RAX), HexConst (bool_tag_mask)); IJnz (not_a_bool_label)];; *)
 
 (* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
+(* We could check a parameterized register, but that creates complexity in reporting the error. *)
+(* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
 let check_bool (goto : string) : instruction list =
   [ITest (Reg RAX, HexConst num_tag_mask); IJz goto]
 ;;
 
-(* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
+(* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
 let check_num (goto : string) : instruction list = [ITest (Reg RAX, HexConst num_tag); IJnz goto]
 
 let check_overflow = IJo overflow_label
+
+let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_arith_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_arith_label
+  @
+  match op with
+  | Plus -> [IAdd (Reg RAX, e1); check_overflow]
+  (* Make sure to check for overflow BEFORE shifting on multiplication! *)
+  | Times -> [IMul (Reg RAX, e1); check_overflow; ISar (Reg RAX, Const 1L)]
+  (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
+   * while also preserving the order in which our arguments will fail a typecheck.
+   * So, `false - true` will fail on `false` every time.
+   *)
+   | Minus -> [IMov (Reg RAX, e1); ISub (Reg RAX, e2); check_overflow]
+  | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
+;;
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
   match e with
@@ -308,9 +329,17 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             IMov (Reg RAX, const_false);
             ILabel done_label;
             ILineComment (sprintf "END is_num%d   -------------" t) ]
-      | Print -> raise (NotYetImplemented "Fill in Print here")
+      | Print ->
+          [ (* Print both passes its value to the external function, and returns it. *)
+            IMov (Reg RDI, e_reg);
+            ICall "print" (* The answer goes in RAX :) *) ]
       | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here") )
-  | EPrim2 _ -> raise (NotYetImplemented "Fill in EPrim2 here")
+  | EPrim2 (op, e1, e2, _) -> (
+      let e1_reg = compile_imm e1 env in
+      let e2_reg = compile_imm e2 env in
+      match op with
+      | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg
+      | _ -> raise (NotYetImplemented "Remaining Prim2s") )
   | EIf _ -> raise (NotYetImplemented "Fill in EIf here")
   | ENumber _ -> [IMov (Reg RAX, compile_imm e env)]
   | EBool _ -> [IMov (Reg RAX, compile_imm e env)]
@@ -363,36 +392,26 @@ let compile_prog (anfed : tag expr) : string =
       ILineComment "======================";
       IRet;
       ILabel not_a_number_arith_label;
-      IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP);
       IMov (Reg RDI, Const err_ARITH_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
       ILabel not_a_number_comp_label;
-      IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP);
       IMov (Reg RDI, Const err_COMP_NOT_NUM);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
       ILabel not_a_bool_logic_label;
-      IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP);
       IMov (Reg RDI, Const err_LOGIC_NOT_BOOL);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
       ILabel not_a_bool_if_label;
-      IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP);
       IMov (Reg RDI, Const err_IF_NOT_BOOL);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
       IRet;
       ILabel overflow_label;
-      IMov (Reg RSP, Reg RBP);
-      IPop (Reg RBP);
       IMov (Reg RDI, Const err_OVERFLOW);
       IMov (Reg RSI, Reg RAX);
       ICall "error";
