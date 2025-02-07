@@ -266,7 +266,7 @@ let check_num (goto : string) : instruction list =
 
 let check_overflow = IJo overflow_label
 
-(* Helper for numerica comparisons *)
+(* Helper for numeric comparisons *)
 let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   (* Move the first arg into RAX so we can type-check it. *)
   let string_op = "comparison_label" in
@@ -347,7 +347,7 @@ let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END and#%d   -------------" t) ]
 ;;
 
-(* Perhaps we could abstract these two helpers. TODO. *)
+
 let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   let true_label = sprintf "true#%d" t in
   let false_label = sprintf "false#%d" t in
@@ -479,14 +479,6 @@ and compile_imm (e : tag expr) (env : (string * int) list) : arg =
   | EBool (false, _) -> const_false
   | EId (x, _) -> RegOffset (~-(find env x), RBP)
   | _ -> raise (InternalCompilerError "Impossible: not an immediate")
-;;
-
-(* This is very similar to Racket's `build_list` *)
-let rec build_list (f : int -> 'a) (size : int) : 'a list =
-  if size == 0 then
-    []
-  else
-    f size :: build_list f (size - 1)
 ;;
 
 let compile_prog (anfed : tag expr) : string =
