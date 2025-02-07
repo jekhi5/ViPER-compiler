@@ -36,10 +36,7 @@ let tprog (filename : string) (expected : string) = filename >:: test_run_input 
 (* Runs a program, given as the name of a file in the input/ directory, and compares its error to expected *)
 let teprog (filename : string) (expected : string) = filename >:: test_err_input filename expected
 
-
-let suite = "unit_tests" >::: [
-  te "overflow" "-4611686018427388000" "Integer overflow";
-]
+let suite = "unit_tests" >::: [te "overflow" "-4611686018427388000" "Integer overflow"]
 
 (* input_file_test_suite () will run all the tests in the subdirectories of input/ *)
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

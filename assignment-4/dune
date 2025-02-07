@@ -24,4 +24,5 @@
  (dev
   (flags
    (:standard -w -33))))
-   ; (:standard -warn-error -A))))
+
+; (:standard -warn-error -A))))

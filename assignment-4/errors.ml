@@ -15,7 +15,8 @@ exception OverflowError of string (* problem with an identifier: message to show
 
 let known_compiletime_exn exn =
   match exn with
-  | ParseError _ | NotYetImplemented _ | InternalCompilerError _ | BindingError _ | OverflowError _ -> true
+  | ParseError _ | NotYetImplemented _ | InternalCompilerError _ | BindingError _ | OverflowError _
+    -> true
   | _ -> false
 ;;
 

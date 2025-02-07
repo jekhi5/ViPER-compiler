@@ -449,29 +449,17 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
   | EIf (cond, thn, els, t) ->
       let else_label = sprintf "if_else#%d" t in
       let done_label = sprintf "if_done#%d" t in
-      let cond_reg = compile_imm cond env in
-      [
-        ILineComment (sprintf "BEGIN conditional#%d   -------------" t);
-        IMov (Reg RAX, cond_reg);
-      ]
-      @ check_bool not_a_bool_if_label
-      @ [
-        IMov (Reg R11, bool_mask);
-        ITest (Reg RAX, Reg R11);
-        IJz else_label;
-        ILineComment "  Then case:"
-      ]
-      @ compile_expr thn (si + 1) env
-      @ [
-        IJmp done_label;
-        ILineComment "  Else case:";
-        ILabel else_label;
-      ]
-      @ compile_expr els (si + 1) env;
-      @ [
-        ILabel done_label;
-        ILineComment (sprintf "END conditional#%d     -------------" t);
-      ]
+      (let cond_reg = compile_imm cond env in
+       [ILineComment (sprintf "BEGIN conditional#%d   -------------" t); IMov (Reg RAX, cond_reg)]
+       @ check_bool not_a_bool_if_label
+       @ [ IMov (Reg R11, bool_mask);
+           ITest (Reg RAX, Reg R11);
+           IJz else_label;
+           ILineComment "  Then case:" ]
+       @ compile_expr thn (si + 1) env
+       @ [IJmp done_label; ILineComment "  Else case:"; ILabel else_label]
+       @ compile_expr els (si + 1) env )
+      @ [ILabel done_label; ILineComment (sprintf "END conditional#%d     -------------" t)]
   | ENumber _ -> [IMov (Reg RAX, compile_imm e env)]
   | EBool _ -> [IMov (Reg RAX, compile_imm e env)]
   | EId _ -> [IMov (Reg RAX, compile_imm e env)]
