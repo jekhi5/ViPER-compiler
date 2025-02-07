@@ -347,7 +347,6 @@ let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END and#%d   -------------" t) ]
 ;;
 
-
 let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   let true_label = sprintf "true#%d" t in
   let false_label = sprintf "false#%d" t in
@@ -487,7 +486,15 @@ let compile_prog (anfed : tag expr) : string =
   in
   let vars = count_vars anfed in
   (* Keep the stack aligned. *)
-  let stack_size = Int64.of_int (8 * (if (vars mod 2) == 1 then vars + 1 else vars)) in
+  let stack_size =
+    Int64.of_int
+      ( 8
+      *
+      if vars mod 2 == 1 then
+        vars + 1
+      else
+        vars )
+  in
   let stack_setup =
     [ ILineComment "==== Stack set-up ====";
       IPush (Reg RBP);
