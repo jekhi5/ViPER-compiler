@@ -493,7 +493,9 @@ let compile_prog (anfed : tag expr) : string =
   let prelude =
     "section .text\nextern error\nextern print\nglobal our_code_starts_here\nour_code_starts_here:"
   in
-  let stack_size = Int64.of_int (8 * count_vars anfed) in
+  let vars = count_vars anfed in
+  (* Keep the stack aligned. *)
+  let stack_size = Int64.of_int (8 * (if (vars mod 2) == 1 then vars + 1 else vars)) in
   let stack_setup =
     [ ILineComment "==== Stack set-up ====";
       IPush (Reg RBP);
