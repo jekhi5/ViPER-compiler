@@ -1,0 +1,9 @@
+This directory should contain files to be run by the `input_file_test_suite` in test.ml.
+
+Tests should come in groups of related files:
+- someTest.diamond: the input program to be run
+- someTest.valgrind: if present, run the program using valgrind
+
+This will test that the program is *supposed* to fail to compile or run, but currently does not.
+(Ideally, when your compiler works perfectly, this directory should be empty.  For now, it's better
+to document which test cases aren't working as expected.)

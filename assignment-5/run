@@ -1,0 +1,23 @@
+if dune build; then
+    make clean
+    make test
+    ./test
+    if [ 1 -gt 0 ]; then
+        make clean
+    fi
+
+    if [ $# -gt 0 ]; then
+        zip submission.zip Makefile starter-diamondback/assembly.ml
+starter-diamondback/compile.ml
+starter-diamondback/errors.ml
+starter-diamondback/exprs.ml
+starter-diamondback/main.ml
+starter-diamondback/phases.ml
+starter-diamondback/pretty.ml
+starter-diamondback/runner.ml
+starter-diamondback/test.ml
+        echo 'Saved submission.zip'
+    fi
+else
+    echo 'Build failure. Aborting...'
+fi
