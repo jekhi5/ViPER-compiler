@@ -20,6 +20,10 @@ let teq name actual expected = name >:: fun _ -> assert_equal expected actual ~p
 
 let tests = []
 
-let suite = "suite" >::: tests
+let rename_tests = [
+  
+]
+
+let suite = "suite" >::: tests @ rename_tests
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

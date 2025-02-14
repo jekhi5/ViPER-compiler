@@ -1,0 +1,10 @@
+# This test is used to inspect the output of the compiler.
+
+def foo(x, y):
+    x + y
+
+let 
+    a = 1,
+    b = 2
+in
+    foo(a, b)

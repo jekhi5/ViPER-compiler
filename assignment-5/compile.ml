@@ -126,7 +126,77 @@ let rec find_dup (l : 'a list) : 'a option =
 (* IMPLEMENT EVERYTHING BELOW *)
 
 let rename (e : tag program) : tag program =
-  raise (NotYetImplemented "Copy this from your Cobra implementation and generalize it")
+  let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
+      (string * string) list * tag bind list =
+    List.fold_left
+      (fun (new_env, renamed_bindings) (id, bound, t) ->
+        let renamed_bound = help new_env bound in
+        (* rename e consistently *)
+        let renamed_id = sprintf "%s#%d" id t in
+        (* create new unique name for x *)
+        let renamed_binding = (renamed_id, renamed_bound, t) in
+        ((id, renamed_id) :: new_env, renamed_bindings @ [renamed_binding]) )
+      (env, []) bindings
+  and help (env : (string * string) list) (e : tag expr) =
+    match e with
+    | EId (x, t) ->
+        (* Lookup x in the environment and replace it with the environment's renamed version.
+         * Since we only call `rename` *after* scope checking, x is guaranteed to be in env.
+         *)
+        EId (List.assoc x env, t)
+    | ELet (bindings, body, tag) ->
+        (* "Extend env by renaming each binding in binds, then rename the expressions and body" *)
+        let new_env, renamed_bindings = rename_bindings env bindings in
+        let renamed_body = help new_env body in
+        ELet (renamed_bindings, renamed_body, tag)
+    | EApp (fname, params, t) ->
+        (* Should this be renamed, or should it be looked-up? *)
+        let renamed_fname = List.assoc fname env in
+        (* let renamed_fname = sprintf "%s#%d" fname t in *)
+        (* Since this is an _application_, 
+         * none of the parameters are within the scope of any other.
+         * Ergo, we give them all the same environment to work with. 
+         *)
+        let renamed_params = List.map (fun p -> help env p) params in
+        EApp (renamed_fname, renamed_params, t)
+    (* Less interesting cases... *)
+    | ENumber (_, _) -> e
+    | EPrim1 (op, a, t) -> EPrim1 (op, help env a, t)
+    | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a, help env b, t)
+    | EIf (c, t, f, ta) -> EIf (help env c, help env t, help env f, ta)
+    | EBool _ -> e
+  and helpD (env : (string * string) list) (d : tag decl) : tag decl =
+    (* Step 1: rename the function by looking it up in the environment *)
+    (* Step 2: rename each arg and add them to the env *)
+    (* Step 3: rename the body with the arg env *)
+    match d with
+    | DFun (name, args, body, t) ->
+        let renamed_name = List.assoc name env in
+        let decl_env, renamed_args =
+          List.fold_left
+            (fun (acc_env, acc_args) (arg_name, arg_tag) ->
+              let renamed_arg = (sprintf "%s#%d" arg_name arg_tag, arg_tag) in
+              (acc_env @ [(arg_name, fst renamed_arg)], acc_args @ [renamed_arg]) )
+            (env, []) args
+        in
+        let renamed_body = help decl_env body in
+        DFun (renamed_name, renamed_args, renamed_body, t)
+  and helpP p =
+    (* Step 1: put all function names in the environmnet *)
+    (* Step 2: rename each function with that environemt *)
+    (* Step 3: Use the base environment (i.e. all fnames) to rename the prog body *)
+    match p with
+    | Program (decls, body, t) ->
+        (* Get the base environment containing all function names. *)
+        let decl_env =
+          List.map (fun d ->
+              match d with
+              | DFun (name, _, _, t) -> (name, sprintf "%s#%d" name t) )
+          decls
+        in
+        Program (List.map (helpD decl_env) decls, help decl_env body, t)
+  in
+  helpP e
 ;;
 
 let anf (p : tag program) : unit aprogram =
