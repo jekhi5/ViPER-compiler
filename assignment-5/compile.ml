@@ -107,20 +107,39 @@ let rec find_decl (ds : 'a decl list) (name : string) : 'a decl option =
         find_decl ds_rest name
 ;;
 
-let rec find_one (l : 'a list) (elt : 'a) : bool =
+let rec find_one (l : 'a list) (elt : 'a) (comp : 'a -> 'a -> bool) : bool =
   match l with
   | [] -> false
-  | x :: xs -> elt = x || find_one xs elt
+  | x :: xs -> elt = x || find_one xs elt comp
 ;;
 
-let rec find_dup (l : 'a list) : 'a option =
+let rec find_dup (l : 'a list) (comp : 'a -> 'a -> bool) : 'a option =
   match l with
   | [] | [_] -> None
   | x :: xs ->
-      if find_one xs x then
+      if find_one xs x comp then
         Some x
       else
-        find_dup xs
+        find_dup xs comp
+;;
+
+let rec find_all_dups (l : 'a list) (comp : 'a -> 'a -> bool) : 'a list =
+  match l with
+  | [] | [_] -> []
+  | x :: xs ->
+      if find_one xs x comp then
+        x :: find_all_dups xs comp
+      else
+        find_all_dups xs comp
+;;
+
+(* Gets a mapping of function names to arity for all functions *)
+let get_decl_env (decls : 'a decl list) : (string * int) list =
+  List.map
+    (fun d ->
+      match d with
+      | DFun (funname, args, _, _) -> (funname, List.length args) )
+    decls
 ;;
 
 (* IMPLEMENT EVERYTHING BELOW *)
@@ -189,10 +208,11 @@ let rename (e : tag program) : tag program =
     | Program (decls, body, t) ->
         (* Get the base environment containing all function names. *)
         let decl_env =
-          List.map (fun d ->
+          List.map
+            (fun d ->
               match d with
               | DFun (name, _, _, t) -> (name, sprintf "%s#%d" name t) )
-          decls
+            decls
         in
         Program (List.map (helpD decl_env) decls, help decl_env body, t)
   in
@@ -211,8 +231,12 @@ let anf (p : tag program) : unit aprogram =
     | EPrim1 (op, arg, _) ->
         let arg_imm, arg_setup = helpI arg in
         (CPrim1 (op, arg_imm, ()), arg_setup)
-    | EPrim2 (And, _, _, _) | EPrim2 (Or, _, _, _) ->
-        raise (NotYetImplemented "Copy over your short-circuiting behavior from Cobra")
+    | EPrim2 (And, left, right, _) ->
+        let left_imm, left_setup = helpI left in
+        (CIf (left_imm, helpA right, helpA left, ()), left_setup)
+    | EPrim2 (Or, left, right, _) ->
+        let left_imm, left_setup = helpI left in
+        (CIf (left_imm, helpA left, helpA right, ()), left_setup)
     | EPrim2 (op, left, right, _) ->
         let left_imm, left_setup = helpI left in
         let right_imm, right_setup = helpI right in
@@ -226,7 +250,9 @@ let anf (p : tag program) : unit aprogram =
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [(bind, exp_ans)] @ body_setup)
     | EApp (funname, args, _) ->
-        raise (NotYetImplemented "Implement ANF conversion for function calls")
+        let args_imm, args_setups = List.split (List.map helpI args) in
+        let args_setup = List.fold_left ( @ ) [] args_setups in
+        (CApp (funname, args_imm, ()), args_setup)
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -239,8 +265,18 @@ let anf (p : tag program) : unit aprogram =
         let tmp = sprintf "unary_%d" tag in
         let arg_imm, arg_setup = helpI arg in
         (ImmId (tmp, ()), arg_setup @ [(tmp, CPrim1 (op, arg_imm, ()))])
-    | EPrim2 (And, _, _, _) | EPrim2 (Or, _, _, _) ->
-        raise (NotYetImplemented "Copy over your short-circuiting behavior from Cobra")
+    | EPrim2 (And, left, right, tag) ->
+        let tmp = sprintf "binop_%d" tag in
+        let left_imm, left_setup = helpI left in
+        let _, right_setup = helpI right in
+        ( ImmId (tmp, ()),
+          left_setup @ right_setup @ [(tmp, CIf (left_imm, helpA right, helpA left, ()))] )
+    | EPrim2 (Or, left, right, tag) ->
+        let tmp = sprintf "binop_%d" tag in
+        let left_imm, left_setup = helpI left in
+        let _, right_setup = helpI right in
+        ( ImmId (tmp, ()),
+          left_setup @ right_setup @ [(tmp, CIf (left_imm, helpA left, helpA right, ()))] )
     | EPrim2 (op, left, right, tag) ->
         let tmp = sprintf "binop_%d" tag in
         let left_imm, left_setup = helpI left in
@@ -251,7 +287,10 @@ let anf (p : tag program) : unit aprogram =
         let cond_imm, cond_setup = helpI cond in
         (ImmId (tmp, ()), cond_setup @ [(tmp, CIf (cond_imm, helpA _then, helpA _else, ()))])
     | EApp (funname, args, tag) ->
-        raise (NotYetImplemented "Implement ANF conversion for function calls")
+        let tmp = sprintf "app_%d" tag in
+        let args_imm, args_setups = List.split (List.map helpI args) in
+        let args_setup = List.fold_left ( @ ) [] args_setups in
+        (ImmId (tmp, ()), args_setup @ [(tmp, CApp (funname, args_imm, ()))])
     | ELet ([], body, _) -> helpI body
     | ELet ((bind, exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
@@ -265,14 +304,72 @@ let anf (p : tag program) : unit aprogram =
 ;;
 
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
-  let rec wf_E e (* other parameters may be needed here *) =
-    Error [NotYetImplemented "Implement well-formedness checking for expressions"]
-  and wf_D d (* other parameters may be needed here *) =
-    Error [NotYetImplemented "Implement well-formedness checking for definitions"]
+  let rec wf_E (e : sourcespan expr) (id_env : string list) (decl_env : (string * int) list) :
+      exn list =
+    match e with
+    | EBool _ -> []
+    | ENumber _ -> []
+    | EId (x, loc) ->
+        if find_one id_env x ( = ) then
+          []
+        else
+          [UnboundId (x, loc)]
+    | EPrim1 (_, e, _) -> wf_E e id_env decl_env
+    | EPrim2 (_, l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
+    | EIf (c, t, f, _) -> wf_E c id_env decl_env @ wf_E t id_env decl_env @ wf_E f id_env decl_env
+    | ELet (binds, body, _) ->
+        raise (NotYetImplemented "Not implemented yet")
+        (* TODO: Two checks necessary: Check for duplicates in the bindings, and then check for free variables in the body *)
+        (* let binds_errors = List.fold_left (fun binding -> find_dup) [] binds in _ *)
+        (* let binds_errors = List.map (fun dup_bind -> (DuplicateId )) (find_all_dups (List.rev binds) (fun bind1 bind2 -> (fst bind1) == (fst bind2))) *)
+
+        (* (BindingError
+           (sprintf "The identifier %s, defined at <%s>, shadows one defined at <%s>" x
+              (string_of_sourcespan loc) (string_of_sourcespan existing) ) ) *)
+        (* let env2, _ =
+             List.fold_left
+               (fun (scope_env, shadow_env) (x, e, loc) ->
+                 try
+                   let existing = List.assoc x shadow_env in
+                   (BindingError
+                        (sprintf "The identifier %s, defined at <%s>, shadows one defined at <%s>" x
+                           (string_of_sourcespan loc) (string_of_sourcespan existing) ) )
+                 with Not_found ->
+                   help e scope_env;
+                   ((x, loc) :: scope_env, (x, loc) :: shadow_env) )
+               (env, []) binds
+           in
+           help body env2 *)
+    | EApp (funname, args, loc) ->
+        let unbound_fun_error =
+          if find_one (fst @@ List.split @@ decl_env) funname ( = ) then
+            []
+          else
+            [UnboundFun (funname, loc)]
+        in
+        if unbound_fun_error = [] then
+          (* We made sure that the function name is in the `decl_env` above, so `List.assoc` will not error *)
+          let expected_arity = List.assoc funname decl_env in
+          let given_arity = List.length args in
+          if given_arity = expected_arity then
+            []
+          else
+            [(Arity (expected_arity, given_arity, loc))]
+        else
+          []
+  and wf_D (d : 'a decl list) (env : string list) : exn list =
+    (* Duplicate arguments *)
+    (* Duplicate function name *)
+    [NotYetImplemented "Implement well-formedness checking for definitions"]
   in
   match p with
-  | Program (decls, body, _) ->
-      Error [NotYetImplemented "Implement well-formedness checking for programs"]
+  | Program (decls, body, _) -> (
+      let decls_result = wf_D decls [] in
+      let body_result = wf_E body [] (get_decl_env decls) in
+      let total_errors = decls_result @ body_result in
+      match total_errors with
+      | [] -> Ok p
+      | _ -> Error total_errors )
 ;;
 
 (* ASSUMES that the program has been alpha-renamed and all names are unique *)
