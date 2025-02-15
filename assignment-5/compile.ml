@@ -144,6 +144,21 @@ let get_decl_env (decls : 'a decl list) : (string * int) list =
 
 (* IMPLEMENT EVERYTHING BELOW *)
 
+let rec desugar (p : 'a program) : 'a program =
+  let rec helpE e =
+    match e with
+    | ELet (binding :: rest_bindings, body, a) ->
+        ELet ([binding], helpE (ELet (rest_bindings, body, a)), a)
+    | _ -> e
+  in
+  let helpD d =
+    match d with
+    | DFun (fname, args, body, a) -> DFun (fname, args, helpE body, a)
+  in
+  match p with
+  | Program (decls, body, a) -> Program (List.map helpD decls, helpE body, a)
+;;
+
 let rename (e : tag program) : tag program =
   let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
       (string * string) list * tag bind list =
@@ -318,28 +333,26 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | EPrim2 (_, l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
     | EIf (c, t, f, _) -> wf_E c id_env decl_env @ wf_E t id_env decl_env @ wf_E f id_env decl_env
     | ELet (binds, body, _) ->
-        raise (NotYetImplemented "Not implemented yet")
-        (* TODO: Two checks necessary: Check for duplicates in the bindings, and then check for free variables in the body *)
-        (* let binds_errors = List.fold_left (fun binding -> find_dup) [] binds in _ *)
-        (* let binds_errors = List.map (fun dup_bind -> (DuplicateId )) (find_all_dups (List.rev binds) (fun bind1 bind2 -> (fst bind1) == (fst bind2))) *)
-
-        (* (BindingError
-           (sprintf "The identifier %s, defined at <%s>, shadows one defined at <%s>" x
-              (string_of_sourcespan loc) (string_of_sourcespan existing) ) ) *)
-        (* let env2, _ =
-             List.fold_left
-               (fun (scope_env, shadow_env) (x, e, loc) ->
-                 try
-                   let existing = List.assoc x shadow_env in
-                   (BindingError
-                        (sprintf "The identifier %s, defined at <%s>, shadows one defined at <%s>" x
-                           (string_of_sourcespan loc) (string_of_sourcespan existing) ) )
-                 with Not_found ->
-                   help e scope_env;
-                   ((x, loc) :: scope_env, (x, loc) :: shadow_env) )
-               (env, []) binds
-           in
-           help body env2 *)
+        (* Pass 1: Check for duplicate bindings *)
+        let _, dup_bind_exns =
+          List.fold_left
+            (fun (seen, exns) ((name, _, loc) as binding) ->
+              match List.find_opt (fun (a, _, _) -> a = name) seen with
+              | Some (_, _, orig_loc) -> (seen, DuplicateId (name, loc, orig_loc) :: exns)
+              | None -> (binding :: seen, exns) )
+            ([ (* name, body, loc *) ], [ (* exns *) ])
+            binds
+        in
+        (* Pass 2: Check scope in each binding body *)
+        let _, bind_body_exns =
+          (* Each bound body is allowed to use the names of  all previous, bindings *)
+          List.fold_left
+            (fun (let_env, exns) (id, body, _) -> (id :: let_env, wf_E body let_env decl_env @ exns))
+            (id_env, []) binds
+        in
+        (* Pass 3: Check scope in the let body *)
+        let let_body_exns = wf_E body (List.map (fun (id, _, _) -> id) binds @ id_env) decl_env in
+        dup_bind_exns @ bind_body_exns @ let_body_exns
     | EApp (funname, args, loc) ->
         let unbound_fun_error =
           if find_one (fst @@ List.split @@ decl_env) funname ( = ) then
@@ -354,18 +367,50 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           if given_arity = expected_arity then
             []
           else
-            [(Arity (expected_arity, given_arity, loc))]
+            [Arity (expected_arity, given_arity, loc)]
         else
           []
-  and wf_D (d : 'a decl list) (env : string list) : exn list =
-    (* Duplicate arguments *)
+  and wf_D (ds : 'a decl list) (decl_env : (string * int) list) : exn list =
+    (* Pass 1: *)
     (* Duplicate function name *)
-    [NotYetImplemented "Implement well-formedness checking for definitions"]
+    let _, dup_fname_exns =
+      List.fold_left
+        (fun (seen, exns) (DFun (fname, _, _, loc) as d) ->
+          (* Look in the environment. If the function name exists, duplicate that. *)
+          let dup = find_decl seen fname in
+          match dup with
+          | Some (DFun (_, _, _, loc_orig)) -> (seen, DuplicateFun (fname, loc, loc_orig) :: exns)
+          | None -> (d :: seen, exns) )
+        ([ (* seen decls list *) ], [ (* exns list *) ])
+        ds
+    in
+    let dup_arg_exns =
+      List.concat_map
+        (fun (DFun (_, args, _, _)) ->
+          (* This one has a fold _inside_ of the map, 
+           * so we need to discard the irrelevant acc value earlier than the prior case. *)
+          snd
+            (List.fold_left
+               (fun (seen, exns) ((arg_name, arg_loc) as arg) ->
+                 match List.find_opt (fun a -> fst a = arg_name) seen with
+                 | Some (_, orig_loc) -> (seen, DuplicateId (arg_name, arg_loc, orig_loc) :: exns)
+                 | None -> (arg :: seen, exns) )
+               ([ (* argname, loc *) ], [ (* exns *) ])
+               args ) )
+        ds
+      (* Pass 2: *)
+      (* Check well-formedness of all decl bodies, using the decl environment. *)
+    in
+    let decl_body_exns =
+      List.concat_map (fun (DFun (_, args, body, _)) -> wf_E body (List.map fst args) decl_env) ds
+    in
+    dup_fname_exns @ dup_arg_exns @ decl_body_exns
   in
   match p with
   | Program (decls, body, _) -> (
-      let decls_result = wf_D decls [] in
-      let body_result = wf_E body [] (get_decl_env decls) in
+      let decl_env = get_decl_env decls in
+      let decls_result = wf_D decls decl_env in
+      let body_result = wf_E body [] decl_env in
       let total_errors = decls_result @ body_result in
       match total_errors with
       | [] -> Ok p
@@ -423,8 +468,8 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   prog
   |> add_err_phase well_formed is_well_formed
   (* uncomment this if you implemented a desugaring pass *)
-  (* |> (add_phase desugared desugar) *)
-  |> add_phase tagged tag
+  |> add_phase desugared desugar
+  |> add_phase tagged tag (* screw ye, ya bloody formatter *)
   |> add_phase renamed rename
   |> add_phase anfed (fun p -> atag (anf p))
   |> add_phase locate_bindings naive_stack_allocation
