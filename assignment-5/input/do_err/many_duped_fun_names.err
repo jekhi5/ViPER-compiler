@@ -1,0 +1,2 @@
+The function name foo, redefined at <do_err/many_duped_fun_names, 3:0-3:16>, duplicates one at <do_err/many_duped_fun_names, 1:0-1:12>
+The function name foo, redefined at <do_err/many_duped_fun_names, 2:0-2:13>, duplicates one at <do_err/many_duped_fun_names, 1:0-1:12>
