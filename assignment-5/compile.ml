@@ -427,11 +427,61 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       | _ -> Error total_errors )
 ;;
 
+let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
+
+let remove_dups (lst : 'a list) : 'a list =
+  List.fold_left
+    (fun acc x ->
+      if List.mem x acc then
+        acc
+      else
+        x :: acc )
+    [] lst
+;;
+
 (* ASSUMES that the program has been alpha-renamed and all names are unique *)
-let naive_stack_allocation (prog : tag aprogram) : tag aprogram * arg envt =
-  raise
-    (NotYetImplemented
-       "Extract your stack-slot allocation logic from Cobra's compile_expr into here" )
+let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
+    tag aprogram * arg envt =
+  (* The general strategy of our helpers is that
+   * they will return the new environment, and their own stack index.
+   * That way, each recursive call can bump up the index if we want.
+   *
+   * For the Xexpr helpers:
+   * - Immediate values don't care about the env, so we ignore those.
+   * - Cexprs are only interesting in the `CIf` case, since this case
+   *   contains two Aexprs.
+   * - Aexprs are where the main logic happens, since that is where we make new bindings.
+       We convert the stack index to a RegOffset, then look at the bound expr, then the body.
+       Note that whenever we recursively call helpA, we need to increment the stack index. 
+  
+  *)
+  (* Given a list of expressions to examine, passes the *)
+  let rec accumulate_envs aexprs base_env si =
+    List.fold_left
+      (fun (acc_env, acc_si) aexp -> helpA aexp acc_env (acc_si + 1))
+      (base_env, si) aexprs
+  and helpD decls env si =
+    accumulate_envs (List.map (fun (ADFun (_, _, body, _)) -> body) decls) env si
+  and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt * int =
+    match cexp with
+    | CIf (c, thn, els, _) -> accumulate_envs [thn; els] env si
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ -> (env, si)
+  and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt * int =
+    match aexp with
+    | ALet (id, bound, body, _) ->
+        let offset = (id, si_to_arg si) in
+        let bound_offset, bound_si = helpC bound env si in
+        let body_offset, body_si = helpA body env (si + 1) in
+        ((offset :: bound_offset) @ body_offset, body_si)
+    | ACExpr cexp -> helpC cexp env si
+  in
+  let decls_env, decls_si = helpD decls [] 0 in
+  let body_env, _ = helpA body decls_env decls_si in
+
+  (* We were rather sloppy with the process of adding to the environment,
+   * so we just remove the duplicates in O(n^2) time at the end.
+  *)
+  (prog, remove_dups body_env)
 ;;
 
 (* In Cobra, you had logic somewhere that tracked the stack index, starting at 1 and incrementing it
@@ -450,7 +500,9 @@ let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : 
 
 and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
-  raise (NotYetImplemented "Compile aexpr not yet implemented")
+  match e with
+  | ALet (id, bound, body, t) -> [] (* TODO *)
+  | ACExpr cexp -> compile_cexpr cexp env num_args is_tail
 
 and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : bool) =
   raise (NotYetImplemented "Compile cexpr not yet implemented")
@@ -467,27 +519,26 @@ let compile_decl (d : tag adecl) (env : arg envt) : instruction list =
   raise (NotYetImplemented "Compile decl not yet implemented")
 ;;
 
-let runtime_errors = 
-  List.concat_map (fun (label, err_code) ->
-    [
-      ILabel label;
-      IMov (Reg RDI, Const err_code);
-      (* We ended up ignoring this argument in main.c. *)
-      IMov (Reg RSI, Reg RAX); 
-      ICall "error";
-      IRet; (* Theoretically we don't need this `ret`.*)
-    ]
-    )
-  [
-    (not_a_number_comp_label, err_COMP_NOT_NUM);
-    (not_a_number_arith_label, err_ARITH_NOT_NUM);
-    (not_a_bool_logic_label, err_LOGIC_NOT_BOOL);
-    (not_a_bool_if_label, err_IF_NOT_BOOL);
-    (overflow_label, err_OVERFLOW);
+let runtime_errors =
+  List.concat_map
+    (fun (label, err_code) ->
+      [ ILabel label;
+        IMov (Reg RDI, Const err_code);
+        (* We ended up ignoring this argument in main.c. *)
+        IMov (Reg RSI, Reg RAX);
+        ICall "error";
+        IRet (* Theoretically we don't need this `ret`.*) ] )
+    [ (not_a_number_comp_label, err_COMP_NOT_NUM);
+      (not_a_number_arith_label, err_ARITH_NOT_NUM);
+      (not_a_bool_logic_label, err_LOGIC_NOT_BOOL);
+      (not_a_bool_if_label, err_IF_NOT_BOOL);
+      (overflow_label, err_OVERFLOW) ]
+;;
 
-  ];;
-
-let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
+(* as anfed : tag aprogram *)
+let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
+  (* OCSH is really just a function... *)
+  (* let all_decls = decls @ [ADFun ("our_code_starts_here", [ (* no args *) ], body, t)] in *)
   raise (NotYetImplemented "Compiling programs not implemented yet")
 ;;
 
