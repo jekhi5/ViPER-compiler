@@ -47,6 +47,16 @@ let err_IF_NOT_BOOL = 4L
 
 let err_OVERFLOW = 5L
 
+let not_a_number_comp_label = "error_not_number_comp"
+
+let not_a_number_arith_label = "error_not_number_arith"
+
+let not_a_bool_logic_label = "error_not_bool_logic"
+
+let not_a_bool_if_label = "error_not_bool_if"
+
+let overflow_label = "error_overflow"
+
 let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 let scratch_reg = R11
@@ -456,6 +466,26 @@ and compile_imm e (env : arg envt) =
 let compile_decl (d : tag adecl) (env : arg envt) : instruction list =
   raise (NotYetImplemented "Compile decl not yet implemented")
 ;;
+
+let runtime_errors = 
+  List.concat_map (fun (label, err_code) ->
+    [
+      ILabel label;
+      IMov (Reg RDI, Const err_code);
+      (* We ended up ignoring this argument in main.c. *)
+      IMov (Reg RSI, Reg RAX); 
+      ICall "error";
+      IRet; (* Theoretically we don't need this `ret`.*)
+    ]
+    )
+  [
+    (not_a_number_comp_label, err_COMP_NOT_NUM);
+    (not_a_number_arith_label, err_ARITH_NOT_NUM);
+    (not_a_bool_logic_label, err_LOGIC_NOT_BOOL);
+    (not_a_bool_if_label, err_IF_NOT_BOOL);
+    (overflow_label, err_OVERFLOW);
+
+  ];;
 
 let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
   raise (NotYetImplemented "Compiling programs not implemented yet")
