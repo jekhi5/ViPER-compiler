@@ -454,7 +454,7 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
        We convert the stack index to a RegOffset, then look at the bound expr, then the body.
        Note that whenever we recursively call helpA, we need to increment the stack index. 
   
-  *)
+   *)
   (* Given a list of expressions to examine, passes the *)
   let rec accumulate_envs aexprs base_env si =
     List.fold_left
@@ -477,10 +477,9 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
   in
   let decls_env, decls_si = helpD decls [] 0 in
   let body_env, _ = helpA body decls_env decls_si in
-
   (* We were rather sloppy with the process of adding to the environment,
    * so we just remove the duplicates in O(n^2) time at the end.
-  *)
+   *)
   (prog, remove_dups body_env)
 ;;
 
@@ -505,7 +504,9 @@ and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : b
   | ACExpr cexp -> compile_cexpr cexp env num_args is_tail
 
 and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : bool) =
-  raise (NotYetImplemented "Compile cexpr not yet implemented")
+  match e with
+  | CImmExpr immexp -> [IMov (Reg R11, compile_imm immexp env); IMov (Reg RAX, Reg R11)]
+  | _ -> []
 
 and compile_imm e (env : arg envt) =
   match e with
@@ -515,8 +516,27 @@ and compile_imm e (env : arg envt) =
   | ImmId (x, _) -> find env x
 ;;
 
-let compile_decl (d : tag adecl) (env : arg envt) : instruction list =
-  raise (NotYetImplemented "Compile decl not yet implemented")
+let compile_decl (ADFun (fname, args, body, _) as d : tag adecl) (env : arg envt) : instruction list
+    =
+  (* Step 1: Set up the stack 
+   * Step 2: Map arg names to their locations in registers/on the stack
+   *  -> This is handled in `compile_aexpr`.
+   * Step 3: Compile the function body
+   * Step 4: Clean up the stack
+   *)
+  let vars = deepest_stack body env in
+  let stack_size =
+    Int64.of_int
+      ( 8
+      *
+      if vars mod 2 = 1 then
+        vars + 1
+      else
+        vars )
+  in
+  let prelude = [IPush (Reg RBP); IMov (Reg RBP, Reg RSP); ISub (Reg RSP, Const stack_size)] in
+  let postlude = [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet] in
+  prelude @ compile_aexpr body env (List.length args) false @ postlude
 ;;
 
 let runtime_errors =
