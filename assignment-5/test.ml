@@ -3,6 +3,7 @@ open Runner
 open OUnit2
 open Pretty
 open Exprs
+open ExtLib
 
 let t name program expected = name >:: test_run program name expected
 
@@ -18,10 +19,16 @@ let tanf name program expected =
 
 let teq name actual expected = name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> s)
 
+(* A helper for testing primitive values (won't print datatypes well) *)
+let t_any name value expected = name >:: fun _ -> assert_equal expected value ~printer:dump
+
+
 let tests = []
 
 let rename_tests = [
-  
+  t_any "split1" (split_at [1;2;3;4;5] 3) ([1;2;3], [4;5]);
+  t_any "split2" (split_at [1;2;3;4;5] 0) ([], [1;2;3;4;5]);
+  t_any "split3" (split_at [1;2;3;4;5] 7) ([1;2;3;4;5], []);
 ]
 
 let suite = "suite" >::: tests @ rename_tests

@@ -152,6 +152,18 @@ let get_decl_env (decls : 'a decl list) : (string * int) list =
     decls
 ;;
 
+(* Similar to Racket `split-at`,
+ * except that it doesn't raise an error if the list is too short. 
+ *)
+let rec split_at (lst : 'a list) (pos : int) : 'a list * 'a list =
+  match (lst, pos) with
+  | [], _ -> ([], [])
+  | rest, 0 -> ([], rest)
+  | car :: cdr, n ->
+      let l, r = split_at cdr (n - 1) in
+      (car :: l, r)
+;;
+
 (* IMPLEMENT EVERYTHING BELOW *)
 
 let rec desugar (p : 'a program) : 'a program =
@@ -495,7 +507,26 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
 *)
 
 let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list =
-  raise (NotYetImplemented "Compile funs not yet implemented")
+  (* We need to handle our caller-save registers here, and set up the args. *)
+  let m = List.length args in
+  let first_six, more_args = split_at args 6 in
+  let arg_regs, _ = split_at first_six_args_registers m in
+  let first_six_args_env = List.map2 (fun arg reg -> (arg, Reg reg)) first_six arg_regs in
+  let more_args_env = [] in
+  (* 1. Store caller-save registers on the stack. *)
+  (* Note that we do this for all of them, even m < 6. *)
+  List.rev_map (fun r -> IPush (Reg r)) first_six_args_registers (* 2. Push stack args *)
+  (* 3. Store register args *)
+  (* 4. Store stack args *)
+  (* 5. Actually call the function *)
+  @ [ICall fun_name]
+  (* 6. Pop the stack args *)
+  @ ( if m > 6 then
+        [IAdd (Reg RSP, Const (Int64.of_int (8 * (m - 6))))]
+      else
+        [] )
+  (* 7. Restore caller-save registers *)
+  @ List.map (fun r -> IPop (Reg r)) first_six_args_registers
 
 and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
@@ -516,8 +547,7 @@ and compile_imm e (env : arg envt) =
   | ImmId (x, _) -> find env x
 ;;
 
-let compile_decl (ADFun (fname, args, body, _) as d : tag adecl) (env : arg envt) : instruction list
-    =
+let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction list =
   (* Step 1: Set up the stack 
    * Step 2: Map arg names to their locations in registers/on the stack
    *  -> This is handled in `compile_aexpr`.
