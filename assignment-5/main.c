@@ -8,6 +8,10 @@ typedef uint64_t SNAKEVAL;
 extern SNAKEVAL our_code_starts_here() asm("our_code_starts_here");
 extern SNAKEVAL print(SNAKEVAL val) asm("print");
 
+const SNAKEVAL BOOL_TAG = 0x0000000000000001;
+const SNAKEVAL BOOL_TRUE = 0xFFFFFFFFFFFFFFFF;
+const SNAKEVAL BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
+
 SNAKEVAL print(SNAKEVAL val) {
   // Number
   if ((val & BOOL_TAG) == 0)
@@ -25,7 +29,7 @@ SNAKEVAL print(SNAKEVAL val) {
   }
   else
   {
-    printf("Unknown value: %#018x", val); // print unknown val in hex
+    printf("Unknown value: %#018lx\n", val); // print unknown val in hex
   }
   return val;
 }
