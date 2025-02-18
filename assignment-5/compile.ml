@@ -94,7 +94,7 @@ let deepest_stack e env =
     | ImmId (name, _) -> name_to_offset name
   and name_to_offset name =
     match find env name with
-    | RegOffset (bytes, RBP) -> bytes / (-1 * word_size) (* negative because stack direction *)
+    | RegOffset (bytes, RBP) -> bytes / (-1 * 1) (* negative because stack direction *)
     | _ -> 0
   in
   max (helpA e) 0 (* if only parameters are used, helpA might return a negative value *)
@@ -472,12 +472,18 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
       (fun (ADFun (_, args, body, _)) ->
         let body_env = helpA body env (si + 1) in
         (* Why do we need to add 2 here?? *)
+        (*  +0   | RBP 
+         *  +1   | Return Address
+         *  +2   | Argument 1
+         *  ...
+         *  +n+2 | Argument n
+         *)
         let args_env = List.mapi (fun i a -> (a, RegOffset (i + 2, RBP))) args in
         args_env @ body_env)
       decls
   and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt =
     match cexp with
-    | CIf (c, thn, els, _) -> (helpA thn env (si + 1)) @ (helpA els env (si + 1))
+    | CIf (c, thn, els, _) -> (helpA thn env (si + 0)) @ (helpA els env (si + 0))
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ -> env
   and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt =
     match aexp with
@@ -758,9 +764,9 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
   let m = List.length args in
   let vars = deepest_stack body env in
   (* let new_env = args_env @ env in *)
-  printf "%s: " fname;
+  (* printf "%s: " fname;
   printf "%d\n" vars;
-  List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) env;
+  List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) env; *)
   let stack_size =
     Int64.of_int
       ( 8
@@ -770,7 +776,7 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
       else
         vars )
   in
-  let stack_size = Int64.add stack_size 100L in
+  (* let stack_size = Int64.add stack_size 100L in *)
   let stack_setup =
     [ ILabel fname;
       ILineComment "==== Stack set-up ====";
