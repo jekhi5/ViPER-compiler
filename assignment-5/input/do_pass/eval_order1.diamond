@@ -1,0 +1,9 @@
+if print(print(let a = print(1) in print(a + 5)) > 4):
+    print(let a = print(6 - 2) in
+    print(let a = print(2 * a) in
+    print(print(a < 10) || print(isbool(a)))))
+else:
+    if print(let x = print(true && true) in print(x || print(isbool(x)))):
+        5
+    else:
+        6

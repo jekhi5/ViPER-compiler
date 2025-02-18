@@ -470,7 +470,7 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
      *)
     List.concat_map
       (fun (ADFun (_, args, body, _)) ->
-        let body_env = helpA body env (si + 1) in
+        let body_env = helpA body env (si) in
         let args_env = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) args in
         args_env @ body_env)
       decls
@@ -487,8 +487,8 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
         (offset :: bound_offset) @ body_offset
     | ACExpr cexp -> helpC cexp env si
   in
-  let decls_env = helpD decls [] 0 in
-  let body_env= helpA body decls_env 0 in
+  let decls_env = helpD decls [] 1 in
+  let body_env= helpA body decls_env 1 in
   (* We were rather sloppy with the process of adding to the environment,
    * so we just remove the duplicates in O(n^2) time at the end.
    *)
@@ -635,7 +635,8 @@ and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : b
   | ALet (id, bound, body, t) ->
       let prelude = compile_cexpr bound env num_args (* TODO: Come back to this number *) false in
       let body = compile_aexpr body env num_args (* TODO: Come back to this number *) is_tail in
-      prelude @ body
+      let offset = find env id in
+      prelude @ [IMov (offset, Reg RAX)] @ body
   | ACExpr cexp -> compile_cexpr cexp env num_args is_tail
 
 and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : bool) =

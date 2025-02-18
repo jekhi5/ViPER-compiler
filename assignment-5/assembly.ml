@@ -91,9 +91,9 @@ let rec arg_to_asm (a : arg) : string =
   | Reg r -> r_to_asm r
   | RegOffset (n, r) ->
       if n >= 0 then
-        sprintf "[%s+%d]" (r_to_asm r) n
+        sprintf "[%s+%d]" (r_to_asm r) (word_size * n)
       else
-        sprintf "[%s-%d]" (r_to_asm r) (-1 * n)
+        sprintf "[%s-%d]" (r_to_asm r) (-1 * word_size * n)
   | Sized (size, a) ->
       sprintf "%s %s"
         ( match size with

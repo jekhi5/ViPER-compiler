@@ -1,0 +1,17 @@
+let a = 1,
+    b = 2,
+    c = true,
+    d = false,
+    e = print(a + b),
+    f = print(a - b),
+    g = print(a * b),
+    h = print(c && d),
+    i = print(c || d),
+    j = print(a > b),
+    k = print(a >= b),
+    l = print(a < b),
+    m = print(a <= b),
+    n = print(add1(a)),
+    o = print(sub1(a)),
+    p = print(if i: b else: a)
+in 1
