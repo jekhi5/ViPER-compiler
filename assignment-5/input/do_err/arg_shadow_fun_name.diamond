@@ -1,7 +1,0 @@
-def foo(foo, bar):
-    if foo < bar:
-        foo + bar
-    else:
-        foo + foo(foo - 1, bar)
-
-foo(5, 2)

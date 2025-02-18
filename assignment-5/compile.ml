@@ -268,6 +268,7 @@ let anf (p : tag program) : unit aprogram =
     | EPrim1 (op, arg, _) ->
         let arg_imm, arg_setup = helpI arg in
         (CPrim1 (op, arg_imm, ()), arg_setup)
+    (* And and Or are sugary. We turn them into CIfs so that CPrim2s don't need to short-circuit. *)
     | EPrim2 (And, left, right, _) ->
         let left_imm, left_setup = helpI left in
         (CIf (left_imm, helpA right, helpA left, ()), left_setup)
@@ -288,8 +289,7 @@ let anf (p : tag program) : unit aprogram =
         (body_ans, exp_setup @ [(bind, exp_ans)] @ body_setup)
     | EApp (funname, args, _) ->
         let args_imm, args_setups = List.split (List.map helpI args) in
-        let args_setup = List.fold_left ( @ ) [] args_setups in
-        (CApp (funname, args_imm, ()), args_setup)
+        (CApp (funname, args_imm, ()), (List.concat args_setups))
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -442,23 +442,19 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
 
 let remove_dups (lst : 'a list) : 'a list =
-  List.fold_left
-    (fun acc x ->
-      if List.mem x acc then
+  List.fold_right
+    (fun x acc ->
+      if List.exists (fun e ->( fst e = fst x)) acc then
         acc
       else
         x :: acc )
-    [] lst
+    lst []
 ;;
 
 (* ASSUMES that the program has been alpha-renamed and all names are unique *)
 let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
     tag aprogram * arg envt =
-  (* The general strategy of our helpers is that
-   * they will return the new environment, and their own stack index.
-   * That way, each recursive call can bump up the index if we want.
-   *
-   * For the Xexpr helpers:
+  (* For the Xexpr helpers:
    * - Immediate values don't care about the env, so we ignore those.
    * - Cexprs are only interesting in the `CIf` case, since this case
    *   contains two Aexprs.
@@ -467,39 +463,32 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
        Note that whenever we recursively call helpA, we need to increment the stack index. 
   
    *)
-  (* Given a list of expressions to examine, passes the *)
-  let rec accumulate_envs aexprs base_env si =
-    List.fold_left (fun (acc_env, _) aexp -> helpA aexp acc_env (si + 1)) (base_env, si) aexprs
-  and helpD decls env si =
+  let rec helpD decls env si =
     (* Every function arg is located at the same place relative to the function.
      * (i.e. either in an arg, or below RBP.)
      * Therefore, we decided to encode these in the environment as well.
      *)
     List.concat_map
       (fun (ADFun (_, args, body, _)) ->
-        let m = List.length args in
-        let first_six, more_args = split_at args 6 in
-        let more_args_env = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) more_args in
-        let arg_regs, _ = split_at first_six_args_registers m in
-        let first_six_args_env = List.map2 (fun arg reg -> (arg, Reg reg)) first_six arg_regs in
-        let body_env, _ = helpA body env si in
-        first_six_args_env @ more_args_env @ body_env )
+        let body_env = helpA body env (si + 1) in
+        let args_env = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) args in
+        args_env @ body_env)
       decls
-  and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt * int =
+  and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt =
     match cexp with
-    | CIf (c, thn, els, _) -> accumulate_envs [thn; els] env si
-    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ -> (env, si)
-  and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt * int =
+    | CIf (c, thn, els, _) -> (helpA thn env (si)) @ (helpA els env (si))
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ -> env
+  and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt =
     match aexp with
     | ALet (id, bound, body, _) ->
         let offset = (id, si_to_arg si) in
-        let bound_offset, bound_si = helpC bound env si in
-        let body_offset, body_si = helpA body env (si + 1) in
-        ((offset :: bound_offset) @ body_offset, body_si)
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        (offset :: bound_offset) @ body_offset
     | ACExpr cexp -> helpC cexp env si
   in
   let decls_env = helpD decls [] 0 in
-  let body_env, _ = helpA body decls_env 0 in
+  let body_env= helpA body decls_env 0 in
   (* We were rather sloppy with the process of adding to the environment,
    * so we just remove the duplicates in O(n^2) time at the end.
    *)
@@ -638,52 +627,7 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END or#%d   -------------" t) ]
 ;;
 
-(* let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list =
-   (* We need to handle our caller-save registers here, and set up the args. *)
-   let m = List.length args in
-   let first_six, more_args = split_at args 6 in
-   let more_args_offsets = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) more_args in
-   (* 1. Store caller-save registers on the stack. *)
-   (* Note that we do this for all of them, even m < 6. *)
-   List.rev_map (fun r -> IPush (Reg r)) first_six_args_registers
-   (* 2. Push stack args *)
-   @ (List.rev_map (fun (a, _) -> IPush (find env a))) more_args_offsets
-   (* 3. Move arguments into register args *)
-   @ List.map2 (fun a r -> IMov (Reg r, find env a)) first_six first_six_args_registers
-   (* 4. Store stack args - This was taken care of in step 2*)
-   (* 5. Actually call the function *)
-   @ [ICall fun_name]
-   (* 6. Pop the stack args *)
-   @ ( if m > 6 then
-         [IAdd (Reg RSP, Const (Int64.of_int (8 * (m - 6))))]
-       else
-         [] )
-   (* 7. Restore caller-save registers *)
-   @ List.map (fun r -> IPop (Reg r)) first_six_args_registers *)
-
-let rec compile_fun (fun_name : string) (args : arg list) (env : arg envt) : instruction list =
-  (* We need to handle our caller-save registers here, and set up the args. *)
-  let m = List.length args in
-  let first_six_args, more_args = split_at args 6 in
-  let arg_regs, _ = split_at first_six_args_registers m in
-  (* let more_args_offsets = List.mapi (fun i _ -> RegOffset (i + 1, RBP)) more_args in *)
-  (* 1. Store caller-save registers on the stack. *)
-  (* Note that we do this for all of them, even m < 6. *)
-  List.rev_map (fun r -> IPush (Reg r)) first_six_args_registers
-  (* 2. Push stack args *)
-  @ List.rev_map (fun a -> IPush a) more_args
-  (* 3. Move arguments into register args *)
-  @ List.map2 (fun r a -> IMov (Reg r, a)) arg_regs first_six_args
-  (* 4. Store stack args - This was taken care of in step 2*)
-  (* 5. Actually call the function *)
-  @ [ICall fun_name]
-  (* 6. Pop the stack args *)
-  @ ( if m > 6 then
-        [IAdd (Reg RSP, Const (Int64.of_int (8 * (m - 6))))]
-      else
-        [] )
-  (* 7. Restore caller-save registers *)
-  @ List.map (fun r -> IPop (Reg r)) first_six_args_registers
+let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list = []
 
 and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
@@ -780,7 +724,12 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
             ILabel done_label ] )
   | CApp (fun_name, args, tag) ->
       let arg_regs = List.map (fun a -> compile_imm a env) args in
-      compile_fun fun_name arg_regs env
+      (* We need to handle our caller-save registers here, and set up the args. *)
+      let m = List.length args in
+       List.map (fun a -> IPush a) arg_regs
+      @ [ICall fun_name]
+      @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
+      (* @ List.map (fun r -> IPop (Reg r)) first_six_args_registers *)
 
 and compile_imm e (env : arg envt) =
   match e with
@@ -788,6 +737,13 @@ and compile_imm e (env : arg envt) =
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> find env x
+;;
+
+let compile_decl_2 (d : tag adecl) (env : arg envt) : instruction list =
+  match d with
+  | ADFun (fname, args, body, _) ->
+    compile_fun fname args env
+    @ compile_aexpr body env (List.length args) false
 ;;
 
 let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction list =
@@ -798,12 +754,12 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
    * Step 4: Clean up the stack
    *)
   let m = List.length args in
-  let first_six, more_args = split_at args 6 in
-  let more_args_env = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) more_args in
-  let arg_regs, _ = split_at first_six_args_registers m in
-  let first_six_args_env = List.map2 (fun arg reg -> (arg, Reg reg)) first_six arg_regs in
+  let args_env = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) args in
   let vars = deepest_stack body env in
-  let fun_env = first_six_args_env @ more_args_env @ env in
+  let new_env = args_env @ env in
+  printf "%s: " fname;
+  printf "%d\n" vars;
+  List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) new_env;
   let stack_size =
     Int64.of_int
       ( 8
@@ -813,9 +769,24 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
       else
         vars )
   in
-  let prelude = [ILabel fname; IPush (Reg RBP); IMov (Reg RBP, Reg RSP); ISub (Reg RSP, Const stack_size)] in
-  let postlude = [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet] in
-  prelude @ compile_aexpr body fun_env m false @ postlude
+  let stack_size = Int64.add stack_size 100L in
+  let stack_setup =
+    [ ILabel fname;
+      ILineComment "==== Stack set-up ====";
+      IPush (Reg RBP);
+      IMov (Reg RBP, Reg RSP);
+      ISub (Reg RSP, Const stack_size);
+      ILineComment "======================" ]
+  in
+  let stack_cleanup =
+    [ ILineComment "=== Stack clean-up ===";
+      IAdd (Reg RSP, Const stack_size);
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RBP);
+      IRet;
+      ILineComment "======================" ]
+  in
+  stack_setup @ compile_aexpr body env m false @ stack_cleanup
 ;;
 
 let runtime_errors =
@@ -837,7 +808,7 @@ let runtime_errors =
 (* as anfed : tag aprogram *)
 let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
   (* OCSH is really just a function... *)
-  let all_decls = decls @ [ADFun ("our_code_starts_here", [ (* no args *) ], body, t)] in
+  let all_decls = decls @ [ADFun ("our_code_starts_here", [], body, t)] in
   let compiled_decls = List.concat_map (fun d -> compile_decl d env) all_decls in
   let prelude = "section .text\nextern error\nextern print\nglobal our_code_starts_here" in
   let as_assembly_string = to_asm (compiled_decls @ runtime_errors) in

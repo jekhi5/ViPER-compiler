@@ -25,12 +25,24 @@ let t_any name value expected = name >:: fun _ -> assert_equal expected value ~p
 
 let tests = []
 
-let rename_tests = [
+let anf_tests = [
+  tanf "prim2_anf" 
+    (Program ([], EPrim2 (Times, (ENumber (8L, 0)), (ENumber (3L, 0)), 0), 0)) 
+    (AProgram (
+      [],
+      ACExpr (CPrim2 (Times, ImmNum (8L, ()), ImmNum (3L, ()), ())),
+      ()
+    ));
+]
+
+let misc_tests = [
   t_any "split1" (split_at [1;2;3;4;5] 3) ([1;2;3], [4;5]);
   t_any "split2" (split_at [1;2;3;4;5] 0) ([], [1;2;3;4;5]);
   t_any "split3" (split_at [1;2;3;4;5] 7) ([1;2;3;4;5], []);
+  t_any "split3" (split_at [1;] 6) ([1;], []);
+  t_any "rd1" (remove_dups [(1,2); (1,2); (1,3); (4, 1); (2, 4)]) [(1,3); (4, 1); (2, 4)];
 ]
 
-let suite = "suite" >::: tests @ rename_tests
+let suite = "suite" >::: tests @ misc_tests @ anf_tests
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
