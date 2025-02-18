@@ -470,13 +470,14 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
      *)
     List.concat_map
       (fun (ADFun (_, args, body, _)) ->
-        let body_env = helpA body env (si) in
-        let args_env = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) args in
+        let body_env = helpA body env (si + 1) in
+        (* Why do we need to add 2 here?? *)
+        let args_env = List.mapi (fun i a -> (a, RegOffset (i + 2, RBP))) args in
         args_env @ body_env)
       decls
   and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt =
     match cexp with
-    | CIf (c, thn, els, _) -> (helpA thn env (si)) @ (helpA els env (si))
+    | CIf (c, thn, els, _) -> (helpA thn env (si + 1)) @ (helpA els env (si + 1))
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ -> env
   and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt =
     match aexp with
@@ -727,7 +728,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       let arg_regs = List.map (fun a -> compile_imm a env) args in
       (* We need to handle our caller-save registers here, and set up the args. *)
       let m = List.length args in
-       List.map (fun a -> IPush a) arg_regs
+       List.rev_map (fun a -> IPush a) arg_regs
       @ [ICall fun_name]
       @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
       (* @ List.map (fun r -> IPop (Reg r)) first_six_args_registers *)
@@ -755,12 +756,11 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
    * Step 4: Clean up the stack
    *)
   let m = List.length args in
-  let args_env = List.mapi (fun i a -> (a, RegOffset (i + 1, RBP))) args in
   let vars = deepest_stack body env in
-  let new_env = args_env @ env in
+  (* let new_env = args_env @ env in *)
   printf "%s: " fname;
   printf "%d\n" vars;
-  List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) new_env;
+  List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) env;
   let stack_size =
     Int64.of_int
       ( 8
