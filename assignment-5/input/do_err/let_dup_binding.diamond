@@ -1,0 +1,3 @@
+let a = 1, a = 2 in a
+;
+The identifier a, redefined

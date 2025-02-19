@@ -1,0 +1,3 @@
+if true: x else: 2
+;
+not in scope

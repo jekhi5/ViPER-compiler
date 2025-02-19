@@ -1,0 +1,5 @@
+def foo(x, y): x
+
+foo(1, 2, 3)
+;
+expected an arity of 2, but received 3 arguments
