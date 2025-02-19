@@ -33,6 +33,14 @@ let anf_tests = [
       ACExpr (CPrim2 (Times, ImmNum (8L, ()), ImmNum (3L, ()), ())),
       ()
     ));
+
+  tanf "decl_first_degree" 
+  (Program (
+    [(DFun 
+      ("foo", 
+      [("x", 0)], 
+      (EId ("x", 0)), 
+      0))], (EApp ("foo", [(ENumber (1L, 0))], 0)), 0)) (AProgram ([], ACExpr (CPrim1 (Not, ImmId ("x", ()), ())), ()))
 ]
 
 let misc_tests = [
