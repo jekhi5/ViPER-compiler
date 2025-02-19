@@ -1,0 +1,19 @@
+def red(x):
+    if x == 0:
+        print(123)
+    else:
+        green(print(x - 1))
+
+def green(x):
+    if x == 0:
+        print(456)
+    else:
+        yellow(print(x - 1))
+
+def yellow(x):
+    if x == 0:
+        print(789)
+    else:
+        red(print(x - 1))
+
+green(10)

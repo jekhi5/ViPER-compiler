@@ -38,27 +38,32 @@ int64_t error(int64_t code, SNAKEVAL bad_val)
 {
   if (code == 1)
   {
-    fprintf(stderr, "comparison expected a number\n");
+    printf("comparison expected a number, got: ");
+    print(bad_val);
   }
   else if (code == 2)
   {
-    fprintf(stderr, "arithmetic expected a number\n");
+    printf("arithmetic expected a number, got: ");
+    print(bad_val);
   }
   else if (code == 3)
   {
-    fprintf(stderr, "logic expected a boolean\n");
+    printf("logic expected a boolean, got: ");
+    print(bad_val);
   }
   else if (code == 4)
   {
-    fprintf(stderr, "if expected a boolean\n");
+    printf("if expected a boolean, got: ");
+    print(bad_val);
   }
   else if (code == 5)
   {
-    fprintf(stderr, "Integer overflow!\n");
+    printf("Integer overflow!, got: ");
+    print(bad_val);
   }
   else
   {
-    fprintf(stderr, "Unknown error code");
+    printf("Unknown error code.\n");
   }
   exit(code);
 }
