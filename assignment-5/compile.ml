@@ -132,7 +132,6 @@ let rec find_one (l : 'a list) (elt : 'a) (comp : 'a -> 'a -> bool) : bool =
   | x :: xs -> elt = x || find_one xs elt comp
 ;;
 
-
 (* Gets a mapping of function names to arity for all functions *)
 let get_decl_env (decls : 'a decl list) : (string * int) list =
   List.map
@@ -175,8 +174,10 @@ let rec desugar (p : 'a program) : 'a program =
 
 let rename (e : tag program) : tag program =
   (* The fun_env parameter lets us distinguish between functions and identifiers. *)
-  let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) (fun_env : (string * string) list) :
-      (string * string) list * tag bind list =
+  let rec rename_bindings
+      (env : (string * string) list)
+      (bindings : tag bind list)
+      (fun_env : (string * string) list) : (string * string) list * tag bind list =
     List.fold_left
       (fun (new_env, renamed_bindings) (id, bound, t) ->
         let renamed_bound = help new_env bound fun_env in
@@ -391,16 +392,15 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
              (fun (seen, exns) ((arg_name, arg_loc) as arg) ->
                match List.find_opt (fun a -> fst a = arg_name) seen with
                | Some (_, orig_loc) -> (seen, DuplicateId (arg_name, arg_loc, orig_loc) :: exns)
-               | None -> 
-                (* Second check: prevent reuse of function names as arguments.
-                  This is not in the spec, but foo(foo) seems weird.
-                  It will only get weirder once we have first-class functions.
-                *)
+               | None -> (
+                 (* Second check: prevent reuse of function names as arguments.
+                    This is not in the spec, but foo(foo) seems weird.
+                    It will only get weirder once we have first-class functions.
+                 *)
                  match find_decl ds arg_name with
                  | Some (DFun (_, _, _, loc_orig)) ->
                      (seen, DuplicateId (arg_name, arg_loc, loc_orig) :: exns)
-                 | None -> 
-                  (arg :: seen, exns) ) 
+                 | None -> (arg :: seen, exns) ) )
              ([ (* argname, loc *) ], [ (* exns *) ])
              args ) )
       ds
@@ -585,12 +585,20 @@ let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
   (* Arithmetic operators *)
   | Plus -> [IMov (Reg scratch_reg, e1); IAdd (Reg RAX, Reg scratch_reg); check_overflow]
   (* Make sure to check for overflow BEFORE shifting on multiplication! *)
-  | Times -> [IMov (Reg scratch_reg, e1); IMul (Reg RAX, Reg scratch_reg); check_overflow; ISar (Reg RAX, Const 1L)]
+  | Times ->
+      [ IMov (Reg scratch_reg, e1);
+        IMul (Reg RAX, Reg scratch_reg);
+        check_overflow;
+        ISar (Reg RAX, Const 1L) ]
   (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
    * while also preserving the order in which our arguments will fail a typecheck.
    * So, `false - true` will fail on `false` every time.
    *)
-  | Minus -> [IMov (Reg scratch_reg, e2); IMov (Reg RAX, e1); ISub (Reg RAX, Reg scratch_reg); check_overflow]
+  | Minus ->
+      [ IMov (Reg scratch_reg, e2);
+        IMov (Reg RAX, e1);
+        ISub (Reg RAX, Reg scratch_reg);
+        check_overflow ]
   (* Comparison operators *)
   | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
 ;;
@@ -607,7 +615,10 @@ let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
     (* In order to handle short-circuiting, we don't look at the second arg until later.
      * This means that `false and 5` will NOT raise a type error.
      *)
-  @ [IMov (Reg scratch_reg, bool_mask); ITest (Reg RAX, Reg scratch_reg); IJz false_label; IMov (Reg RAX, e2)]
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz false_label;
+      IMov (Reg RAX, e2) ]
   @ check_bool not_a_bool_logic_label
   @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
       IMov (Reg scratch_reg, bool_mask);
@@ -634,7 +645,10 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
     (* In order to handle short-circuiting, we don't look at the second arg until later.
      * This means that `true or 5` will NOT raise a type error.
      *)
-  @ [IMov (Reg scratch_reg, bool_mask); ITest (Reg RAX, Reg scratch_reg); IJnz true_label; IMov (Reg RAX, e2)]
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJnz true_label;
+      IMov (Reg RAX, e2) ]
   @ check_bool not_a_bool_logic_label
   @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
       IMov (Reg scratch_reg, bool_mask);
@@ -654,13 +668,13 @@ let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : 
    * Ben implied that it is for compiling declarations on Piazza, but we already have compile_decl.
    * We share the confusion of Amanda's follow-up in that thread.
    * So, we left this a stub. Can you please fill us in in the grading comments?
-  *)
+   *)
   []
 
 and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
   (* We also didn't understand why these functions need to take a num_args parameter. 
-   * Is this to handle the mapping of arguments to memory locations if we didn't do that when building the environment?  *)
+   * Is this to handle the mapping of arguments to memory locations if we didn't do that when building the environment? *)
   match e with
   | ALet (id, bound, body, t) ->
       let prelude = compile_cexpr bound env num_args (* TODO: Come back to this number *) false in
@@ -671,7 +685,8 @@ and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : b
 
 and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : bool) =
   match e with
-  | CImmExpr immexp -> [IMov (Reg scratch_reg, compile_imm immexp env); IMov (Reg RAX, Reg scratch_reg)]
+  | CImmExpr immexp ->
+      [IMov (Reg scratch_reg, compile_imm immexp env); IMov (Reg RAX, Reg scratch_reg)]
   | CIf (cond, thn, els, t) ->
       let else_label = sprintf "if_else#%d" t in
       let done_label = sprintf "if_done#%d" t in
@@ -757,7 +772,8 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       let arg_regs = List.map (fun a -> compile_imm a env) args in
       (* We need to handle our caller-save registers here, and set up the args. *)
       let m = List.length args in
-      List.concat (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
+      List.concat
+        (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
       @ [ICall fun_name]
       @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
 

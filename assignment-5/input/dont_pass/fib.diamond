@@ -1,0 +1,17 @@
+# Found this at the last minute.
+# Not sure why this segfaults.
+def fib(n):
+    if n <= 0 || n == 1:
+        1
+    else:
+        fib(n - 1) + fib(n - 2)
+
+let
+    a = print(fib(1)),
+    b = print(fib(2)),
+    c = print(fib(3)),
+    d = print(fib(4)),
+    e = print(fib(5)),
+    f = print(fib(6))
+in
+    0
