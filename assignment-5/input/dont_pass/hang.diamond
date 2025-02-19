@@ -1,0 +1,7 @@
+# This will overflow the stack, causing a segfault.
+# We are really not sure how to detect this in compile.ml.
+# It errors, but not the right way...
+def poison(x):
+    print(1 + poison(x))
+
+poison(1)
