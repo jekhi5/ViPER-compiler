@@ -1,0 +1,8 @@
+def foo(x, y):
+    let 
+        x = 1,
+        y = 2
+    in
+    x + y
+
+foo(5, 10)

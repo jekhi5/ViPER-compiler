@@ -7,7 +7,11 @@ open Errors
 
 type 'a envt = (string * 'a) list
 
-(* Note: We reverted the definition of a RegOffset *)
+(* Note 1: We reverted the definition of a RegOffset to be in terms of words.
+ * We modified a few things inside of assembly.ml.
+ *)
+
+(* Note 2: Our tests include most of our tests from Cobra, to ensure that we didn't break anything. *)
 
 (* No longer relevant for us... *)
 let rec is_anf (e : 'a expr) : bool =
@@ -63,6 +67,8 @@ let overflow_label = "error_overflow"
 let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 let scratch_reg = R11
+
+let word_size = 8
 
 (* You may find some of these helpers useful *)
 let rec find ls x =
@@ -464,7 +470,10 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
    * - Aexprs are where the main logic happens, since that is where we make new bindings.
        We convert the stack index to a RegOffset, then look at the bound expr, then the body.
        Note that whenever we recursively call helpA, we need to increment the stack index. 
-  
+   *
+   * For Decls: 
+   * - We decided to store function arguments here, to avoid doing it elsewhere.
+       This is against the assignment's instructions, but it made more sense to us that way.
    *)
   let rec helpD decls env si =
     (* Every function arg is located at the same place relative to the function.
@@ -474,7 +483,7 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
     List.concat_map
       (fun (ADFun (_, args, body, _)) ->
         let body_env = helpA body env (si + 1) in
-        (* Why do we need to add 2 here?? *)
+        (* Why do we need to add 2 here? *)
         (*  +0   | RBP 
          *  +1   | Return Address
          *  +2   | Argument 1
@@ -530,6 +539,8 @@ let check_num (goto : string) : instruction list =
 
 let check_overflow = IJo overflow_label
 
+(* Note: compile_cexpr helpers are directly copied from the previous assignment.  *)
+
 (* Helper for numeric comparisons *)
 let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   (* Move the first arg into RAX so we can type-check it. *)
@@ -584,7 +595,7 @@ let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
   | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
 ;;
 
-(* Helper for boolean and. *)
+(* Helper for boolean and *)
 let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   let true_label = sprintf "true#%d" t in
   let false_label = sprintf "false#%d" t in
@@ -611,6 +622,7 @@ let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END and#%d   -------------" t) ]
 ;;
 
+(* Helper for boolean or *)
 let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   let true_label = sprintf "true#%d" t in
   let false_label = sprintf "false#%d" t in
@@ -638,10 +650,17 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
 ;;
 
 let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list =
+  (* We really don't know why this function was necessary, at least with its current signature.
+   * Ben implied that it is for compiling declarations on Piazza, but we already have compile_decl.
+   * We share the confusion of Amanda's follow-up in that thread.
+   * So, we left this a stub. Can you please fill us in in the grading comments?
+  *)
   []
 
 and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
+  (* We also didn't understand why these functions need to take a num_args parameter. 
+   * Is this to handle the mapping of arguments to memory locations if we didn't do that when building the environment?  *)
   match e with
   | ALet (id, bound, body, t) ->
       let prelude = compile_cexpr bound env num_args (* TODO: Come back to this number *) false in
@@ -741,7 +760,6 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       List.concat (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
       @ [ICall fun_name]
       @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
-(* @ List.map (fun r -> IPop (Reg r)) first_six_args_registers *)
 
 and compile_imm e (env : arg envt) =
   match e with
@@ -766,10 +784,6 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
    *)
   let m = List.length args in
   let vars = deepest_stack body env in
-  (* let new_env = args_env @ env in *)
-  (* printf "%s: " fname;
-     printf "%d\n" vars;
-     List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) env; *)
   let stack_size =
     Int64.of_int
       ( 8
@@ -779,7 +793,6 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
       else
         vars )
   in
-  (* let stack_size = Int64.add stack_size 100L in *)
   let stack_setup =
     [ ILabel fname;
       ILineComment "==== Stack set-up ====";
