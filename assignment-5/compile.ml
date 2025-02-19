@@ -7,6 +7,9 @@ open Errors
 
 type 'a envt = (string * 'a) list
 
+(* Note: We reverted the definition of a RegOffset *)
+
+(* No longer relevant for us... *)
 let rec is_anf (e : 'a expr) : bool =
   match e with
   | EPrim1 (_, e, _) -> is_imm e
@@ -123,25 +126,6 @@ let rec find_one (l : 'a list) (elt : 'a) (comp : 'a -> 'a -> bool) : bool =
   | x :: xs -> elt = x || find_one xs elt comp
 ;;
 
-let rec find_dup (l : 'a list) (comp : 'a -> 'a -> bool) : 'a option =
-  match l with
-  | [] | [_] -> None
-  | x :: xs ->
-      if find_one xs x comp then
-        Some x
-      else
-        find_dup xs comp
-;;
-
-let rec find_all_dups (l : 'a list) (comp : 'a -> 'a -> bool) : 'a list =
-  match l with
-  | [] | [_] -> []
-  | x :: xs ->
-      if find_one xs x comp then
-        x :: find_all_dups xs comp
-      else
-        find_all_dups xs comp
-;;
 
 (* Gets a mapping of function names to arity for all functions *)
 let get_decl_env (decls : 'a decl list) : (string * int) list =
@@ -154,6 +138,7 @@ let get_decl_env (decls : 'a decl list) : (string * int) list =
 
 (* Similar to Racket `split-at`,
  * except that it doesn't raise an error if the list is too short. 
+ * This would have been used to handle the first six args...
  *)
 let rec split_at (lst : 'a list) (pos : int) : 'a list * 'a list =
   match (lst, pos) with
@@ -166,6 +151,7 @@ let rec split_at (lst : 'a list) (pos : int) : 'a list * 'a list =
 
 (* IMPLEMENT EVERYTHING BELOW *)
 
+(* Convert a Let with multiple bindings into multiple Lets with one binding. *)
 let rec desugar (p : 'a program) : 'a program =
   let rec helpE e =
     match e with
@@ -182,18 +168,19 @@ let rec desugar (p : 'a program) : 'a program =
 ;;
 
 let rename (e : tag program) : tag program =
-  let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) :
+  (* The fun_env parameter lets us distinguish between functions and identifiers. *)
+  let rec rename_bindings (env : (string * string) list) (bindings : tag bind list) (fun_env : (string * string) list) :
       (string * string) list * tag bind list =
     List.fold_left
       (fun (new_env, renamed_bindings) (id, bound, t) ->
-        let renamed_bound = help new_env bound in
+        let renamed_bound = help new_env bound fun_env in
         (* rename e consistently *)
         let renamed_id = sprintf "%s#%d" id t in
         (* create new unique name for x *)
         let renamed_binding = (renamed_id, renamed_bound, t) in
         ((id, renamed_id) :: new_env, renamed_bindings @ [renamed_binding]) )
       (env, []) bindings
-  and help (env : (string * string) list) (e : tag expr) =
+  and help (env : (string * string) list) (e : tag expr) (fun_env : (string * string) list) =
     match e with
     | EId (x, t) ->
         (* Lookup x in the environment and replace it with the environment's renamed version.
@@ -202,24 +189,25 @@ let rename (e : tag program) : tag program =
         EId (List.assoc x env, t)
     | ELet (bindings, body, tag) ->
         (* "Extend env by renaming each binding in binds, then rename the expressions and body" *)
-        let new_env, renamed_bindings = rename_bindings env bindings in
-        let renamed_body = help new_env body in
+        let new_env, renamed_bindings = rename_bindings env bindings fun_env in
+        let renamed_body = help new_env body fun_env in
         ELet (renamed_bindings, renamed_body, tag)
     | EApp (fname, params, t) ->
         (* Should this be renamed, or should it be looked-up? *)
-        let renamed_fname = List.assoc fname env in
+        let renamed_fname = List.assoc fname fun_env in
+        (* let renamed_fname = (string) in *)
         (* let renamed_fname = sprintf "%s#%d" fname t in *)
         (* Since this is an _application_, 
          * none of the parameters are within the scope of any other.
          * Ergo, we give them all the same environment to work with. 
          *)
-        let renamed_params = List.map (fun p -> help env p) params in
+        let renamed_params = List.map (fun p -> help env p fun_env) params in
         EApp (renamed_fname, renamed_params, t)
     (* Less interesting cases... *)
     | ENumber (_, _) -> e
-    | EPrim1 (op, a, t) -> EPrim1 (op, help env a, t)
-    | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a, help env b, t)
-    | EIf (c, t, f, ta) -> EIf (help env c, help env t, help env f, ta)
+    | EPrim1 (op, a, t) -> EPrim1 (op, help env a fun_env, t)
+    | EPrim2 (op, a, b, t) -> EPrim2 (op, help env a fun_env, help env b fun_env, t)
+    | EIf (c, t, f, ta) -> EIf (help env c fun_env, help env t fun_env, help env f fun_env, ta)
     | EBool _ -> e
   and helpD (env : (string * string) list) (d : tag decl) : tag decl =
     (* Step 1: rename the function by looking it up in the environment *)
@@ -235,7 +223,7 @@ let rename (e : tag program) : tag program =
               (acc_env @ [(arg_name, fst renamed_arg)], acc_args @ [renamed_arg]) )
             (env, []) args
         in
-        let renamed_body = help decl_env body in
+        let renamed_body = help decl_env body decl_env in
         DFun (renamed_name, renamed_args, renamed_body, t)
   and helpP p =
     (* Step 1: put all function names in the environmnet *)
@@ -251,7 +239,7 @@ let rename (e : tag program) : tag program =
               | DFun (name, _, _, t) -> (name, sprintf "%s#%d" name t) )
             decls
         in
-        Program (List.map (helpD decl_env) decls, help decl_env body, t)
+        Program (List.map (helpD decl_env) decls, help decl_env body decl_env, t)
   in
   helpP e
 ;;
@@ -268,13 +256,11 @@ let anf (p : tag program) : unit aprogram =
     | EPrim1 (op, arg, _) ->
         let arg_imm, arg_setup = helpI arg in
         (CPrim1 (op, arg_imm, ()), arg_setup)
-    (* And and Or are sugary. We turn them into CIfs so that CPrim2s don't need to short-circuit. *)
-    | EPrim2 (And, left, right, _) ->
-        let left_imm, left_setup = helpI left in
-        (CIf (left_imm, helpA right, helpA left, ()), left_setup)
-    | EPrim2 (Or, left, right, _) ->
-        let left_imm, left_setup = helpI left in
-        (CIf (left_imm, helpA left, helpA right, ()), left_setup)
+    (* NOTE:
+     * We could desugar And and Or here by converting them into Ifs.
+     * This would be the ideal strategy, and would reduce code duplication later.
+     * Unfortunately, we ran out of time to implement that here.
+     *)
     | EPrim2 (op, left, right, _) ->
         let left_imm, left_setup = helpI left in
         let right_imm, right_setup = helpI right in
@@ -289,7 +275,7 @@ let anf (p : tag program) : unit aprogram =
         (body_ans, exp_setup @ [(bind, exp_ans)] @ body_setup)
     | EApp (funname, args, _) ->
         let args_imm, args_setups = List.split (List.map helpI args) in
-        (CApp (funname, args_imm, ()), (List.concat args_setups))
+        (CApp (funname, args_imm, ()), List.concat args_setups)
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -340,9 +326,81 @@ let anf (p : tag program) : unit aprogram =
   helpP p
 ;;
 
+(* Begin a suite of checks for well-formedness. *)
+
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
-  let rec wf_E (e : sourcespan expr) (id_env : string list) (decl_env : (string * int) list) :
-      exn list =
+  (* BEGIN EXPR CHECKS *)
+  (* Check for duplicate bindings *)
+  let rec check_dup_binding binds body =
+    List.fold_left
+      (fun (seen, exns) ((name, _, loc) as binding) ->
+        match List.find_opt (fun (a, _, _) -> a = name) seen with
+        | Some (_, _, orig_loc) -> (seen, DuplicateId (name, loc, orig_loc) :: exns)
+        | None -> (binding :: seen, exns) )
+      ([ (* name, body, loc *) ], [ (* exns *) ])
+      binds
+  (* Check scope in each binding body *)
+  and check_scope binds body id_env decl_env =
+    (* Each bound body is allowed to use the names of  all previous, bindings *)
+    List.fold_left
+      (fun (let_env, exns) (id, body, _) -> (id :: let_env, wf_E body let_env decl_env @ exns))
+      (id_env, []) binds
+  and check_fun_errors funname args loc decl_env =
+    let unbound_fun_error =
+      if find_one (fst @@ List.split @@ decl_env) funname ( = ) then
+        []
+      else
+        [UnboundFun (funname, loc)]
+    in
+    if unbound_fun_error = [] then
+      (* We made sure that the function name is in the `decl_env` above, so `List.assoc` will not error *)
+      let expected_arity = List.assoc funname decl_env in
+      let given_arity = List.length args in
+      if given_arity = expected_arity then
+        []
+      else
+        [Arity (expected_arity, given_arity, loc)]
+    else
+      []
+  (* END EXPR CHECKS *)
+  (* BEGIN DECL CHECKS *)
+  (* Check for duplicate function names *)
+  and check_dup_fnames ds decl_env =
+    List.fold_left
+      (fun (seen, exns) (DFun (fname, _, _, loc) as d) ->
+        (* Look in the environment. If the function name exists, duplicate that. *)
+        let dup = find_decl seen fname in
+        match dup with
+        | Some (DFun (_, _, _, loc_orig)) -> (seen, DuplicateFun (fname, loc, loc_orig) :: exns)
+        | None -> (d :: seen, exns) )
+      ([ (* seen decls list *) ], [ (* exns list *) ])
+      ds
+  and check_dup_args ds decl_env =
+    List.concat_map
+      (fun (DFun (_, args, _, _)) ->
+        (* This one has a fold _inside_ of the map, 
+         * so we need to discard the irrelevant acc value earlier than the prior case. *)
+        snd
+          (List.fold_left
+             (fun (seen, exns) ((arg_name, arg_loc) as arg) ->
+               match List.find_opt (fun a -> fst a = arg_name) seen with
+               | Some (_, orig_loc) -> (seen, DuplicateId (arg_name, arg_loc, orig_loc) :: exns)
+               | None -> 
+                (* Second check: prevent reuse of function names as arguments.
+                  This is not in the spec, but foo(foo) seems weird.
+                  It will only get weirder once we have first-class functions.
+                *)
+                 match find_decl ds arg_name with
+                 | Some (DFun (_, _, _, loc_orig)) ->
+                     (seen, DuplicateId (arg_name, arg_loc, loc_orig) :: exns)
+                 | None -> 
+                  (arg :: seen, exns) ) 
+             ([ (* argname, loc *) ], [ (* exns *) ])
+             args ) )
+      ds
+  (* END DECL CHECKS *)
+  and wf_E (e : sourcespan expr) (id_env : string list) (decl_env : (string * int) list) : exn list
+      =
     match e with
     | EBool _ -> []
     | ENumber _ -> []
@@ -355,74 +413,18 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | EPrim2 (_, l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
     | EIf (c, t, f, _) -> wf_E c id_env decl_env @ wf_E t id_env decl_env @ wf_E f id_env decl_env
     | ELet (binds, body, _) ->
-        (* Pass 1: Check for duplicate bindings *)
-        let _, dup_bind_exns =
-          List.fold_left
-            (fun (seen, exns) ((name, _, loc) as binding) ->
-              match List.find_opt (fun (a, _, _) -> a = name) seen with
-              | Some (_, _, orig_loc) -> (seen, DuplicateId (name, loc, orig_loc) :: exns)
-              | None -> (binding :: seen, exns) )
-            ([ (* name, body, loc *) ], [ (* exns *) ])
-            binds
-        in
-        (* Pass 2: Check scope in each binding body *)
-        let _, bind_body_exns =
-          (* Each bound body is allowed to use the names of  all previous, bindings *)
-          List.fold_left
-            (fun (let_env, exns) (id, body, _) -> (id :: let_env, wf_E body let_env decl_env @ exns))
-            (id_env, []) binds
-        in
+        let _, dup_bind_exns = check_dup_binding binds body in
+        let _, bind_body_exns = check_scope binds body id_env decl_env in
         (* Pass 3: Check scope in the let body *)
         let let_body_exns = wf_E body (List.map (fun (id, _, _) -> id) binds @ id_env) decl_env in
         dup_bind_exns @ bind_body_exns @ let_body_exns
-    | EApp (funname, args, loc) ->
-        let unbound_fun_error =
-          if find_one (fst @@ List.split @@ decl_env) funname ( = ) then
-            []
-          else
-            [UnboundFun (funname, loc)]
-        in
-        if unbound_fun_error = [] then
-          (* We made sure that the function name is in the `decl_env` above, so `List.assoc` will not error *)
-          let expected_arity = List.assoc funname decl_env in
-          let given_arity = List.length args in
-          if given_arity = expected_arity then
-            []
-          else
-            [Arity (expected_arity, given_arity, loc)]
-        else
-          []
+    | EApp (funname, args, loc) -> check_fun_errors funname args loc decl_env
   and wf_D (ds : 'a decl list) (decl_env : (string * int) list) : exn list =
     (* Pass 1: *)
-    (* Duplicate function name *)
-    let _, dup_fname_exns =
-      List.fold_left
-        (fun (seen, exns) (DFun (fname, _, _, loc) as d) ->
-          (* Look in the environment. If the function name exists, duplicate that. *)
-          let dup = find_decl seen fname in
-          match dup with
-          | Some (DFun (_, _, _, loc_orig)) -> (seen, DuplicateFun (fname, loc, loc_orig) :: exns)
-          | None -> (d :: seen, exns) )
-        ([ (* seen decls list *) ], [ (* exns list *) ])
-        ds
-    in
-    let dup_arg_exns =
-      List.concat_map
-        (fun (DFun (_, args, _, _)) ->
-          (* This one has a fold _inside_ of the map, 
-           * so we need to discard the irrelevant acc value earlier than the prior case. *)
-          snd
-            (List.fold_left
-               (fun (seen, exns) ((arg_name, arg_loc) as arg) ->
-                 match List.find_opt (fun a -> fst a = arg_name) seen with
-                 | Some (_, orig_loc) -> (seen, DuplicateId (arg_name, arg_loc, orig_loc) :: exns)
-                 | None -> (arg :: seen, exns) )
-               ([ (* argname, loc *) ], [ (* exns *) ])
-               args ) )
-        ds
-      (* Pass 2: *)
-      (* Check well-formedness of all decl bodies, using the decl environment. *)
-    in
+    let _, dup_fname_exns = check_dup_fnames ds decl_env in
+    let dup_arg_exns = check_dup_args ds decl_env in
+    (* Pass 2: *)
+    (* Check well-formedness of all decl bodies, using the decl environment. *)
     let decl_body_exns =
       List.concat_map (fun (DFun (_, args, body, _)) -> wf_E body (List.map fst args) decl_env) ds
     in
@@ -439,12 +441,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       | _ -> Error total_errors )
 ;;
 
+(* Convert a stack index into a RegOffset *)
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
 
 let remove_dups (lst : 'a list) : 'a list =
   List.fold_right
     (fun x acc ->
-      if List.exists (fun e ->( fst e = fst x)) acc then
+      if List.exists (fun e -> fst e = fst x) acc then
         acc
       else
         x :: acc )
@@ -479,11 +482,11 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
          *  +n+2 | Argument n
          *)
         let args_env = List.mapi (fun i a -> (a, RegOffset (i + 2, RBP))) args in
-        args_env @ body_env)
+        args_env @ body_env )
       decls
   and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt =
     match cexp with
-    | CIf (c, thn, els, _) -> (helpA thn env (si + 0)) @ (helpA els env (si + 0))
+    | CIf (c, thn, els, _) -> helpA thn env (si + 0) @ helpA els env (si + 0)
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ -> env
   and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt =
     match aexp with
@@ -495,7 +498,7 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
     | ACExpr cexp -> helpC cexp env si
   in
   let decls_env = helpD decls [] 1 in
-  let body_env= helpA body decls_env 1 in
+  let body_env = helpA body decls_env 1 in
   (* We were rather sloppy with the process of adding to the environment,
    * so we just remove the duplicates in O(n^2) time at the end.
    *)
@@ -517,12 +520,12 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
 (* We could check a parameterized register, but that creates complexity in reporting the error. *)
 (* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
 let check_bool (goto : string) : instruction list =
-  [IMov (Reg R11, HexConst num_tag_mask); ITest (Reg RAX, Reg R11); IJz goto]
+  [IMov (Reg scratch_reg, HexConst num_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJz goto]
 ;;
 
 (* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
 let check_num (goto : string) : instruction list =
-  [IMov (Reg R11, HexConst num_tag_mask); ITest (Reg RAX, Reg R11); IJnz goto]
+  [IMov (Reg scratch_reg, HexConst num_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJnz goto]
 ;;
 
 let check_overflow = IJo overflow_label
@@ -548,8 +551,8 @@ let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction lis
   @ [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
       IMov (Reg RAX, e1);
       (* cmp is weird and breaks if we don't use a temp register... *)
-      IMov (Reg R11, e2);
-      ICmp (Reg RAX, Reg R11);
+      IMov (Reg scratch_reg, e2);
+      ICmp (Reg RAX, Reg scratch_reg);
       jump;
       IMov (Reg RAX, const_false);
       IJmp comp_done_label;
@@ -569,14 +572,14 @@ let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
   @
   match op with
   (* Arithmetic operators *)
-  | Plus -> [IMov (Reg R11, e1); IAdd (Reg RAX, Reg R11); check_overflow]
+  | Plus -> [IMov (Reg scratch_reg, e1); IAdd (Reg RAX, Reg scratch_reg); check_overflow]
   (* Make sure to check for overflow BEFORE shifting on multiplication! *)
-  | Times -> [IMov (Reg R11, e1); IMul (Reg RAX, Reg R11); check_overflow; ISar (Reg RAX, Const 1L)]
+  | Times -> [IMov (Reg scratch_reg, e1); IMul (Reg RAX, Reg scratch_reg); check_overflow; ISar (Reg RAX, Const 1L)]
   (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
    * while also preserving the order in which our arguments will fail a typecheck.
    * So, `false - true` will fail on `false` every time.
    *)
-  | Minus -> [IMov (Reg R11, e2); IMov (Reg RAX, e1); ISub (Reg RAX, Reg R11); check_overflow]
+  | Minus -> [IMov (Reg scratch_reg, e2); IMov (Reg RAX, e1); ISub (Reg RAX, Reg scratch_reg); check_overflow]
   (* Comparison operators *)
   | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
 ;;
@@ -593,11 +596,11 @@ let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
     (* In order to handle short-circuiting, we don't look at the second arg until later.
      * This means that `false and 5` will NOT raise a type error.
      *)
-  @ [IMov (Reg R11, bool_mask); ITest (Reg RAX, Reg R11); IJz false_label; IMov (Reg RAX, e2)]
+  @ [IMov (Reg scratch_reg, bool_mask); ITest (Reg RAX, Reg scratch_reg); IJz false_label; IMov (Reg RAX, e2)]
   @ check_bool not_a_bool_logic_label
-  @ [ (* Need to re-set R11 since it gets changed in check_bool.*)
-      IMov (Reg R11, bool_mask);
-      ITest (Reg RAX, Reg R11);
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
       IJz false_label;
       ILabel true_label;
       IMov (Reg RAX, const_true);
@@ -619,11 +622,11 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
     (* In order to handle short-circuiting, we don't look at the second arg until later.
      * This means that `true or 5` will NOT raise a type error.
      *)
-  @ [IMov (Reg R11, bool_mask); ITest (Reg RAX, Reg R11); IJnz true_label; IMov (Reg RAX, e2)]
+  @ [IMov (Reg scratch_reg, bool_mask); ITest (Reg RAX, Reg scratch_reg); IJnz true_label; IMov (Reg RAX, e2)]
   @ check_bool not_a_bool_logic_label
-  @ [ (* Need to re-set R11 since it gets changed in check_bool.*)
-      IMov (Reg R11, bool_mask);
-      ITest (Reg RAX, Reg R11);
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
       IJnz true_label;
       ILabel false_label;
       IMov (Reg RAX, const_false);
@@ -634,7 +637,8 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END or#%d   -------------" t) ]
 ;;
 
-let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list = []
+let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list =
+  []
 
 and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
@@ -648,15 +652,15 @@ and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : b
 
 and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : bool) =
   match e with
-  | CImmExpr immexp -> [IMov (Reg R11, compile_imm immexp env); IMov (Reg RAX, Reg R11)]
+  | CImmExpr immexp -> [IMov (Reg scratch_reg, compile_imm immexp env); IMov (Reg RAX, Reg scratch_reg)]
   | CIf (cond, thn, els, t) ->
       let else_label = sprintf "if_else#%d" t in
       let done_label = sprintf "if_done#%d" t in
       (let cond_reg = compile_imm cond env in
        [ILineComment (sprintf "BEGIN conditional#%d   -------------" t); IMov (Reg RAX, cond_reg)]
        @ check_bool not_a_bool_if_label
-       @ [ IMov (Reg R11, bool_mask);
-           ITest (Reg RAX, Reg R11);
+       @ [ IMov (Reg scratch_reg, bool_mask);
+           ITest (Reg RAX, Reg scratch_reg);
            IJz else_label;
            ILineComment "  Then case:" ]
        @ compile_aexpr thn env num_args is_tail
@@ -675,7 +679,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       (* `xor` can't take a 64-bit literal, *)
       | Not ->
           (IMov (Reg RAX, e_reg) :: check_bool not_a_bool_logic_label)
-          @ [IMov (Reg R11, bool_mask); IXor (Reg RAX, Reg R11)]
+          @ [IMov (Reg scratch_reg, bool_mask); IXor (Reg RAX, Reg scratch_reg)]
       | IsBool ->
           let false_label = sprintf "is_bool_false#%d" t in
           let done_label = sprintf "is_bool_done#%d" t in
@@ -722,8 +726,8 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           let done_label = sprintf "equal_done#%d" t in
           (* No typechecking for Eq. We can just see if the two values are equivalent. *)
           [ IMov (Reg RAX, e1_reg);
-            IMov (Reg R11, e2_reg);
-            ICmp (Reg RAX, Reg R11);
+            IMov (Reg scratch_reg, e2_reg);
+            ICmp (Reg RAX, Reg scratch_reg);
             IJe true_label;
             IMov (Reg RAX, const_false);
             IJmp done_label;
@@ -734,10 +738,10 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       let arg_regs = List.map (fun a -> compile_imm a env) args in
       (* We need to handle our caller-save registers here, and set up the args. *)
       let m = List.length args in
-       List.rev_map (fun a -> IPush a) arg_regs
+      List.concat (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
       @ [ICall fun_name]
       @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
-      (* @ List.map (fun r -> IPop (Reg r)) first_six_args_registers *)
+(* @ List.map (fun r -> IPop (Reg r)) first_six_args_registers *)
 
 and compile_imm e (env : arg envt) =
   match e with
@@ -750,8 +754,7 @@ and compile_imm e (env : arg envt) =
 let compile_decl_2 (d : tag adecl) (env : arg envt) : instruction list =
   match d with
   | ADFun (fname, args, body, _) ->
-    compile_fun fname args env
-    @ compile_aexpr body env (List.length args) false
+      compile_fun fname args env @ compile_aexpr body env (List.length args) false
 ;;
 
 let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction list =
@@ -765,8 +768,8 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
   let vars = deepest_stack body env in
   (* let new_env = args_env @ env in *)
   (* printf "%s: " fname;
-  printf "%d\n" vars;
-  List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) env; *)
+     printf "%d\n" vars;
+     List.iter (fun (a, b) -> printf "%s => %s\n" a (arg_to_asm b)) env; *)
   let stack_size =
     Int64.of_int
       ( 8
