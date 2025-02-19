@@ -40,7 +40,10 @@ let anf_tests = [
       ("foo", 
       [("x", 0)], 
       (EId ("x", 0)), 
-      0))], (EApp ("foo", [(ENumber (1L, 0))], 0)), 0)) (AProgram ([], ACExpr (CPrim1 (Not, ImmId ("x", ()), ())), ()))
+      0))], (EApp ("foo", [(ENumber (1L, 0))], 0)), 0))
+  (AProgram ([
+    (ADFun ("foo", ["x"], (ACExpr (CImmExpr (ImmId ("x", ())))), ()))
+  ], ACExpr (CApp ("foo", [ImmNum (1L, ())], ())), ()))
 ]
 
 let misc_tests = [
