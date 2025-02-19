@@ -1,5 +1,5 @@
 open Printf
-open Pretty
+(* open Pretty *)
 open Phases
 open Exprs
 open Assembly
@@ -157,7 +157,7 @@ let rec split_at (lst : 'a list) (pos : int) : 'a list * 'a list =
 (* IMPLEMENT EVERYTHING BELOW *)
 
 (* Convert a Let with multiple bindings into multiple Lets with one binding. *)
-let rec desugar (p : 'a program) : 'a program =
+let desugar (p : 'a program) : 'a program =
   let rec helpE e =
     match e with
     | ELet (binding :: rest_bindings, body, a) ->
@@ -338,7 +338,7 @@ let anf (p : tag program) : unit aprogram =
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   (* BEGIN EXPR CHECKS *)
   (* Check for duplicate bindings *)
-  let rec check_dup_binding binds body =
+  let rec check_dup_binding binds _ =
     List.fold_left
       (fun (seen, exns) ((name, _, loc) as binding) ->
         match List.find_opt (fun (a, _, _) -> a = name) seen with
@@ -347,7 +347,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       ([ (* name, body, loc *) ], [ (* exns *) ])
       binds
   (* Check scope in each binding body *)
-  and check_scope binds body id_env decl_env =
+  and check_scope binds _ id_env decl_env =
     (* Each bound body is allowed to use the names of  all previous, bindings *)
     List.fold_left
       (fun (let_env, exns) (id, body, _) -> (id :: let_env, wf_E body let_env decl_env @ exns))
@@ -372,7 +372,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   (* END EXPR CHECKS *)
   (* BEGIN DECL CHECKS *)
   (* Check for duplicate function names *)
-  and check_dup_fnames ds decl_env =
+  and check_dup_fnames ds _ =
     List.fold_left
       (fun (seen, exns) (DFun (fname, _, _, loc) as d) ->
         (* Look in the environment. If the function name exists, duplicate that. *)
@@ -382,7 +382,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         | None -> (d :: seen, exns) )
       ([ (* seen decls list *) ], [ (* exns list *) ])
       ds
-  and check_dup_args ds decl_env =
+  and check_dup_args ds _ =
     List.concat_map
       (fun (DFun (_, args, _, _)) ->
         (* This one has a fold _inside_ of the map, 
@@ -461,7 +461,7 @@ let remove_dups (lst : 'a list) : 'a list =
 ;;
 
 (* ASSUMES that the program has been alpha-renamed and all names are unique *)
-let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
+let naive_stack_allocation (AProgram (decls, body, _) as prog : tag aprogram) :
     tag aprogram * arg envt =
   (* For the Xexpr helpers:
    * - Immediate values don't care about the env, so we ignore those.
@@ -495,7 +495,7 @@ let naive_stack_allocation (AProgram (decls, body, t) as prog : tag aprogram) :
       decls
   and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt =
     match cexp with
-    | CIf (c, thn, els, _) -> helpA thn env (si + 0) @ helpA els env (si + 0)
+    | CIf (_, thn, els, _) -> helpA thn env (si + 1) @ helpA els env (si + 1)
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ -> env
   and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt =
     match aexp with
@@ -663,20 +663,19 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END or#%d   -------------" t) ]
 ;;
 
-let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list =
-  (* We really don't know why this function was necessary, at least with its current signature.
-   * Ben implied that it is for compiling declarations on Piazza, but we already have compile_decl.
-   * We share the confusion of Amanda's follow-up in that thread.
-   * So, we left this a stub. Can you please fill us in in the grading comments?
-   *)
-  []
+(* let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list = []
+ * We really don't know why this function was necessary, at least with its current signature.
+ * Ben implied that it is for compiling declarations on Piazza, but we already have compile_decl.
+ * We share the confusion of Amanda's follow-up in that thread.
+ * So, we left this a stub. Can you please fill us in in the grading comments?
+ *)
 
-and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
+let rec compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
   (* We also didn't understand why these functions need to take a num_args parameter. 
    * Is this to handle the mapping of arguments to memory locations if we didn't do that when building the environment? *)
   match e with
-  | ALet (id, bound, body, t) ->
+  | ALet (id, bound, body, _) ->
       let prelude = compile_cexpr bound env num_args (* TODO: Come back to this number *) false in
       let body = compile_aexpr body env num_args (* TODO: Come back to this number *) is_tail in
       let offset = find env id in
@@ -768,7 +767,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
             ILabel true_label;
             IMov (Reg RAX, const_true);
             ILabel done_label ] )
-  | CApp (fun_name, args, tag) ->
+  | CApp (fun_name, args, _) ->
       let arg_regs = List.map (fun a -> compile_imm a env) args in
       (* We need to handle our caller-save registers here, and set up the args. *)
       let m = List.length args in
@@ -783,12 +782,6 @@ and compile_imm e (env : arg envt) =
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> find env x
-;;
-
-let compile_decl_2 (d : tag adecl) (env : arg envt) : instruction list =
-  match d with
-  | ADFun (fname, args, body, _) ->
-      compile_fun fname args env @ compile_aexpr body env (List.length args) false
 ;;
 
 let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction list =

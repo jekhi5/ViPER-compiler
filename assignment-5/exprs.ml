@@ -118,7 +118,7 @@ let tag (p : 'a program) : tag program =
   helpP p
 ;;
 
-let rec untag (p : 'a program) : unit program =
+let untag (p : 'a program) : unit program =
   let rec helpE e =
     match e with
     | EId (x, _) -> EId (x, ())
