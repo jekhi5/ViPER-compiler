@@ -1,0 +1,4 @@
+def link(first, rest):
+  (first, rest)
+
+# This is an incomplete program, so it doesn't parse yet...

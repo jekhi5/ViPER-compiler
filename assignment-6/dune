@@ -1,0 +1,26 @@
+(library
+ (name egg_impl)
+ (modules compile errors exprs phases pretty runner assembly lexer parser)
+ (libraries ounit2 extlib str)
+ (wrapped false))
+
+(ocamllex
+ (modules lexer))
+
+(ocamlyacc
+ (modules parser))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries unix str egg_impl))
+
+(test
+ (name test)
+ (modules test)
+ (libraries unix str egg_impl))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

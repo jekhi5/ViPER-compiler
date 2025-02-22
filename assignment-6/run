@@ -1,0 +1,14 @@
+clear
+if dune build; then
+    make clean
+    ./gen_tests.py
+    make test
+    ./test
+    if [ $# -gt 0 ]; then
+        make clean
+    fi
+    dune build @ocaml-index>/dev/null 2>&1
+
+else
+    echo 'Build failure. Aborting...'
+fi
