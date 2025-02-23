@@ -365,7 +365,12 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
 
 and compile_imm e env =
   match e with
-  | ImmNum (n, _) -> Const (Int64.shift_left n 1)
+  | ImmNum (n, loc) -> 
+    (* Handle static overflow! *)
+    if n > Int64.div Int64.max_int 2L || n < Int64.div Int64.min_int 2L then
+      raise (Overflow (n, loc))
+    else
+      Const (Int64.shift_left n 1)
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> find env x
