@@ -387,7 +387,7 @@ let anf (p : tag program) : unit aprogram =
             (fun a ->
               match a with
               | BName (a, _, _) -> a
-              | _ -> raise (NotYetImplemented "Finish this") )
+              | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
             args
         in
         ADFun (name, args, helpA body, ())
@@ -404,15 +404,30 @@ let anf (p : tag program) : unit aprogram =
         let cond_imm, cond_setup = helpI cond in
         (CIf (cond_imm, helpA _then, helpA _else, ()), cond_setup)
     | ELet ([], body, _) -> helpC body
-    | ELet (_ :: _, body, _) -> raise (NotYetImplemented "Finish this")
-    (* | ELet(((bind, _, _), exp, _)::rest, body, pos) ->
-     *    let (exp_ans, exp_setup) = helpC exp in
-     *    let (body_ans, body_setup) = helpC (ELet(rest, body, pos)) in
-     *    (body_ans, exp_setup @ [(bind, exp_ans)] @ body_setup) *)
+    | ELet ((bind, exp, _) :: rest, body, pos) -> (
+      match bind with
+      | BName (id, _, _) ->
+          let exp_ans, exp_setup = helpC exp in
+          let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
+          (body_ans, exp_setup @ [(id, exp_ans)] @ body_setup)
+      | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
     | EApp (funname, args, ct, _) ->
         let new_args, new_setup = List.split (List.map helpI args) in
         (CApp (funname, new_args, ct, ()), List.concat new_setup)
     (* NOTE: You may need more cases here, for sequences and tuples *)
+    | ESeq _ -> raise (InternalCompilerError "We do not have sequences at this stage.")
+    | ETuple (exprs, _) ->
+        let imm_exprs, exprs_setup = List.split (List.map helpI exprs) in
+        (CTuple (imm_exprs, ()), List.concat exprs_setup)
+    | EGetItem (tuple, index, _) ->
+        let imm_tuple, tuple_setup = helpI tuple in
+        let imm_index, index_setup = helpI index in
+        (CGetItem (imm_tuple, imm_index, ()), tuple_setup @ index_setup)
+    | ESetItem (tuple, index, new_val, _) ->
+        let imm_tuple, tuple_setup = helpI tuple in
+        let imm_index, index_setup = helpI index in
+        let imm_val, val_setup = helpI new_val in
+        (CSetItem (imm_tuple, imm_index, imm_val, ()), tuple_setup @ index_setup @ val_setup)
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -439,12 +454,32 @@ let anf (p : tag program) : unit aprogram =
         let new_args, new_setup = List.split (List.map helpI args) in
         (ImmId (tmp, ()), List.concat new_setup @ [(tmp, CApp (funname, new_args, ct, ()))])
     | ELet ([], body, _) -> helpI body
-    | ELet (_ :: _, body, _) -> raise (NotYetImplemented "Finish this")
-    (* | ELet(((bind, _, _), exp, _)::rest, body, pos) ->
-     *    let (exp_ans, exp_setup) = helpC exp in
-     *    let (body_ans, body_setup) = helpI (ELet(rest, body, pos)) in
-     *    (body_ans, exp_setup @ [(bind, exp_ans)] @ body_setup) *)
-    | _ -> raise (NotYetImplemented "Finish the remaining cases")
+    | ELet ((bind, exp, _) :: rest, body, pos) -> (
+      match bind with
+      | BName (id, _, _) ->
+          let exp_ans, exp_setup = helpC exp in
+          let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
+          (body_ans, exp_setup @ [(id, exp_ans)] @ body_setup)
+      | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
+    | ESeq _ -> raise (InternalCompilerError "We do not have sequences at this stage.")
+    | ETuple (exprs, tag) ->
+        let tmp = sprintf "tuple_%d" tag in
+        let imm_exprs, exprs_setup = List.split (List.map helpI exprs) in
+        (ImmId (tmp, ()), List.concat exprs_setup @ [(tmp, CTuple (imm_exprs, ()))])
+    | EGetItem (tuple, index, tag) ->
+        let tmp = sprintf "getItem_%d" tag in
+        let imm_tuple, tuple_setup = helpI tuple in
+        let imm_index, index_setup = helpI index in
+        (ImmId (tmp, ()), tuple_setup @ index_setup @ [(tmp, CGetItem (imm_tuple, imm_index, ()))])
+    | ESetItem (tuple, index, new_val, tag) ->
+        let tmp = sprintf "setItem_%d" tag in
+        let imm_tuple, tuple_setup = helpI tuple in
+        let imm_index, index_setup = helpI index in
+        let imm_val, val_setup = helpI new_val in
+        ( ImmId (tmp, ()),
+          tuple_setup @ index_setup @ val_setup
+          @ [(tmp, CSetItem (imm_tuple, imm_index, imm_val, ()))] )
+    | ENil _ -> (ImmNil (), [])
   and helpA e : unit aexpr =
     let ans, ans_setup = helpC e in
     List.fold_right (fun (bind, exp) body -> ALet (bind, exp, body, ())) ans_setup (ACExpr ans)

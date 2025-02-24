@@ -49,19 +49,22 @@ let pair_tests =
       \            begin\n\
       \              t[0] := 7;\n\
       \              t\n\
-      \            end" "" "(7, (5, 6))";
+      \            end"
+      "" "(7, (5, 6))";
     t "tup2"
       "let t = (4, (5, nil)) in\n\
       \            begin\n\
       \              t[1] := nil;\n\
       \              t\n\
-      \            end" "" "(4, nil)";
+      \            end"
+      "" "(4, nil)";
     t "tup3"
       "let t = (4, (5, nil)) in\n\
       \            begin\n\
       \              t[1] := t;\n\
       \              t\n\
-      \            end" "" "(4, <cyclic tuple 1>)";
+      \            end"
+      "" "(4, <cyclic tuple 1>)";
     t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))" ]
 ;;
 
@@ -194,6 +197,13 @@ let desugar_tests =
            0 ) ) ]
 ;;
 
-let suite = "suite" >::: (*pair_tests @ input @*) desugar_tests
+let anf_tests = [ (* TODO: Write these *) ]
+
+let suite =
+  "suite"
+  >:::
+  (*pair_tests @ input @*)
+  desugar_tests
+;;
 
 let () = run_test_tt_main ("all_tests" >::: [suite])
