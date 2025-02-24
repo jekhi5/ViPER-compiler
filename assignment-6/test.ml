@@ -107,6 +107,53 @@ let desugar_tests =
                        0 ),
                    0 ),
                0 ),
+           0 ) );
+    tp "nested_tuple_bind"
+      (desugar
+         (Program
+            ( [],
+              ELet
+                ( [ ( BTuple
+                        ( [ BName ("a", false, 0);
+                            BTuple ([BName ("b", false, 0); BName ("c", false, 0)], 0);
+                            BName ("d", false, 0) ],
+                          0 ),
+                      ETuple ([], 0),
+                      0 ) ],
+                  ENumber (5L, 0),
+                  0 ),
+              0 ) ) )
+      (Program
+         ( [],
+           ELet
+             ( [(BName ("temp_tuple_name#1", false, 0), ETuple ([], 0), 0)],
+               ELet
+                 ( [ ( BName ("a", false, 0),
+                       EGetItem (EId ("temp_tuple_name#1", 0), ENumber (0L, 0), 0),
+                       0 ) ],
+                   ELet
+                     ( [ ( BName ("temp_tuple_name#2", false, 0),
+                           EGetItem (EId ("temp_tuple_name#1", 0), ENumber (1L, 0), 0),
+                           0 ) ],
+                       ELet
+                         ( [ ( BName ("b", false, 0),
+                               EGetItem (EId ("temp_tuple_name#2", 0), ENumber (0L, 0), 0),
+                               0 ) ],
+                           ELet
+                             ( [ ( BName ("c", false, 0),
+                                   EGetItem (EId ("temp_tuple_name#2", 0), ENumber (1L, 0), 0),
+                                   0 ) ],
+                               ELet
+                                 ( [ ( BName ("d", false, 0),
+                                       EGetItem (EId ("temp_tuple_name#1", 0), ENumber (2L, 0), 0),
+                                       0 ) ],
+                                   ENumber (5L, 0),
+                                   0 ),
+                               0 ),
+                           0 ),
+                       0 ),
+                   0 ),
+               0 ),
            0 ) ) ]
 ;;
 
