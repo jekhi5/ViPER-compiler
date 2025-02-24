@@ -294,27 +294,23 @@ let simplify_tuple_bindings (Program ((decls : 'a decl list), (body : 'a expr), 
     (* Avoid making a new Let if there are no bindings *)
     | ELet ([], _, _) -> e
     | ELet (bindings, body, a) ->
-        ELet
-          ( List.concat_map (fun binding -> help_bind binding) bindings,
-            helpE body,
-            a )
+        ELet (List.concat_map (fun binding -> help_bind binding) bindings, helpE body, a)
     | _ -> e
   in
   let helpD d =
     match d with
-    | DFun (fname, args, body, a) -> DFun (fname, args, helpE body, a)
+    | DFun (fname, args, body, a) ->
+        (* TODO *)
   in
   Program (List.map helpD decls, helpE body, a)
 ;;
 
 (* Converts all `ESeq`s to `ELet`s. *)
 (* INVARIANT: There are no `ESeq`s in the resulting program. *)
-let seq_to_let (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) :
-    'a program =
+let seq_to_let (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) : 'a program =
   let rec helpE e =
     match e with
-    | ESeq (e1, e2, alpha) -> 
-      ELet ([BBlank (alpha), e1, alpha], e2, alpha)
+    | ESeq (e1, e2, alpha) -> ELet ([(BBlank alpha, e1, alpha)], e2, alpha)
     | _ -> e
   in
   let helpD d =
