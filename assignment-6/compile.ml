@@ -239,6 +239,99 @@ let deepest_stack e env =
 
 (* IMPLEMENT EVERYTHING BELOW *)
 
+(* Convert a Let with multiple bindings into multiple Lets with one binding. *)
+(* INVARIANT: All `ELet`s have a single binding. *)
+let simplify_multi_bindings (Program((decls : 'a decl list), (body : 'a expr), (a : 'a))) : 'a program =
+  let rec helpE e =
+    match e with
+    (* Avoid making a new Let if there are no bindings *)
+    | ELet (_::[], _, _) -> e
+    | ELet (binding :: rest_bindings, body, a) ->
+        ELet ([binding], helpE (ELet (rest_bindings, body, a)), a)
+    | _ -> e
+  in
+  let helpD d =
+    match d with
+    | DFun (fname, args, body, a) -> DFun (fname, args, helpE body, a)
+  in
+  Program (List.map helpD decls, helpE body, a)
+;;
+
+(* Let's make this global. *)
+let make_gensym  =
+  fun () ->
+  let next = ref 0 in
+  let gensym =
+    fun name ->
+      next := !next + 1;
+      sprintf "%s#%d" name !next
+in gensym
+(* Convert Tuple bindings in `Let`s into multiple regular bindings. *)
+(* This pass has to happen before other passes, because we introduce new bindings. *)
+(* INVARIANT: No `ELet` contains a `BTuple` *)
+let simplify_tuple_bindings (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) : 'a program =
+  let gensym = make_gensym () in
+  let rec helpE e =
+    match e with
+    (* Avoid making a new Let if there are no bindings *)
+    | ELet ([], _, _) -> e
+    | ELet (bindings, body, a) ->
+        ELet ((List.concat_map (fun ((bind, bound, _) as binding) ->
+          (match bind with
+          | BTuple (sub_binds, alpha) ->
+            let temp_name = (gensym "temp_tuple_name") in
+            (* Check for shadow (later) *)
+            (BName (temp_name, false, alpha), bound, alpha) :: (List.mapi (fun i sub_bind -> 
+              (match sub_bind with
+              | BName _
+              | BBlank _ -> (sub_bind, EGetItem (EId (temp_name, alpha), (ENumber (Int64.of_int i, alpha)), alpha), alpha)
+              | BTuple _ -> raise (InternalCompilerError "Nested BTuple"))
+              ) sub_binds)
+          | _ -> [binding])
+          ) bindings), helpE body, a)
+    | _ -> e
+  in
+  let helpD d =
+    match d with
+    | DFun (fname, args, body, a) -> DFun (fname, args, helpE body, a)
+  in
+  Program (List.map helpD decls, helpE body, a)
+;;
+
+(* Convert all Blank bindings into mangled ids. *)
+(* ASSUME: No BTuple bindings *)
+(* INVARIANT: All bindings are solely BNames. *)
+let eliminate_blank_bindings (Program((decls : 'a decl list), (body : 'a expr), (a : 'a))) : 'a program =
+  let gensym = make_gensym () in
+  let rec helpE e =
+    match e with
+    (* Avoid making a new Let if there are no bindings *)
+    | ELet ([], _, _) -> e
+    | ELet (bindings, body, a) ->
+        ELet ((List.map (
+          fun ((bind, bound, alpha) as binding) ->
+            match bind with
+            (* Look here for shadow-able *)
+            | BBlank _ -> (BName ((gensym "blank"), false, alpha), bound, alpha)
+            | BName _ -> binding
+            | BTuple _ -> raise (InternalCompilerError "Expected no BTuples at this point")
+        ) bindings), helpE body, a)  
+    | _ -> e
+  in
+  let helpD d =
+    match d with
+    | DFun (fname, args, body, a) -> DFun (fname, args, helpE body, a)
+  in
+  Program (List.map helpD decls, helpE body, a)
+;;
+
+let desugar (p : 'a program) : 'a program =
+  p 
+  |> simplify_tuple_bindings
+  |> eliminate_blank_bindings
+  |> simplify_multi_bindings
+  
+
 let anf (p : tag program) : unit aprogram =
   let rec helpP (p : tag program) : unit aprogram =
     match p with
@@ -329,7 +422,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       Error [NotYetImplemented "Implement well-formedness checking for programs"]
 ;;
 
-let desugar (p : sourcespan program) : sourcespan program =
+(* let desugar (p : sourcespan program) : sourcespan program =
   let gensym =
     let next = ref 0 in
     fun name ->
@@ -345,7 +438,7 @@ let desugar (p : sourcespan program) : sourcespan program =
   in
   match p with
   | Program (decls, body, _) -> raise (NotYetImplemented "Implement desugaring for programs")
-;;
+;; *)
 
 let naive_stack_allocation (prog : tag aprogram) : tag aprogram * arg envt =
   raise (NotYetImplemented "Implement stack allocation for egg-eater")
@@ -366,7 +459,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
 and compile_imm e env =
   match e with
   | ImmNum (n, loc) -> 
-    (* Handle static overflow! *)
+    (* Handle static overflow! *) 
     if n > Int64.div Int64.max_int 2L || n < Int64.div Int64.min_int 2L then
       raise (Overflow (n, loc))
     else
@@ -419,6 +512,7 @@ let run_if should_run f =
 let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   prog
   |> add_err_phase well_formed is_well_formed
+  |> add_phase desugared desugar
   |> add_phase tagged tag
   |> add_phase renamed rename_and_tag
   |> add_phase anfed (fun p -> atag (anf p))

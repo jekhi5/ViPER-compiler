@@ -37,6 +37,10 @@ let tanf name program expected =
   name >:: fun _ -> assert_equal expected (anf (tag program)) ~printer:string_of_aprogram
 ;;
 
+let tp name program expected =
+  name >:: fun _ -> assert_equal expected program ~printer:string_of_program
+;;
+
 let teq name actual expected = name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> s)
 
 let pair_tests =
@@ -70,6 +74,42 @@ let pair_tests =
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "suite" >::: pair_tests @ input
+let desugar_tests =
+  [ tp "desugar_tuple"
+      (desugar
+         (Program
+            ( [],
+              ELet
+                ( [ ( BTuple ([BName ("a", false, 0); BBlank 0; BName ("c", false, 0)], 0),
+                      ETuple ([], 0),
+                      0 ) ],
+                  ENumber (5L, 0),
+                  0 ),
+              0 ) ) )
+      (Program
+         ( [],
+           ELet
+             ( [(BName ("temp_tuple_name#1", false, 0), ETuple ([], 0), 0)],
+               ELet
+                 ( [ ( BName ("a", false, 0),
+                       EGetItem (EId ("temp_tuple_name#1", 0), ENumber (0L, 0), 0),
+                       0 ) ],
+                   ELet
+                     ( [ ( BName ("blank#1", false, 0),
+                           EGetItem (EId ("temp_tuple_name#1", 0), ENumber (1L, 0), 0),
+                           0 ) ],
+                       ELet
+                         ( [ ( BName ("c", false, 0),
+                               EGetItem (EId ("temp_tuple_name#1", 0), ENumber (2L, 0), 0),
+                               0 ) ],
+                           ENumber (5L, 0),
+                           0 ),
+                       0 ),
+                   0 ),
+               0 ),
+           0 ) ) ]
+;;
 
-let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
+let suite = "suite" >::: pair_tests @ input @ desugar_tests
+
+let () = run_test_tt_main ("all_tests" >::: [suite])
