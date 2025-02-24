@@ -300,7 +300,27 @@ let simplify_tuple_bindings (Program ((decls : 'a decl list), (body : 'a expr), 
   let helpD d =
     match d with
     | DFun (fname, args, body, a) ->
-        (* TODO *)
+        let desugared_args, context =
+          List.split
+            (List.map
+               (fun arg ->
+                 match arg with
+                 | BBlank _ | BName _ -> (arg, [])
+                 | BTuple (sub_args, a) ->
+                     let temp_name = gensym "temp_arg" in
+                     let new_bind = BName (temp_name, false, a) in
+                     let new_id = EId (temp_name, a) in
+                     (new_bind, help_bind (arg, new_id, a)) )
+               args )
+        in
+        let bindings = List.concat context in
+        let new_body =
+          if List.length bindings > 0 then
+            ELet (bindings, helpE body, a)
+          else
+            helpE body
+        in
+        DFun (fname, desugared_args, new_body, a)
   in
   Program (List.map helpD decls, helpE body, a)
 ;;

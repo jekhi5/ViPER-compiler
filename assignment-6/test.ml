@@ -158,8 +158,40 @@ let desugar_tests =
     tp "seq"
       (desugar (Program ([], ESeq (ENumber (1L, 0), ENumber (2L, 0), 0), 0)))
       (Program
-         ([], ELet ([(BName ("blank#1", false, 0), ENumber (1L, 0), 0)], ENumber (2L, 0), 0), 0) )
-  ]
+         ([], ELet ([(BName ("blank#1", false, 0), ENumber (1L, 0), 0)], ENumber (2L, 0), 0), 0) );
+    tp "fun_args"
+      (desugar
+         (Program
+            ( [ DFun
+                  ( "foo",
+                    [ BName ("a", false, 0);
+                      BTuple ([BName ("b", false, 0); BName ("c", false, 0)], 0);
+                      BName ("d", false, 0) ],
+                    ENumber (2L, 0),
+                    0 ) ],
+              ENumber (2L, 0),
+              0 ) ) )
+      (Program
+         ( [ DFun
+               ( "foo",
+                 [BName ("a", false, 0); BName ("temp_arg#1", false, 0); BName ("d", false, 0)],
+                 ELet
+                   ( [(BName ("temp_tuple_name#2", false, 0), EId ("temp_arg#1", 0), 0)],
+                     ELet
+                       ( [ ( BName ("b", false, 0),
+                             EGetItem (EId ("temp_tuple_name#2", 0), ENumber (0L, 0), 0),
+                             0 ) ],
+                         ELet
+                           ( [ ( BName ("c", false, 0),
+                                 EGetItem (EId ("temp_tuple_name#2", 0), ENumber (1L, 0), 0),
+                                 0 ) ],
+                             ENumber (2L, 0),
+                             0 ),
+                         0 ),
+                     0 ),
+                 0 ) ],
+           ENumber (2L, 0),
+           0 ) ) ]
 ;;
 
 let suite = "suite" >::: (*pair_tests @ input @*) desugar_tests
