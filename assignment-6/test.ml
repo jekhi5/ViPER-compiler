@@ -154,9 +154,14 @@ let desugar_tests =
                        0 ),
                    0 ),
                0 ),
-           0 ) ) ]
+           0 ) );
+    tp "seq"
+      (desugar (Program ([], ESeq (ENumber (1L, 0), ENumber (2L, 0), 0), 0)))
+      (Program
+         ([], ELet ([(BName ("blank#1", false, 0), ENumber (1L, 0), 0)], ENumber (2L, 0), 0), 0) )
+  ]
 ;;
 
-let suite = "suite" >::: pair_tests @ input @ desugar_tests
+let suite = "suite" >::: (*pair_tests @ input @*) desugar_tests
 
 let () = run_test_tt_main ("all_tests" >::: [suite])

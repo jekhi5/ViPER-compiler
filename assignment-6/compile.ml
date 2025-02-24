@@ -295,9 +295,26 @@ let simplify_tuple_bindings (Program ((decls : 'a decl list), (body : 'a expr), 
     | ELet ([], _, _) -> e
     | ELet (bindings, body, a) ->
         ELet
-          ( List.concat_map (fun ((bind, bound, _) as binding) -> help_bind binding) bindings,
+          ( List.concat_map (fun binding -> help_bind binding) bindings,
             helpE body,
             a )
+    | _ -> e
+  in
+  let helpD d =
+    match d with
+    | DFun (fname, args, body, a) -> DFun (fname, args, helpE body, a)
+  in
+  Program (List.map helpD decls, helpE body, a)
+;;
+
+(* Converts all `ESeq`s to `ELet`s. *)
+(* INVARIANT: There are no `ESeq`s in the resulting program. *)
+let seq_to_let (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) :
+    'a program =
+  let rec helpE e =
+    match e with
+    | ESeq (e1, e2, alpha) -> 
+      ELet ([BBlank (alpha), e1, alpha], e2, alpha)
     | _ -> e
   in
   let helpD d =
@@ -339,7 +356,7 @@ let eliminate_blank_bindings (Program ((decls : 'a decl list), (body : 'a expr),
 ;;
 
 let desugar (p : 'a program) : 'a program =
-  p |> simplify_tuple_bindings |> eliminate_blank_bindings |> simplify_multi_bindings
+  p |> seq_to_let |> simplify_tuple_bindings |> eliminate_blank_bindings |> simplify_multi_bindings
 ;;
 
 let anf (p : tag program) : unit aprogram =
