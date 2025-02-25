@@ -941,7 +941,102 @@ and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : b
   | ACExpr cexp -> compile_cexpr cexp env num_args is_tail
 
 and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : bool) =
-  raise (NotYetImplemented "Compile cexpr not yet implemented")
+  match e with
+  | CImmExpr immexp ->
+      [IMov (Reg scratch_reg, compile_imm immexp env); IMov (Reg RAX, Reg scratch_reg)]
+  | CIf (cond, thn, els, t) ->
+      let else_label = sprintf "if_else#%d" t in
+      let done_label = sprintf "if_done#%d" t in
+      (let cond_reg = compile_imm cond env in
+       [ILineComment (sprintf "BEGIN conditional#%d   -------------" t); IMov (Reg RAX, cond_reg)]
+       @ check_bool not_a_bool_if_label
+       @ [ IMov (Reg scratch_reg, bool_mask);
+           ITest (Reg RAX, Reg scratch_reg);
+           IJz else_label;
+           ILineComment "  Then case:" ]
+       @ compile_aexpr thn env num_args is_tail
+       @ [IJmp done_label; ILineComment "  Else case:"; ILabel else_label]
+       @ compile_aexpr els env num_args is_tail )
+      @ [ILabel done_label; ILineComment (sprintf "END conditional#%d     -------------" t)]
+  | CPrim1 (op, e, t) -> (
+      let e_reg = compile_imm e env in
+      match op with
+      | Add1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const 2L); check_overflow]
+      | Sub1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const (-2L)); check_overflow]
+      (* `xor` can't take a 64-bit literal, *)
+      | Not ->
+          (IMov (Reg RAX, e_reg) :: check_bool not_a_bool_logic_label)
+          @ [IMov (Reg scratch_reg, bool_mask); IXor (Reg RAX, Reg scratch_reg)]
+      | IsBool ->
+          let false_label = sprintf "is_bool_false#%d" t in
+          let done_label = sprintf "is_bool_done#%d" t in
+          [ ILineComment (sprintf "BEGIN is_bool%d -------------" t);
+            IMov (Reg RAX, e_reg);
+            ITest (Reg RAX, HexConst num_tag_mask);
+            IJz false_label;
+            IMov (Reg RAX, const_true);
+            IJmp done_label;
+            ILabel false_label;
+            IMov (Reg RAX, const_false);
+            ILabel done_label;
+            ILineComment (sprintf "END is_bool%d   -------------" t) ]
+      | IsNum ->
+          let false_label = sprintf "is_num_false#%d" t in
+          let done_label = sprintf "is_num_done#%d" t in
+          [ ILineComment (sprintf "BEGIN is_num%d -------------" t);
+            IMov (Reg RAX, e_reg);
+            ITest (Reg RAX, HexConst num_tag_mask);
+            (* Jump not zero because this is the inverted case from is_bool *)
+            IJnz false_label;
+            IMov (Reg RAX, const_true);
+            IJmp done_label;
+            ILabel false_label;
+            IMov (Reg RAX, const_false);
+            ILabel done_label;
+            ILineComment (sprintf "END is_num%d   -------------" t) ]
+      | Print ->
+          [ (* Print both passes its value to the external function, and returns it. *)
+            IMov (Reg RDI, e_reg);
+            ICall "print" (* The answer goes in RAX :) *) ]
+      | IsTuple -> raise (NotYetImplemented "IsTuple not implemented yet")
+      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
+      (* TODO *) )
+  | CPrim2 (op, e1, e2, t) -> (
+      let e1_reg = compile_imm e1 env in
+      let e2_reg = compile_imm e2 env in
+      match op with
+      | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg
+      | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1_reg e2_reg t
+      | And -> and_prim2 e1_reg e2_reg t
+      | Or -> or_prim2 e1_reg e2_reg t
+      | Eq ->
+          let true_label = sprintf "equal#%d" t in
+          let done_label = sprintf "equal_done#%d" t in
+          (* No typechecking for Eq. We can just see if the two values are equivalent. *)
+          [ IMov (Reg RAX, e1_reg);
+            IMov (Reg scratch_reg, e2_reg);
+            ICmp (Reg RAX, Reg scratch_reg);
+            IJe true_label;
+            IMov (Reg RAX, const_false);
+            IJmp done_label;
+            ILabel true_label;
+            IMov (Reg RAX, const_true);
+            ILabel done_label ] )
+  | CApp (fun_name, args, call_type, _) ->
+      let arg_regs = List.map (fun a -> compile_imm a env) args in
+      (* We need to handle our caller-save registers here, and set up the args. *)
+      let m = List.length args in
+      List.concat
+        (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
+      @ [ICall fun_name]
+      @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
+  | CTuple (items, _) -> raise (NotYetImplemented "Tuples not impemented")
+  | CGetItem (tup, idx, _) -> raise (NotYetImplemented "Tuple indexing not impemented")
+  | CSetItem (tup, idx, value, _) -> raise (NotYetImplemented "Tuple indexing not impemented")
 
 and compile_imm e env =
   match e with
