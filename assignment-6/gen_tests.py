@@ -2,7 +2,6 @@
 from pathlib import Path
 from glob import glob
 import argparse
-import sys
 
 """
 Looks at all `.diamond` files in the directory.
@@ -26,8 +25,11 @@ test1.out:
 
 
 def walk_dir(
-    delimiter=r";", dirname: str = ".", filetype=".diamond", verbose=False
+    delimiter=r";", dirname: str = ".", filetype=".egg", verbose=0
 ) -> None:
+    if verbose > 0:
+        print("Generating test files...")
+
     delimiter = f"\n{delimiter}\n"
     for filepath in glob(f"**/*{filetype}", root_dir=dirname):
         testfile = dirname / Path(filepath)
@@ -35,10 +37,10 @@ def walk_dir(
 
         resultfile = testfile.with_suffix(suffix)
         if resultfile.exists():
-            if verbose:
+            if verbose > 1:
                 print(f"{str(testfile):.<50}{str(resultfile)} already exists.")
         else:
-            if verbose:
+            if verbose > 0:
                 print(f"{str(testfile):.<50}", end="")
             with open(testfile, "r+") as tf:
                 contents = tf.read()
@@ -49,7 +51,7 @@ def walk_dir(
 
             with open(resultfile, "w") as rf:
                 rf.write(result)
-            if verbose:
+            if verbose > 0:
                 print(f"{str(resultfile)} generated!")
 
 
@@ -67,8 +69,8 @@ if __name__ == "__main__":
 
     parser.add_argument("-d", "--dir", type=str, default="input/")
     parser.add_argument("-s", "--splitter", type=str, default=";")
-    parser.add_argument("-v", "--verbose", action="store_true", default=False)
-    parser.add_argument("-f", "--filetype", type=str, default=".diamond")
+    parser.add_argument("-v", "--verbose", type=int, default=0)
+    parser.add_argument("-f", "--filetype", type=str, default=".egg")
 
     args = parser.parse_args()
     main(args)

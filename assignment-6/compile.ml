@@ -376,8 +376,11 @@ let desugar (p : 'a program) : 'a program =
   |> seq_to_let (* Introduces blank bindings, so must precede their elimination. *)
   |> simplify_tuple_bindings (* Removes nested binds, making some following phases simpler.*)
   |> eliminate_blank_bindings
-  |> simplify_multi_bindings (* Happens last, once new bindings will no longer be created. *)
+  |> simplify_multi_bindings
 ;;
+
+(* Happens last, once new bindings will no longer be created. *)
+(* TODO: New phases for Eprim1/2 -> EApp? *)
 
 let anf (p : tag program) : unit aprogram =
   let rec helpP (p : tag program) : unit aprogram =
@@ -491,37 +494,43 @@ let anf (p : tag program) : unit aprogram =
   helpP p
 ;;
 
-(* let is_well_formed (p : sourcespan program) : sourcespan program fallible =
-     let rec wf_E (e : sourcespan expr) (* other parameters may be needed here *) =
-       Error [NotYetImplemented "Implement well-formedness checking for expressions"]
-     and wf_D (d : sourcespan decl) (* other parameters may be needed here *) =
-       Error [NotYetImplemented "Implement well-formedness checking for definitions"]
-     and wf_G (g : sourcespan decl list) (* other parameters may be needed here *) =
-       Error [NotYetImplemented "Implement well-formedness checking for definition groups"]
-     in
-     match p with
-     | Program (decls, body, _) ->
-         Error [NotYetImplemented "Implement well-formedness checking for programs"]
-   ;; *)
+(* A couple of getters for binds. *)
+let bind_name (b : 'a bind) : string =
+  match b with
+  | BName (name, _, _) -> name
+  | BBlank _ -> ""
+  | BTuple _ ->
+      raise
+        (* Since we can only get the name of a BName,
+         * it only makes sense to call this function *after* desugaring.
+         * Ergo, desugaring should happen first, and then well-formedness checking.
+         *)
+        (InternalCompilerError (sprintf "Getting name of BTuple %s" (Pretty.string_of_bind b)) )
+;;
 
-(* Check equality for bindings.
-   For now, we assume that we will only get BNames.
-*)
-let rec bind_eq (b1 : 'a bind) (b2 : 'b bind) : bool =
+(* Get *all* nested binds. *)
+let rec un_nest_bind (b : 'a bind) : 'a bind list =
+  match b with
+  | BName _ | BBlank _ -> [b]
+  | BTuple (subs, _) -> List.concat_map un_nest_bind subs
+;;
+
+(* WILL NOT properly handle the bound expressions! 
+ * This is merely for well-formedness checks on the binds. 
+ * An un-nested binding contains no BTuples!
+ *)
+let un_nest_binding ((bind, bound, a) : 'a binding) : 'a binding list =
+  List.map (fun b -> (b, bound, a)) (un_nest_bind bind)
+;;
+
+let bind_eq b1 b2 =
   match b1 with
+  | BBlank _ -> false (* Blank is not equal to anything, including itself. *)
+  | BTuple _ -> false (* Tuples need to be unrolled before comparing. *)
   | BName (name1, _, _) -> (
     match b2 with
     | BName (name2, _, _) -> name1 = name2
     | _ -> false )
-  | _ -> false
-;;
-
-let bind_name (b : 'a bind) : string =
-  match b with
-  | BName (name, _, _) -> name
-  | _ ->
-      raise
-        (InternalCompilerError (sprintf "Getting name of non-BName %s" (Pretty.string_of_bind b)))
 ;;
 
 let bind_loc (b : 'a bind) : 'a =
@@ -541,22 +550,35 @@ let get_decl_env (decls : 'a decl list) : (string * int) list =
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   (* BEGIN EXPR CHECKS *)
   (* Check for duplicate bindings *)
-  let rec check_dup_binding (binds : 'a binding list) _ =
+  let rec check_dup_binding (bindings : 'a binding list) _ =
+    (* TODO: Handle multiple bindings! *)
     List.fold_left
       (fun (seen, exns) ((bind, _, loc) as binding) ->
-        let bname = bind_name bind in
-        match List.find_opt (fun (a, _, _) -> bind_name a = bname) seen with
-        | Some (_, _, orig_loc) -> (seen, DuplicateId (bname, loc, orig_loc) :: exns)
+        match List.find_opt (fun (a, _, _) -> bind_eq a bind) seen with
+        | Some (_, _, orig_loc) ->
+            (* Note that we can safely call bind_name here:
+             * - There are no tuples, because we make sure to un-nest our bindings.
+             * - No BBlanks will satisfy the equality check, so they will never be found. 
+             *)
+            (seen, DuplicateId (bind_name bind, loc, orig_loc) :: exns)
         | None -> (binding :: seen, exns) )
       ([ (* bind, body, loc *) ], [ (* exns *) ])
-      binds
+      (List.concat_map un_nest_binding bindings)
   (* Check scope in each binding body *)
-  and check_scope (binds : 'a binding list) _ id_env decl_env =
-    (* Each bound body is allowed to use the names of  all previous, bindings *)
+  and check_scope (bindings : 'a binding list) _ id_env decl_env =
+    (* Each bound body is allowed to use the names of  all previous, bindings 
+     * Note that this is a little weird for tuple bindings:
+     * Since we check for each sub-binding individually against the same body,
+     * we rely on the first sub-binding to catch all the errors.
+     *
+     * Furthermore, the presence of BBlanks means that "" is technically a valid name.
+     * BUT, this name will never be parsed.
+     *)
     List.fold_left
       (fun (let_env, exns) (bind, body, _) ->
         (bind_name bind :: let_env, wf_E body let_env decl_env @ exns) )
-      (id_env, []) binds
+      (id_env, [])
+      (List.concat_map un_nest_binding bindings)
   and check_fun_errors funname args loc decl_env =
     let unbound_fun_error =
       if find_one (fst @@ List.split @@ decl_env) funname ( = ) then
@@ -596,9 +618,10 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           (List.fold_left
              (fun (seen, exns) (arg : sourcespan bind) ->
                let arg_name = bind_name arg in
-               let arg_loc  = bind_loc arg in 
-               match List.find_opt (fun a -> bind_name a = arg_name) seen with
-               | Some orig_bind -> (seen, DuplicateId (arg_name, arg_loc, bind_loc orig_bind) :: exns)
+               let arg_loc = bind_loc arg in
+               match List.find_opt (fun a -> bind_eq a arg) seen with
+               | Some orig_bind ->
+                   (seen, DuplicateId (arg_name, arg_loc, bind_loc orig_bind) :: exns)
                | None -> (
                  (* Second check: prevent reuse of function names as arguments.
                     This is not in the spec, but foo(foo) seems weird.
@@ -609,7 +632,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                      (seen, DuplicateId (arg_name, arg_loc, loc_orig) :: exns)
                  | None -> (arg :: seen, exns) ) )
              ([ (* binds *) ], [ (* exns *) ])
-             args ) )
+             (List.concat_map un_nest_bind args) ) )
       ds
   (* END DECL CHECKS *)
   and wf_E (e : sourcespan expr) (id_env : string list) (decl_env : (string * int) list) : exn list
@@ -625,11 +648,18 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | EPrim1 (_, e, _) -> wf_E e id_env decl_env
     | EPrim2 (_, l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
     | EIf (c, t, f, _) -> wf_E c id_env decl_env @ wf_E t id_env decl_env @ wf_E f id_env decl_env
-    | ELet (binds, body, _) ->
-        let _, dup_bind_exns = check_dup_binding binds body in
-        let _, bind_body_exns = check_scope binds body id_env decl_env in
+    | ELet (bindings, body, _) ->
+        let _, dup_bind_exns = check_dup_binding bindings body in
+        let _, bind_body_exns = check_scope bindings body id_env decl_env in
         (* Pass 3: Check scope in the let body *)
-        let let_body_exns = wf_E body (List.map (fun (bind, _, _) -> bind_name bind) binds @ id_env) decl_env in
+        let let_body_exns =
+          wf_E body
+            ( List.map
+                (fun (bind, _, _) -> bind_name bind)
+                (List.concat_map un_nest_binding bindings)
+            @ id_env )
+            decl_env
+        in
         dup_bind_exns @ bind_body_exns @ let_body_exns
     | EApp (funname, args, _, loc) -> check_fun_errors funname args loc decl_env
     | ESeq (l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
@@ -645,7 +675,10 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     (* Pass 2: *)
     (* Check well-formedness of all decl bodies, using the decl environment. *)
     let decl_body_exns =
-      List.concat_map (fun (DFun (_, args, body, _)) -> wf_E body (List.map bind_name args) decl_env) ds
+      List.concat_map
+        (fun (DFun (_, args, body, _)) ->
+          wf_E body (List.map bind_name (List.concat_map un_nest_bind args)) decl_env )
+        ds
     in
     dup_fname_exns @ dup_arg_exns @ decl_body_exns
   in
@@ -659,24 +692,6 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       | [] -> Ok p
       | _ -> Error total_errors )
 ;;
-
-(* let desugar (p : sourcespan program) : sourcespan program =
-     let gensym =
-       let next = ref 0 in
-       fun name ->
-         next := !next + 1;
-         sprintf "%s_%d" name !next
-     in
-     let rec helpE (e : sourcespan expr) (* other parameters may be needed here *) =
-       Error [NotYetImplemented "Implement desugaring for expressions"]
-     and helpD (d : sourcespan decl) (* other parameters may be needed here *) =
-       Error [NotYetImplemented "Implement desugaring for definitions"]
-     and helpG (g : sourcespan decl list) (* other parameters may be needed here *) =
-       Error [NotYetImplemented "Implement desugaring for definition groups"]
-     in
-     match p with
-     | Program (decls, body, _) -> raise (NotYetImplemented "Implement desugaring for programs")
-   ;; *)
 
 let naive_stack_allocation (prog : tag aprogram) : tag aprogram * arg envt =
   raise (NotYetImplemented "Implement stack allocation for egg-eater")
@@ -750,8 +765,8 @@ let run_if should_run f =
 let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   prog
   (* Desugar to add invariants for well_formed? *)
-  |> add_phase desugared desugar
   |> add_err_phase well_formed is_well_formed
+  |> add_phase desugared desugar
   |> add_phase tagged tag
   |> add_phase renamed rename_and_tag
   |> add_phase anfed (fun p -> atag (anf p))
