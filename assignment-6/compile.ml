@@ -112,21 +112,21 @@ let rec find_decl (ds : 'a decl list) (name : string) : 'a decl option =
         find_decl ds_rest name
 ;;
 
-let rec find_one (l : 'a list) (elt : 'a) : bool =
+let rec find_one (l : 'a list) (elt : 'a) (comp : 'a -> 'a -> bool) : bool =
   match l with
   | [] -> false
-  | x :: xs -> elt = x || find_one xs elt
+  | x :: xs -> elt = x || find_one xs elt comp
 ;;
 
-let rec find_dup (l : 'a list) : 'a option =
-  match l with
-  | [] | [_] -> None
-  | x :: xs ->
-      if find_one xs x then
-        Some x
-      else
-        find_dup xs
-;;
+(* let rec find_dup (l : 'a list) : 'a option =
+     match l with
+     | [] | [_] -> None
+     | x :: xs ->
+         if find_one xs x then
+           Some x
+         else
+           find_dup xs
+   ;; *)
 
 type funenvt = call_type envt
 
@@ -372,7 +372,11 @@ let eliminate_blank_bindings (Program ((decls : 'a decl list), (body : 'a expr),
 ;;
 
 let desugar (p : 'a program) : 'a program =
-  p |> seq_to_let |> simplify_tuple_bindings |> eliminate_blank_bindings |> simplify_multi_bindings
+  p
+  |> seq_to_let (* Introduces blank bindings, so must precede their elimination. *)
+  |> simplify_tuple_bindings (* Removes nested binds, making some following phases simpler.*)
+  |> eliminate_blank_bindings
+  |> simplify_multi_bindings (* Happens last, once new bindings will no longer be created. *)
 ;;
 
 let anf (p : tag program) : unit aprogram =
@@ -487,17 +491,173 @@ let anf (p : tag program) : unit aprogram =
   helpP p
 ;;
 
+(* let is_well_formed (p : sourcespan program) : sourcespan program fallible =
+     let rec wf_E (e : sourcespan expr) (* other parameters may be needed here *) =
+       Error [NotYetImplemented "Implement well-formedness checking for expressions"]
+     and wf_D (d : sourcespan decl) (* other parameters may be needed here *) =
+       Error [NotYetImplemented "Implement well-formedness checking for definitions"]
+     and wf_G (g : sourcespan decl list) (* other parameters may be needed here *) =
+       Error [NotYetImplemented "Implement well-formedness checking for definition groups"]
+     in
+     match p with
+     | Program (decls, body, _) ->
+         Error [NotYetImplemented "Implement well-formedness checking for programs"]
+   ;; *)
+
+(* Check equality for bindings.
+   For now, we assume that we will only get BNames.
+*)
+let rec bind_eq (b1 : 'a bind) (b2 : 'b bind) : bool =
+  match b1 with
+  | BName (name1, _, _) -> (
+    match b2 with
+    | BName (name2, _, _) -> name1 = name2
+    | _ -> false )
+  | _ -> false
+;;
+
+let bind_name (b : 'a bind) : string =
+  match b with
+  | BName (name, _, _) -> name
+  | _ ->
+      raise
+        (InternalCompilerError (sprintf "Getting name of non-BName %s" (Pretty.string_of_bind b)))
+;;
+
+let bind_loc (b : 'a bind) : 'a =
+  match b with
+  | BName (_, _, l) | BBlank l | BTuple (_, l) -> l
+;;
+
+(* Gets a mapping of function names to arity for all functions *)
+let get_decl_env (decls : 'a decl list) : (string * int) list =
+  List.map
+    (fun d ->
+      match d with
+      | DFun (funname, args, _, _) -> (funname, List.length args) )
+    decls
+;;
+
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
-  let rec wf_E (e : sourcespan expr) (* other parameters may be needed here *) =
-    Error [NotYetImplemented "Implement well-formedness checking for expressions"]
-  and wf_D (d : sourcespan decl) (* other parameters may be needed here *) =
-    Error [NotYetImplemented "Implement well-formedness checking for definitions"]
-  and wf_G (g : sourcespan decl list) (* other parameters may be needed here *) =
-    Error [NotYetImplemented "Implement well-formedness checking for definition groups"]
+  (* BEGIN EXPR CHECKS *)
+  (* Check for duplicate bindings *)
+  let rec check_dup_binding (binds : 'a binding list) _ =
+    List.fold_left
+      (fun (seen, exns) ((bind, _, loc) as binding) ->
+        let bname = bind_name bind in
+        match List.find_opt (fun (a, _, _) -> bind_name a = bname) seen with
+        | Some (_, _, orig_loc) -> (seen, DuplicateId (bname, loc, orig_loc) :: exns)
+        | None -> (binding :: seen, exns) )
+      ([ (* bind, body, loc *) ], [ (* exns *) ])
+      binds
+  (* Check scope in each binding body *)
+  and check_scope (binds : 'a binding list) _ id_env decl_env =
+    (* Each bound body is allowed to use the names of  all previous, bindings *)
+    List.fold_left
+      (fun (let_env, exns) (bind, body, _) ->
+        (bind_name bind :: let_env, wf_E body let_env decl_env @ exns) )
+      (id_env, []) binds
+  and check_fun_errors funname args loc decl_env =
+    let unbound_fun_error =
+      if find_one (fst @@ List.split @@ decl_env) funname ( = ) then
+        []
+      else
+        [UnboundFun (funname, loc)]
+    in
+    if unbound_fun_error = [] then
+      (* We made sure that the function name is in the `decl_env` above, so `List.assoc` will not error *)
+      let expected_arity = List.assoc funname decl_env in
+      let given_arity = List.length args in
+      if given_arity = expected_arity then
+        []
+      else
+        [Arity (expected_arity, given_arity, loc)]
+    else
+      []
+  (* END EXPR CHECKS *)
+  (* BEGIN DECL CHECKS *)
+  (* Check for duplicate function names *)
+  and check_dup_fnames ds _ =
+    List.fold_left
+      (fun (seen, exns) (DFun (fname, _, _, loc) as d) ->
+        (* Look in the environment. If the function name exists, duplicate that. *)
+        let dup = find_decl seen fname in
+        match dup with
+        | Some (DFun (_, _, _, loc_orig)) -> (seen, DuplicateFun (fname, loc, loc_orig) :: exns)
+        | None -> (d :: seen, exns) )
+      ([ (* seen decls list *) ], [ (* exns list *) ])
+      ds
+  and check_dup_args ds _ =
+    List.concat_map
+      (fun (DFun (_, (args : sourcespan bind list), _, _)) ->
+        (* This one has a fold _inside_ of the map, 
+         * so we need to discard the irrelevant acc value earlier than the prior case. *)
+        snd
+          (List.fold_left
+             (fun (seen, exns) (arg : sourcespan bind) ->
+               let arg_name = bind_name arg in
+               let arg_loc  = bind_loc arg in 
+               match List.find_opt (fun a -> bind_name a = arg_name) seen with
+               | Some orig_bind -> (seen, DuplicateId (arg_name, arg_loc, bind_loc orig_bind) :: exns)
+               | None -> (
+                 (* Second check: prevent reuse of function names as arguments.
+                    This is not in the spec, but foo(foo) seems weird.
+                    It will only get weirder once we have first-class functions.
+                 *)
+                 match find_decl ds arg_name with
+                 | Some (DFun (_, _, _, loc_orig)) ->
+                     (seen, DuplicateId (arg_name, arg_loc, loc_orig) :: exns)
+                 | None -> (arg :: seen, exns) ) )
+             ([ (* binds *) ], [ (* exns *) ])
+             args ) )
+      ds
+  (* END DECL CHECKS *)
+  and wf_E (e : sourcespan expr) (id_env : string list) (decl_env : (string * int) list) : exn list
+      =
+    match e with
+    | EBool _ -> []
+    | ENumber _ -> []
+    | EId (x, loc) ->
+        if find_one id_env x ( = ) then
+          []
+        else
+          [UnboundId (x, loc)]
+    | EPrim1 (_, e, _) -> wf_E e id_env decl_env
+    | EPrim2 (_, l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
+    | EIf (c, t, f, _) -> wf_E c id_env decl_env @ wf_E t id_env decl_env @ wf_E f id_env decl_env
+    | ELet (binds, body, _) ->
+        let _, dup_bind_exns = check_dup_binding binds body in
+        let _, bind_body_exns = check_scope binds body id_env decl_env in
+        (* Pass 3: Check scope in the let body *)
+        let let_body_exns = wf_E body (List.map (fun (bind, _, _) -> bind_name bind) binds @ id_env) decl_env in
+        dup_bind_exns @ bind_body_exns @ let_body_exns
+    | EApp (funname, args, _, loc) -> check_fun_errors funname args loc decl_env
+    | ESeq (l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
+    | ETuple (items, _) -> List.concat_map (fun x -> wf_E x id_env decl_env) items
+    | EGetItem (tup, idx, _) -> wf_E tup id_env decl_env @ wf_E idx id_env decl_env
+    | ESetItem (tup, idx, value, _) ->
+        wf_E tup id_env decl_env @ wf_E idx id_env decl_env @ wf_E value id_env decl_env
+    | ENil _ -> []
+  and wf_D (ds : 'a decl list) (decl_env : (string * int) list) : exn list =
+    (* Pass 1: *)
+    let _, dup_fname_exns = check_dup_fnames ds decl_env in
+    let dup_arg_exns = check_dup_args ds decl_env in
+    (* Pass 2: *)
+    (* Check well-formedness of all decl bodies, using the decl environment. *)
+    let decl_body_exns =
+      List.concat_map (fun (DFun (_, args, body, _)) -> wf_E body (List.map bind_name args) decl_env) ds
+    in
+    dup_fname_exns @ dup_arg_exns @ decl_body_exns
   in
   match p with
-  | Program (decls, body, _) ->
-      Error [NotYetImplemented "Implement well-formedness checking for programs"]
+  | Program (decls, body, _) -> (
+      let decl_env = get_decl_env decls in
+      let decls_result = wf_D decls decl_env in
+      let body_result = wf_E body [] decl_env in
+      let total_errors = decls_result @ body_result in
+      match total_errors with
+      | [] -> Ok p
+      | _ -> Error total_errors )
 ;;
 
 (* let desugar (p : sourcespan program) : sourcespan program =
@@ -589,8 +749,9 @@ let run_if should_run f =
 (* Add a desugaring phase somewhere in here *)
 let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   prog
-  |> add_err_phase well_formed is_well_formed
+  (* Desugar to add invariants for well_formed? *)
   |> add_phase desugared desugar
+  |> add_err_phase well_formed is_well_formed
   |> add_phase tagged tag
   |> add_phase renamed rename_and_tag
   |> add_phase anfed (fun p -> atag (anf p))
