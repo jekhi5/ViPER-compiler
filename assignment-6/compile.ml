@@ -53,13 +53,41 @@ let err_GET_LOW_INDEX = 7L
 
 let err_GET_HIGH_INDEX = 8L
 
-let err_NIL_DEREF = 9L
+let err_INDEX_NOT_NUM = 9L
+
+let err_NIL_DEREF = 10L
 
 let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 let heap_reg = R15
 
 let scratch_reg = R11
+
+let not_a_number_comp_label = "error_not_number_comp"
+
+let not_a_number_arith_label = "error_not_number_arith"
+
+let not_a_bool_logic_label = "error_not_bool_logic"
+
+let not_a_bool_if_label = "error_not_bool_if"
+
+let overflow_label = "error_overflow"
+
+(* Errors for tuples *)
+let not_a_tuple_get_label = "error_not_tuple_get"
+
+
+let not_a_number_index = "error_not_number_index"
+
+let index_high_label = "error_get_high_index"
+
+let index_low_label = "error_get_low_index"
+
+let nil_deref_label = "error_nil_deref"
+
+let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
+
+let word_size = 8
 
 (* You may find some of these helpers useful *)
 let rec find ls x =
@@ -693,8 +721,208 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       | _ -> Error total_errors )
 ;;
 
-let naive_stack_allocation (prog : tag aprogram) : tag aprogram * arg envt =
-  raise (NotYetImplemented "Implement stack allocation for egg-eater")
+let remove_dups (lst : 'a list) : 'a list =
+  List.fold_right
+    (fun x acc ->
+      if List.exists (fun e -> fst e = fst x) acc then
+        acc
+      else
+        x :: acc )
+    lst []
+;;
+
+(* Convert a stack index into a RegOffset *)
+let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
+
+let naive_stack_allocation (AProgram (decls, body, _) as prog : tag aprogram) :
+    tag aprogram * arg envt =
+  (* For the Xexpr helpers:
+   * - Immediate values don't care about the env, so we ignore those.
+   * - Cexprs are only interesting in the `CIf` case, since this case
+   *   contains two Aexprs.
+   * - Aexprs are where the main logic happens, since that is where we make new bindings.
+       We convert the stack index to a RegOffset, then look at the bound expr, then the body.
+       Note that whenever we recursively call helpA, we need to increment the stack index. 
+   *
+   * For Decls: 
+   * - We decided to store function arguments here, to avoid doing it elsewhere.
+       This is against the assignment's instructions, but it made more sense to us that way.
+   *)
+  let rec helpD decls env si =
+    (* Every function arg is located at the same place relative to the function.
+     * (i.e. either in an arg, or below RBP.)
+     * Therefore, we decided to encode these in the environment as well.
+     *)
+    List.concat_map
+      (fun (ADFun (_, args, body, _)) ->
+        let body_env = helpA body env (si + 1) in
+        (* Why do we need to add 2 here? *)
+        (*  +0   | RBP 
+         *  +1   | Return Address
+         *  +2   | Argument 1
+         *  ...
+         *  +n+2 | Argument n
+         *)
+        let args_env = List.mapi (fun i a -> (a, RegOffset (i + 2, RBP))) args in
+        args_env @ body_env )
+      decls
+  and helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt =
+    match cexp with
+    | CIf (_, thn, els, _) -> helpA thn env (si + 1) @ helpA els env (si + 1)
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
+  and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt =
+    match aexp with
+    | ALet (id, bound, body, _) ->
+        let offset = (id, si_to_arg si) in
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        (offset :: bound_offset) @ body_offset
+    | ACExpr cexp -> helpC cexp env si
+  in
+  let decls_env = helpD decls [] 1 in
+  let body_env = helpA body decls_env 1 in
+  (* We were rather sloppy with the process of adding to the environment,
+   * so we just remove the duplicates in O(n^2) time at the end.
+   *)
+  (prog, remove_dups body_env)
+;;
+
+(* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
+(* We could check a parameterized register, but that creates complexity in reporting the error. *)
+(* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
+let check_bool (goto : string) : instruction list =
+  [IMov (Reg scratch_reg, HexConst num_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJz goto]
+;;
+
+(* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
+let check_num (goto : string) : instruction list =
+  [IMov (Reg scratch_reg, HexConst num_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJnz goto]
+;;
+
+let check_overflow = IJo overflow_label
+
+(* Note: compile_cexpr helpers are directly copied from the previous assignment.  *)
+
+(* Helper for numeric comparisons *)
+let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
+  let string_op = "comparison_label" in
+  let comp_label = sprintf "%s#%d" string_op t in
+  let jump =
+    match op with
+    | Greater -> IJg comp_label
+    | GreaterEq -> IJge comp_label
+    | Less -> IJl comp_label
+    | LessEq -> IJle comp_label
+    | _ -> raise (InternalCompilerError "Expected comparison operator.")
+  in
+  let comp_done_label = sprintf "%s_done#%d" string_op t in
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_comp_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_comp_label
+  @ [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
+      IMov (Reg RAX, e1);
+      (* cmp is weird and breaks if we don't use a temp register... *)
+      IMov (Reg scratch_reg, e2);
+      ICmp (Reg RAX, Reg scratch_reg);
+      jump;
+      IMov (Reg RAX, const_false);
+      IJmp comp_done_label;
+      ILabel comp_label;
+      IMov (Reg RAX, const_true);
+      ILabel comp_done_label;
+      ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
+;;
+
+(* Helper for arithmetic operations *)
+let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_arith_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_arith_label
+  @
+  match op with
+  (* Arithmetic operators *)
+  | Plus -> [IMov (Reg scratch_reg, e1); IAdd (Reg RAX, Reg scratch_reg); check_overflow]
+  (* Make sure to check for overflow BEFORE shifting on multiplication! *)
+  | Times ->
+      [ IMov (Reg scratch_reg, e1);
+        IMul (Reg RAX, Reg scratch_reg);
+        check_overflow;
+        ISar (Reg RAX, Const 1L) ]
+  (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
+   * while also preserving the order in which our arguments will fail a typecheck.
+   * So, `false - true` will fail on `false` every time.
+   *)
+  | Minus ->
+      [ IMov (Reg scratch_reg, e2);
+        IMov (Reg RAX, e1);
+        ISub (Reg RAX, Reg scratch_reg);
+        check_overflow ]
+  (* Comparison operators *)
+  | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
+;;
+
+(* Helper for boolean and *)
+let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  let true_label = sprintf "true#%d" t in
+  let false_label = sprintf "false#%d" t in
+  let logic_done_label = sprintf "and_done#%d" t in
+  [ ILineComment (sprintf "BEGIN and#%d -------------" t);
+    (* Move the first arg into RAX so we can type-check it. *)
+    IMov (Reg RAX, e1) ]
+  @ check_bool not_a_bool_logic_label
+    (* In order to handle short-circuiting, we don't look at the second arg until later.
+     * This means that `false and 5` will NOT raise a type error.
+     *)
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz false_label;
+      IMov (Reg RAX, e2) ]
+  @ check_bool not_a_bool_logic_label
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz false_label;
+      ILabel true_label;
+      IMov (Reg RAX, const_true);
+      IJmp logic_done_label;
+      ILabel false_label;
+      IMov (Reg RAX, const_false);
+      ILabel logic_done_label;
+      ILineComment (sprintf "END and#%d   -------------" t) ]
+;;
+
+(* Helper for boolean or *)
+let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  let true_label = sprintf "true#%d" t in
+  let false_label = sprintf "false#%d" t in
+  let logic_done_label = sprintf "or_done#%d" t in
+  [ ILineComment (sprintf "BEGIN and#%d -------------" t);
+    (* Move the first arg into RAX so we can type-check it. *)
+    IMov (Reg RAX, e1) ]
+  @ check_bool not_a_bool_logic_label
+    (* In order to handle short-circuiting, we don't look at the second arg until later.
+     * This means that `true or 5` will NOT raise a type error.
+     *)
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJnz true_label;
+      IMov (Reg RAX, e2) ]
+  @ check_bool not_a_bool_logic_label
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJnz true_label;
+      ILabel false_label;
+      IMov (Reg RAX, const_false);
+      IJmp logic_done_label;
+      ILabel true_label;
+      IMov (Reg RAX, const_true);
+      ILabel logic_done_label;
+      ILineComment (sprintf "END or#%d   -------------" t) ]
 ;;
 
 (* if you think that this signature is incomplete or incorrect,
@@ -704,7 +932,13 @@ let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : 
 
 and compile_aexpr (e : tag aexpr) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
-  raise (NotYetImplemented "Compile aexpr not yet implemented")
+  match e with
+  | ALet (id, bound, body, _) ->
+      let prelude = compile_cexpr bound env num_args (* TODO: Come back to this number *) false in
+      let body = compile_aexpr body env num_args (* TODO: Come back to this number *) is_tail in
+      let offset = find env id in
+      prelude @ [IMov (offset, Reg RAX)] @ body
+  | ACExpr cexp -> compile_cexpr cexp env num_args is_tail
 
 and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : bool) =
   raise (NotYetImplemented "Compile cexpr not yet implemented")
@@ -723,8 +957,64 @@ and compile_imm e env =
   | ImmNil _ -> raise (NotYetImplemented "Finish this")
 ;;
 
-let compile_decl (d : tag adecl) (env : arg envt) : instruction list =
-  raise (NotYetImplemented "Compile decl not yet implemented")
+let runtime_errors =
+  List.concat_map
+    (fun (label, err_code) ->
+      [ ILabel label;
+        IMov (Reg RDI, Const err_code);
+        (* We ended up ignoring this argument in main.c. *)
+        IMov (Reg RSI, Reg RAX);
+        ICall "error";
+        IRet (* Theoretically we don't need this `ret`.*) ] )
+    [ (not_a_number_comp_label, err_COMP_NOT_NUM);
+      (not_a_number_arith_label, err_ARITH_NOT_NUM);
+      (not_a_bool_logic_label, err_LOGIC_NOT_BOOL);
+      (not_a_bool_if_label, err_IF_NOT_BOOL);
+      (overflow_label, err_OVERFLOW) ;
+      (not_a_tuple_get_label, err_GET_NOT_TUPLE);
+      (not_a_number_index, err_INDEX_NOT_NUM);
+      (index_high_label, err_GET_HIGH_INDEX);
+      (index_low_label, err_GET_LOW_INDEX);
+      (nil_deref_label, err_NIL_DEREF)
+      ]
+;;
+
+let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction list =
+  (* Step 1: Set up the stack 
+   * Step 2: Map arg names to their locations in registers/on the stack
+   *  -> This is handled in `compile_aexpr`.
+   * Step 3: Compile the function body
+   * Step 4: Clean up the stack
+   *)
+   let m = List.length args in
+   let vars = deepest_stack body env in
+   let stack_size =
+     Int64.of_int
+       ( 8
+       *
+       if vars mod 2 = 1 then
+         vars + 1
+       else
+         vars )
+   in
+   let stack_setup =
+     [ ILabel fname;
+       ILineComment "==== Stack set-up ====";
+       IPush (Reg RBP);
+       IMov (Reg RBP, Reg RSP);
+       ISub (Reg RSP, Const stack_size);
+       ILineComment "======================" ]
+   in
+   let stack_cleanup =
+     [ ILineComment "=== Stack clean-up ===";
+       IAdd (Reg RSP, Const stack_size);
+       IMov (Reg RSP, Reg RBP);
+       IPop (Reg RBP);
+       IRet;
+       ILineComment "======================" ]
+   in
+   stack_setup @ compile_aexpr body env m false @ stack_cleanup
+ ;;
 ;;
 
 let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =

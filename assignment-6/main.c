@@ -16,9 +16,29 @@ uint64_t* HEAP;
 
 
 void printHelp(FILE *out, SNAKEVAL val) {
-  // COPY YOUR IMPLEMENTATION FROM DIAMONDBACK
-  // and enhance it to handle tuples
+  // Number
+  if ((val & BOOL_TAG) == 0)
+  {                                        // val is even ==> number
+    printf("%ld\n", ((int64_t)(val)) / 2); // shift bits right to remove tag
+    // All else is boolean
+  }
+  else if (val == BOOL_TRUE)
+  {
+    printf("true\n");
+  }
+  else if (val == BOOL_FALSE)
+  {
+    printf("false\n");
+  }
+
+  // TODO: print tuples and nil
+
+  else
+  {
+    printf("Unknown value: %#018lx\n", val); // print unknown val in hex
+  }
   return val;
+}
 }
 
 SNAKEVAL print(SNAKEVAL val) {
@@ -28,12 +48,75 @@ SNAKEVAL print(SNAKEVAL val) {
   return val;
 }
 
-/*
+int64_t error(int64_t code, SNAKEVAL bad_val)
+{
+  if (code == 1)
+  {
+    printf("comparison expected a number, got: ");
+    print(bad_val);
+  }
+  else if (code == 2)
+  {
+    printf("arithmetic expected a number, got: ");
+    print(bad_val);
+  }
+  else if (code == 3)
+  {
+    printf("logic expected a boolean, got: ");
+    print(bad_val);
+  }
+  else if (code == 4)
+  {
+    printf("if expected a boolean, got: ");
+    print(bad_val);
+  }
+  else if (code == 5)
+  {
+    printf("Integer overflow! Got: ");
+    print(bad_val);
+  }
+  else if (code == 6)
+  {
+    printf("Tried to index a non-tuple, got: ");
+    print(bad_val);
+  }
+  else if (code == 7)
+  {
+    printf("Index out of range of tuple (too low)! Got: ");
+    print(bad_val);
+  }
+  else if (code == 8)
+  {
+    printf("Index out of range of tuple (too high)! Got: ");
+    print(bad_val);
+  }
+  else if (code == 9)
+  {
+    printf("Index expected a number, got: ");
+    print(bad_val);
+  }
+  else if (code == 10)
+  {
+    printf("NIL dereference error! Got: ");
+    print(bad_val);
+  }
+  else
+  {
+    printf("Unknown error code.\n");
+  }
+  exit(code);
+}
 
-COPY YOUR IMPLEMENTATION FROM DIAMONDBACK
 
-*/
+let err_GET_NOT_TUPLE = 6L
 
+let err_GET_LOW_INDEX = 7L
+
+let err_GET_HIGH_INDEX = 8L
+
+let err_INDEX_NOT_NUM = 9L
+
+let err_NIL_DEREF = 10L
 
 // main should remain unchanged
 // You can pass in a numeric argument to your program when you run it,
