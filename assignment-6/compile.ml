@@ -1106,9 +1106,8 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           IJge index_high_label;
           IInstrComment
             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
-          IInstrComment
-            ( IMov (Reg RAX, RegOffsetReg (RAX, R11, 8, 0)),
-              "Multiply the value in R11 by 8 with no further offset" ) ]
+          ILineComment "Multiply the value in R11 by 8 with no further offset" ]
+      @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, 8, 0))
   | CSetItem (tup, idx, value, _) ->
       let tup_reg = compile_imm tup env in
       let idx_reg = compile_imm idx env in
