@@ -814,7 +814,10 @@ let naive_stack_allocation (AProgram (decls, body, _) as prog : tag aprogram) :
 (* We could check a parameterized register, but that creates complexity in reporting the error. *)
 (* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
 let check_bool (goto : string) : instruction list =
-  [IMov (Reg scratch_reg, HexConst num_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJz goto]
+  [ IMov (Reg scratch_reg, HexConst bool_tag_mask);
+    IAnd (Reg RAX, Reg scratch_reg);
+    ICmp (Reg RAX, HexConst bool_tag);
+    IJz goto ]
 ;;
 
 (* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
@@ -824,7 +827,10 @@ let check_num (goto : string) : instruction list =
 
 (* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
 let check_tuple (goto : string) : instruction list =
-  [IMov (Reg scratch_reg, HexConst tuple_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJz goto]
+  [ IAnd (Reg RAX, HexConst tuple_tag_mask);
+    IMov (Reg scratch_reg, HexConst tuple_tag);
+    ICmp (Reg RAX, Reg scratch_reg);
+    IJnz goto ]
 ;;
 
 (* Enforces that the value in RAX is a nil. Goes to the specified label if not. *)
@@ -1083,16 +1089,18 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
              (fun i item -> move_with_scratch (RegOffset (i + 1, R15)) (compile_imm item env))
              items
       in
-      move_with_scratch (RegOffset (0, R15)) (HexConst (Int64.of_int n))
+      ILineComment "=== Begin tuple initialization ==="
+      :: move_with_scratch (RegOffset (0, R15)) (HexConst (Int64.of_int n))
       @ loading_instrs
       @ [ IMov (Reg RAX, Reg R15);
           IAdd (Reg RAX, Const 1L);
           IAdd (Reg R15, Const (Int64.of_int (8 * (n + 1))));
           IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "0 if even args, 8 if odd") ]
+      @ [ILineComment "==== End tuple initialization ===="]
   | CGetItem (tup, idx, _) ->
       let tup_reg = compile_imm tup env in
       let idx_reg = compile_imm idx env in
-      [IMov (Reg RAX, idx_reg)]
+      [ILineComment "==== Begin get-item ===="; IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
       @ [IMov (Reg RAX, tup_reg)]
       @ check_tuple not_a_tuple_access_label
@@ -1108,11 +1116,12 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
           ILineComment "Multiply the value in R11 by 8 with no further offset" ]
       @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, 8, 0))
+      @ [ILineComment "===== End get-item ====="]
   | CSetItem (tup, idx, value, _) ->
       let tup_reg = compile_imm tup env in
       let idx_reg = compile_imm idx env in
       let val_reg = compile_imm value env in
-      [IMov (Reg RAX, idx_reg)]
+      [ILineComment "==== Begin set-item ===="; IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
       @ [IMov (Reg RAX, tup_reg)]
       @ check_tuple not_a_tuple_access_label
@@ -1127,9 +1136,10 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           IInstrComment
             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
           IInstrComment
-            ( IMov (RegOffsetReg (RAX, R11, 8, 0), val_reg),
-              "Multiply the value in R11 by 8 with no further offset and put the new value in place"
-            ) ]
+            ( IMov (Reg RAX, RegOffsetReg (RAX, R11, 8, 0)),
+              "Store the location of the relevant value in RAX" ) ]
+      @ move_with_scratch (RegOffset (0, RAX)) val_reg
+      @ [IMov (Reg RAX, Reg scratch_reg); ILineComment "===== End set-item ====="]
 
 and compile_imm e env =
   match e with
