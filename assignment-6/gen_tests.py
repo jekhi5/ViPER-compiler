@@ -24,16 +24,17 @@ test1.out:
 """
 
 
-def walk_dir(
-    delimiter=r";", dirname: str = ".", filetype=".egg", verbose=0
-) -> None:
+def walk_dir(delimiter=r";", dirname: str = ".", filetype=".egg", verbose=0) -> None:
     if verbose > 0:
         print("Generating test files...")
 
     delimiter = f"\n{delimiter}\n"
     for filepath in glob(f"**/*{filetype}", root_dir=dirname):
         testfile = dirname / Path(filepath)
-        suffix = ".err" if "do_err" in str(testfile) else ".out"
+        if "do_err" in str(testfile) or "dont_err" in str(testfile):
+            suffix = ".err"
+        else:
+            suffix = ".out"
 
         resultfile = testfile.with_suffix(suffix)
         if resultfile.exists():

@@ -37,6 +37,14 @@ let num_tag = 0x0000000000000000L
 
 let num_tag_mask = 0x0000000000000001L
 
+let tuple_tag = 0x0000000000000001L
+
+let tuple_tag_mask = 0x0000000000000007L
+
+let nil_tag = tuple_tag
+
+let nil_tag_mask = 0x1111111111111111L
+
 let err_COMP_NOT_NUM = 1L
 
 let err_ARITH_NOT_NUM = 2L
@@ -47,7 +55,7 @@ let err_IF_NOT_BOOL = 4L
 
 let err_OVERFLOW = 5L
 
-let err_GET_NOT_TUPLE = 6L
+let err_ACCESS_NOT_TUPLE = 6L
 
 let err_GET_LOW_INDEX = 7L
 
@@ -74,10 +82,9 @@ let not_a_bool_if_label = "error_not_bool_if"
 let overflow_label = "error_overflow"
 
 (* Errors for tuples *)
-let not_a_tuple_get_label = "error_not_tuple_get"
+let not_a_tuple_access_label = "error_not_tuple_access"
 
-
-let not_a_number_index = "error_not_number_index"
+let not_a_number_index_label = "error_not_number_index"
 
 let index_high_label = "error_get_high_index"
 
@@ -394,7 +401,18 @@ let eliminate_blank_bindings (Program ((decls : 'a decl list), (body : 'a expr),
   in
   let helpD d =
     match d with
-    | DFun (fname, args, body, a) -> DFun (fname, args, helpE body, a)
+    | DFun (fname, args, body, a) ->
+        let processed_args =
+          List.map
+            (fun arg ->
+              match arg with
+              (* Look here for shadow-able *)
+              | BBlank tag -> BName (gensym "blank", false, tag)
+              | BName _ -> arg
+              | BTuple _ -> raise (InternalCompilerError "Expected no BTuples at this point") )
+            args
+        in
+        DFun (fname, processed_args, helpE body, a)
   in
   Program (List.map helpD decls, helpE body, a)
 ;;
@@ -594,7 +612,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       (List.concat_map un_nest_binding bindings)
   (* Check scope in each binding body *)
   and check_scope (bindings : 'a binding list) _ id_env decl_env =
-    (* Each bound body is allowed to use the names of  all previous, bindings 
+    (* Each bound body is allowed to use the names of all previous, bindings 
      * Note that this is a little weird for tuple bindings:
      * Since we check for each sub-binding individually against the same body,
      * we rely on the first sub-binding to catch all the errors.
@@ -667,7 +685,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       =
     match e with
     | EBool _ -> []
-    | ENumber _ -> []
+    | ENumber (n, loc) ->
+        (* Handle static overflow! *)
+        if n > Int64.div Int64.max_int 2L || n < Int64.div Int64.min_int 2L then
+          [Overflow (n, loc)]
+        else
+          []
     | EId (x, loc) ->
         if find_one id_env x ( = ) then
           []
@@ -799,6 +822,16 @@ let check_num (goto : string) : instruction list =
   [IMov (Reg scratch_reg, HexConst num_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJnz goto]
 ;;
 
+(* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
+let check_tuple (goto : string) : instruction list =
+  [IMov (Reg scratch_reg, HexConst tuple_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJz goto]
+;;
+
+(* Enforces that the value in RAX is a nil. Goes to the specified label if not. *)
+let check_not_nil (goto : string) : instruction list =
+  [IMov (Reg scratch_reg, HexConst nil_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJz goto]
+;;
+
 let check_overflow = IJo overflow_label
 
 (* Note: compile_cexpr helpers are directly copied from the previous assignment.  *)
@@ -925,6 +958,8 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END or#%d   -------------" t) ]
 ;;
 
+let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
+
 (* if you think that this signature is incomplete or incorrect,
    feel free to change it as appropriate and leave a comment explaining why. *)
 let rec compile_fun (fun_name : string) (args : string list) (env : arg envt) : instruction list =
@@ -1034,22 +1069,76 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
         (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
       @ [ICall fun_name]
       @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
-  | CTuple (items, _) -> raise (NotYetImplemented "Tuples not impemented")
-  | CGetItem (tup, idx, _) -> raise (NotYetImplemented "Tuple indexing not impemented")
-  | CSetItem (tup, idx, value, _) -> raise (NotYetImplemented "Tuple indexing not impemented")
+  | CTuple (items, _) ->
+      let n = List.length items in
+      let heap_bump_amt =
+        if n mod 2 == 0 then
+          8L
+        else
+          0L
+      in
+      let loading_instrs =
+        List.concat
+        @@ List.mapi
+             (fun i item -> move_with_scratch (RegOffset (i + 1, R15)) (compile_imm item env))
+             items
+      in
+      move_with_scratch (RegOffset (0, R15)) (HexConst (Int64.of_int n))
+      @ loading_instrs
+      @ [ IMov (Reg RAX, Reg R15);
+          IAdd (Reg RAX, Const 1L);
+          IAdd (Reg R15, Const (Int64.of_int (8 * (n + 1))));
+          IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "0 if even args, 8 if odd") ]
+  | CGetItem (tup, idx, _) ->
+      let tup_reg = compile_imm tup env in
+      let idx_reg = compile_imm idx env in
+      [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [IMov (Reg RAX, tup_reg)]
+      @ check_tuple not_a_tuple_access_label
+      @ check_not_nil nil_deref_label
+      @ [ ISub (Reg RAX, Const 1L);
+          IMov (Reg R11, idx_reg);
+          IShr (Reg R11, Const 1L);
+          ICmp (Reg R11, Const 0L);
+          IJl index_low_label;
+          ICmp (Reg R11, idx_reg);
+          IJge index_high_label;
+          IInstrComment
+            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
+          IInstrComment
+            ( IMov (Reg RAX, RegOffsetReg (RAX, R11, 8, 0)),
+              "Multiply the value in R11 by 8 with no further offset" ) ]
+  | CSetItem (tup, idx, value, _) ->
+      let tup_reg = compile_imm tup env in
+      let idx_reg = compile_imm idx env in
+      let val_reg = compile_imm value env in
+      [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [IMov (Reg RAX, tup_reg)]
+      @ check_tuple not_a_tuple_access_label
+      @ check_not_nil nil_deref_label
+      @ [ ISub (Reg RAX, Const 1L);
+          IMov (Reg R11, idx_reg);
+          IShr (Reg R11, Const 1L);
+          ICmp (Reg R11, Const 0L);
+          IJl index_low_label;
+          ICmp (Reg R11, idx_reg);
+          IJge index_high_label;
+          IInstrComment
+            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
+          IInstrComment
+            ( IMov (RegOffsetReg (RAX, R11, 8, 0), val_reg),
+              "Multiply the value in R11 by 8 with no further offset and put the new value in place"
+            ) ]
 
 and compile_imm e env =
   match e with
-  | ImmNum (n, loc) ->
-      (* Handle static overflow! *)
-      if n > Int64.div Int64.max_int 2L || n < Int64.div Int64.min_int 2L then
-        raise (Overflow (n, loc))
-      else
-        Const (Int64.shift_left n 1)
+  | ImmNum (n, loc) -> HexConst n
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> find env x
-  | ImmNil _ -> raise (NotYetImplemented "Finish this")
+  | ImmNil _ -> HexConst 1L
 ;;
 
 let runtime_errors =
@@ -1065,13 +1154,12 @@ let runtime_errors =
       (not_a_number_arith_label, err_ARITH_NOT_NUM);
       (not_a_bool_logic_label, err_LOGIC_NOT_BOOL);
       (not_a_bool_if_label, err_IF_NOT_BOOL);
-      (overflow_label, err_OVERFLOW) ;
-      (not_a_tuple_get_label, err_GET_NOT_TUPLE);
-      (not_a_number_index, err_INDEX_NOT_NUM);
+      (overflow_label, err_OVERFLOW);
+      (not_a_tuple_access_label, err_ACCESS_NOT_TUPLE);
+      (not_a_number_index_label, err_INDEX_NOT_NUM);
       (index_high_label, err_GET_HIGH_INDEX);
       (index_low_label, err_GET_LOW_INDEX);
-      (nil_deref_label, err_NIL_DEREF)
-      ]
+      (nil_deref_label, err_NIL_DEREF) ]
 ;;
 
 let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction list =
@@ -1081,58 +1169,51 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
    * Step 3: Compile the function body
    * Step 4: Clean up the stack
    *)
-   let m = List.length args in
-   let vars = deepest_stack body env in
-   let stack_size =
-     Int64.of_int
-       ( 8
-       *
-       if vars mod 2 = 1 then
-         vars + 1
-       else
-         vars )
-   in
-   let stack_setup =
-     [ ILabel fname;
-       ILineComment "==== Stack set-up ====";
-       IPush (Reg RBP);
-       IMov (Reg RBP, Reg RSP);
-       ISub (Reg RSP, Const stack_size);
-       ILineComment "======================" ]
-   in
-   let stack_cleanup =
-     [ ILineComment "=== Stack clean-up ===";
-       IAdd (Reg RSP, Const stack_size);
-       IMov (Reg RSP, Reg RBP);
-       IPop (Reg RBP);
-       IRet;
-       ILineComment "======================" ]
-   in
-   stack_setup @ compile_aexpr body env m false @ stack_cleanup
- ;;
+  let m = List.length args in
+  let vars = deepest_stack body env in
+  let stack_size =
+    Int64.of_int
+      ( 8
+      *
+      if vars mod 2 = 1 then
+        vars + 1
+      else
+        vars )
+  in
+  let stack_setup =
+    [ ILabel fname;
+      ILineComment "==== Stack set-up ====";
+      IPush (Reg RBP);
+      IMov (Reg RBP, Reg RSP);
+      ISub (Reg RSP, Const stack_size);
+      ILineComment "======================" ]
+  in
+  let stack_cleanup =
+    [ ILineComment "=== Stack clean-up ===";
+      IAdd (Reg RSP, Const stack_size);
+      IMov (Reg RSP, Reg RBP);
+      IPop (Reg RBP);
+      IRet;
+      ILineComment "======================" ]
+  in
+  stack_setup @ compile_aexpr body env m false @ stack_cleanup
 ;;
 
-let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
-  match anfed with
-  | AProgram (decls, body, _) ->
-      let comp_decls = raise (NotYetImplemented "... do stuff with decls ...") in
-      let body_prologue, comp_body, body_epilogue =
-        raise (NotYetImplemented "... do stuff with body ...")
-      in
-      let heap_start =
-        [ ILineComment "heap start";
-          IInstrComment
-            ( IMov (Reg heap_reg, Reg (List.nth first_six_args_registers 0)),
-              "Load heap_reg with our argument, the heap pointer" );
-          IInstrComment (IAdd (Reg heap_reg, Const 15L), "Align it to the nearest multiple of 16");
-          IInstrComment
-            (IAnd (Reg heap_reg, HexConst 0xFFFFFFFFFFFFFFF0L), "by adding no more than 15 to it")
-        ]
-      in
-      let main = to_asm (body_prologue @ heap_start @ comp_body @ body_epilogue) in
-      raise
-        (NotYetImplemented
-           "... combine comp_decls and main with any needed extra setup and error handling ..." )
+let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
+  let all_decls = decls @ [ADFun ("our_code_starts_here", [], body, t)] in
+  let compiled_decls = List.concat_map (fun d -> compile_decl d env) all_decls in
+  let body_prologue = "section .text\nextern error\nextern print\nglobal our_code_starts_here" in
+  let heap_start =
+    [ ILineComment "heap start";
+      IInstrComment
+        ( IMov (Reg heap_reg, Reg (List.nth first_six_args_registers 0)),
+          "Load heap_reg with our argument, the heap pointer" );
+      IInstrComment (IAdd (Reg heap_reg, Const 15L), "Align it to the nearest multiple of 16");
+      IInstrComment
+        (IAnd (Reg heap_reg, HexConst 0xFFFFFFFFFFFFFFF0L), "by adding no more than 15 to it") ]
+  in
+  let main = to_asm (heap_start @ compiled_decls @ runtime_errors) in
+  sprintf "%s%s\n" body_prologue main
 ;;
 
 (* Feel free to add additional phases to your pipeline.

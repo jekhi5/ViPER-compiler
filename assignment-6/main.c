@@ -5,21 +5,25 @@
 
 typedef uint64_t SNAKEVAL;
 
-extern SNAKEVAL our_code_starts_here(uint64_t* HEAP, int size) asm("our_code_starts_here");
+extern SNAKEVAL our_code_starts_here(uint64_t *HEAP, int size) asm("our_code_starts_here");
 extern void error(uint64_t code, SNAKEVAL val) asm("error");
 extern SNAKEVAL print(SNAKEVAL val) asm("print");
 extern SNAKEVAL input() asm("input");
-extern SNAKEVAL printStack(SNAKEVAL val, uint64_t* esp, uint64_t* ebp, int args) asm("print_stack");
-extern uint64_t* STACK_BOTTOM asm("STACK_BOTTOM");
+extern SNAKEVAL printStack(SNAKEVAL val, uint64_t *esp, uint64_t *ebp, int args) asm("print_stack");
+extern uint64_t *STACK_BOTTOM asm("STACK_BOTTOM");
 
-uint64_t* HEAP;
+uint64_t *HEAP;
 
+const SNAKEVAL BOOL_TAG = 0x0000000000000001;
+const SNAKEVAL BOOL_TRUE = 0xFFFFFFFFFFFFFFFF;
+const SNAKEVAL BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
 
-void printHelp(FILE *out, SNAKEVAL val) {
+void printHelp(FILE *out, SNAKEVAL val)
+{
   // Number
   if ((val & BOOL_TAG) == 0)
-  {                                        // val is even ==> number
-    printf("%ld\n", ((int64_t)(val)) / 2); // shift bits right to remove tag
+  {                                         // val is even ==> number
+    printf("%lld\n", ((int64_t)(val)) / 2); // shift bits right to remove tag
     // All else is boolean
   }
   else if (val == BOOL_TRUE)
@@ -35,20 +39,19 @@ void printHelp(FILE *out, SNAKEVAL val) {
 
   else
   {
-    printf("Unknown value: %#018lx\n", val); // print unknown val in hex
+    printf("Unknown value: %#018llx\n", val); // print unknown val in hex
   }
-  return val;
-}
 }
 
-SNAKEVAL print(SNAKEVAL val) {
+SNAKEVAL print(SNAKEVAL val)
+{
   printHelp(stdout, val);
   printf("\n");
   fflush(stdout);
   return val;
 }
 
-int64_t error(int64_t code, SNAKEVAL bad_val)
+void error(uint64_t code, SNAKEVAL bad_val)
 {
   if (code == 1)
   {
@@ -107,26 +110,22 @@ int64_t error(int64_t code, SNAKEVAL bad_val)
   exit(code);
 }
 
-
-let err_GET_NOT_TUPLE = 6L
-
-let err_GET_LOW_INDEX = 7L
-
-let err_GET_HIGH_INDEX = 8L
-
-let err_INDEX_NOT_NUM = 9L
-
-let err_NIL_DEREF = 10L
-
 // main should remain unchanged
 // You can pass in a numeric argument to your program when you run it,
 // to specify the size of the available heap.  You may find this useful
 // for debugging...
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
   int size = 100000;
-  if (argc > 1) { size = atoi(argv[1]); }
-  if (size < 0 || size > 1000000) { size = 0; }
-  HEAP = calloc(size, sizeof (int));
+  if (argc > 1)
+  {
+    size = atoi(argv[1]);
+  }
+  if (size < 0 || size > 1000000)
+  {
+    size = 0;
+  }
+  HEAP = calloc(size, sizeof(int));
 
   SNAKEVAL result = our_code_starts_here(HEAP, size);
   print(result);
