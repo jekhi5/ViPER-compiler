@@ -81,7 +81,7 @@ void error(uint64_t code, SNAKEVAL bad_val)
   else if (code == 6)
   {
     printf("Expected a tuple, got: ");
-    print(bad_val);
+    // print(bad_val);
   }
   else if (code == 7)
   {
@@ -100,7 +100,7 @@ void error(uint64_t code, SNAKEVAL bad_val)
   }
   else if (code == 10)
   {
-    printf("NIL dereference error! Got: ");
+    printf("nil dereference error! Got: ");
     print(bad_val);
   }
   else
