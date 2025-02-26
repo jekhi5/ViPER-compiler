@@ -1110,7 +1110,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           IShr (Reg R11, Const 1L);
           ICmp (Reg R11, Const 0L);
           IJl index_low_label;
-          ICmp (Reg R11, idx_reg);
+          ICmp (Reg R11, Reg RAX);
           IJge index_high_label;
           IInstrComment
             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
@@ -1131,7 +1131,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           IShr (Reg R11, Const 1L);
           ICmp (Reg R11, Const 0L);
           IJl index_low_label;
-          ICmp (Reg R11, idx_reg);
+          ICmp (Reg R11, Reg RAX);
           IJge index_high_label;
           IInstrComment
             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");

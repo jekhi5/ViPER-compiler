@@ -80,17 +80,17 @@ void error(uint64_t code, SNAKEVAL bad_val)
   }
   else if (code == 6)
   {
-    printf("Tried to index a non-tuple, got: ");
+    printf("Expected a tuple, got: ");
     print(bad_val);
   }
   else if (code == 7)
   {
-    printf("Index out of range of tuple (too low)! Got: ");
+    printf("Index out of range of tuple (index too small)! Got: ");
     print(bad_val);
   }
   else if (code == 8)
   {
-    printf("Index out of range of tuple (too high)! Got: ");
+    printf("Index out of range of tuple (index too large)! Got: ");
     print(bad_val);
   }
   else if (code == 9)
