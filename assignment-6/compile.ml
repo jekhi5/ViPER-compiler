@@ -1134,7 +1134,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
 
 and compile_imm e env =
   match e with
-  | ImmNum (n, loc) -> HexConst n
+  | ImmNum (n, loc) -> HexConst (Int64.mul 2L n)
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> find env x
