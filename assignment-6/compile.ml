@@ -1095,7 +1095,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       @ [ IMov (Reg RAX, Reg R15);
           IAdd (Reg RAX, Const 1L);
           IAdd (Reg R15, Const (Int64.of_int (8 * (n + 1))));
-          IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "0 if even args, 8 if odd") ]
+          IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "8 if even items, 0 if odd") ]
       @ [ILineComment "==== End tuple initialization ===="]
   | CGetItem (tup, idx, _) ->
       let tup_reg = compile_imm tup env in
@@ -1171,7 +1171,8 @@ let runtime_errors =
       (nil_deref_label, err_NIL_DEREF) ]
 ;;
 
-let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction list =
+let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) (heap_setup : instruction list) :
+    instruction list =
   (* Step 1: Set up the stack 
    * Step 2: Map arg names to their locations in registers/on the stack
    *  -> This is handled in `compile_aexpr`.
@@ -1205,15 +1206,21 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) : instruction l
       IRet;
       ILineComment "======================" ]
   in
-  stack_setup @ compile_aexpr body env m false @ stack_cleanup
+  stack_setup @ heap_setup @ compile_aexpr body env m false @ stack_cleanup
 ;;
 
 let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
   let all_decls = decls @ [ADFun ("our_code_starts_here", [], body, t)] in
-  let compiled_decls = List.concat_map (fun d -> compile_decl d env) all_decls in
+  let compiled_decls = List.concat_map (fun d -> compile_decl d env []) decls in
   let body_prologue = "section .text\nextern error\nextern print\nglobal our_code_starts_here" in
   let heap_start =
-    [ ILineComment "heap start";
+    [ ILineComment "=== Heap start ===";
+      ILineComment "First, put the end of the head onto the stack";
+      IMov (Reg scratch_reg, Reg RSI);
+      (* Heap size *)
+      IMul (Reg scratch_reg, Const 8L);
+      IAdd (Reg scratch_reg, Reg RDI);
+      IMov (RegOffset (0, RSP), Reg scratch_reg);
       IInstrComment
         ( IMov (Reg heap_reg, Reg (List.nth first_six_args_registers 0)),
           "Load heap_reg with our argument, the heap pointer" );
@@ -1221,7 +1228,8 @@ let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
       IInstrComment
         (IAnd (Reg heap_reg, HexConst 0xFFFFFFFFFFFFFFF0L), "by adding no more than 15 to it") ]
   in
-  let main = to_asm (heap_start @ compiled_decls @ runtime_errors) in
+  let ocsh = compile_decl (ADFun ("our_code_starts_here", [], body, t)) env heap_start in
+  let main = to_asm (ocsh @ compiled_decls @ runtime_errors) in
   sprintf "%s%s\n" body_prologue main
 ;;
 

@@ -18,29 +18,41 @@ const SNAKEVAL BOOL_TAG = 0x0000000000000001;
 const SNAKEVAL BOOL_TRUE = 0xFFFFFFFFFFFFFFFF;
 const SNAKEVAL BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
 
-void printHelp(FILE *out, SNAKEVAL val)
-{
-  // Number
+
+
+char* decode(SNAKEVAL val) {
   if ((val & BOOL_TAG) == 0)
-  {                                         // val is even ==> number
-    printf("%lld\n", ((int64_t)(val)) / 2); // shift bits right to remove tag
-    // All else is boolean
+  {            
+    char* str_buffer = malloc(22 * sizeof(char)); // val is even ==> number
+    sprintf(str_buffer, "%lld", ((int64_t)(val)) / 2); // shift bits right to remove tag
+    return str_buffer;
   }
   else if (val == BOOL_TRUE)
   {
-    printf("true\n");
+    char* str_buffer = malloc(5 * sizeof(char));
+    sprintf(str_buffer, "true");
+    return str_buffer;
   }
   else if (val == BOOL_FALSE)
   {
-    printf("false\n");
+    char* str_buffer = malloc(6 * sizeof(char));
+    sprintf(str_buffer, "false");
+    return str_buffer;
   }
-
-  // TODO: print tuples and nil
-
   else
   {
-    printf("Unknown value: %#018llx\n", val); // print unknown val in hex
+    char* str_buffer = malloc(65 * sizeof(char));
+    sprintf("Unknown value: %#018llx\n", val); // print unknown val in hex
+    return str_buffer;
   }
+
+}
+
+void printHelp(FILE *out, SNAKEVAL val)
+{
+  char* str = decode(val);
+  fprintf(out, str);
+  free(str);
 }
 
 SNAKEVAL print(SNAKEVAL val)
@@ -51,62 +63,75 @@ SNAKEVAL print(SNAKEVAL val)
   return val;
 }
 
-void error(uint64_t code, SNAKEVAL bad_val)
-{
+
+char* decode_error(uint64_t code) {
+  int max_size = 60;
+
+  char* str_buffer = malloc(max_size * sizeof(char));
+
   if (code == 1)
   {
-    printf("comparison expected a number, got: ");
-    print(bad_val);
+    sprintf(str_buffer, "comparison expected a number, got: ");
   }
   else if (code == 2)
   {
-    printf("arithmetic expected a number, got: ");
-    print(bad_val);
+    sprintf(str_buffer, "arithmetic expected a number, got: ");
   }
   else if (code == 3)
   {
-    printf("logic expected a boolean, got: ");
-    print(bad_val);
+    sprintf(str_buffer, "logic expected a boolean, got: ");
   }
   else if (code == 4)
   {
-    printf("if expected a boolean, got: ");
-    print(bad_val);
+    sprintf(str_buffer, "if expected a boolean, got: ");
   }
   else if (code == 5)
   {
-    printf("Integer overflow! Got: ");
-    print(bad_val);
+    sprintf(str_buffer, "Integer overflow! Got: ");
   }
   else if (code == 6)
   {
-    printf("Expected a tuple, got: ");
-    // print(bad_val);
+    sprintf(str_buffer, "Expected a tuple, got: ");
   }
   else if (code == 7)
   {
-    printf("Index out of range of tuple (index too small)! Got: ");
-    print(bad_val);
+    sprintf(str_buffer, "Index out of range of tuple (index too small)! Got: ");
   }
   else if (code == 8)
   {
-    printf("Index out of range of tuple (index too large)! Got: ");
-    print(bad_val);
+    sprintf(str_buffer, "Index out of range of tuple (index too large)! Got: ");
   }
   else if (code == 9)
   {
-    printf("Index expected a number, got: ");
-    print(bad_val);
+    sprintf(str_buffer, "Index expected a number, got: ");
   }
   else if (code == 10)
   {
-    printf("nil dereference error! Got: ");
-    print(bad_val);
+    sprintf(str_buffer, "nil dereference error! Got: ");
   }
   else
   {
-    printf("Unknown error code.\n");
+    sprintf(str_buffer, "Unknown error code.");
   }
+}
+
+
+void errorHelp(FILE *out, uint64_t code, SNAKEVAL bad_val) {
+  char* error_text = decode_error(code);
+  char* bad_val_text = decode(bad_val);
+
+  fprintf(out, error_text);
+  free(error_text);
+
+  fprintf(out, bad_val_text);
+  free(bad_val_text);
+}
+
+void error(uint64_t code, SNAKEVAL bad_val)
+{
+  errorHelp(stdout, code, bad_val);
+  printf("\n");
+  fflush(stdout);
   exit(code);
 }
 
@@ -125,7 +150,7 @@ int main(int argc, char **argv)
   {
     size = 0;
   }
-  HEAP = calloc(size, sizeof(int));
+  HEAP = calloc(size, sizeof(int64_t));
 
   SNAKEVAL result = our_code_starts_here(HEAP, size);
   print(result);
