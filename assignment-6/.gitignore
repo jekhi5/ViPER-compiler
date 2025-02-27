@@ -6,3 +6,5 @@ output/**
 *.log
 _build/*
 **/.DS_Store
+**/.vscode
+sandbox.ml

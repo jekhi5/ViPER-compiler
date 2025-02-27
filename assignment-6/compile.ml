@@ -96,6 +96,8 @@ let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 let word_size = 8
 
+let scratch_reg2 = R10
+
 (* You may find some of these helpers useful *)
 let rec find ls x =
   match ls with
@@ -363,9 +365,19 @@ let simplify_tuple_bindings (Program ((decls : 'a decl list), (body : 'a expr), 
 (* Converts all `ESeq`s to `ELet`s. *)
 (* INVARIANT: There are no `ESeq`s in the resulting program. *)
 let seq_to_let (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) : 'a program =
-  let rec helpE e =
+  let rec helpE e : 'a expr =
     match e with
-    | ESeq (e1, e2, alpha) -> ELet ([(BBlank alpha, e1, alpha)], e2, alpha)
+    | ESeq (e1, e2, a) -> ELet ([(BBlank a, e1, a)], helpE e2, a)
+    | EPrim1 (op, e, a) -> EPrim1 (op, helpE e, a)
+    | EPrim2 (op, e1, e2, a) -> EPrim2 (op, helpE e1, helpE e2, a)
+    | ETuple (items, a) -> ETuple (List.map helpE items, a)
+    | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
+    | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
+    | ELet (bindings, body, a) ->
+        let desugared_bindings = List.map (fun (bind, bound, a) -> (bind, helpE bound, a)) bindings in
+        ELet (desugared_bindings, helpE body, a)
+    | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
+    | EApp (n, args, c, a) -> EApp (n, List.map helpE args, c, a)
     | _ -> e
   in
   let helpD d =
@@ -1104,12 +1116,14 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
   | CGetItem (tup, idx, _) ->
       let tup_reg = compile_imm tup env in
       let idx_reg = compile_imm idx env in
-      [ILineComment "==== Begin get-item ===="; IMov (Reg RAX, idx_reg)]
-      @ check_num not_a_number_index_label
-      @ [IMov (Reg RAX, tup_reg)]
+      [ILineComment "==== Begin get-item ===="; IMov (Reg RAX, tup_reg)]
       @ check_tuple not_a_tuple_access_label
+      @ [IMov (Reg RAX, tup_reg)]
       @ check_not_nil nil_deref_label
-      @ [ IMov (Reg RAX, tup_reg); (* Because we mangled RAX in check_tuple.*)
+      @ [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [ IMov (Reg RAX, tup_reg);
+          (* Because we mangled RAX in check_tuple.*)
           ISub (Reg RAX, Const 1L);
           IMov (Reg R11, idx_reg);
           IShr (Reg R11, Const 1L);
@@ -1117,34 +1131,38 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           IJl index_low_label;
           ICmp (Reg R11, Reg RAX);
           IJge index_high_label;
-          IInstrComment
-            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
+          (* IInstrComment
+            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
           ILineComment "Multiply the value in R11 by 8 with no further offset" ]
-      @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, 8, 0))
+      @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, word_size, word_size))
       @ [ILineComment "===== End get-item ====="]
   | CSetItem (tup, idx, value, _) ->
       let tup_reg = compile_imm tup env in
       let idx_reg = compile_imm idx env in
       let val_reg = compile_imm value env in
-      [ILineComment "==== Begin set-item ===="; IMov (Reg RAX, idx_reg)]
-      @ check_num not_a_number_index_label
-      @ [IMov (Reg RAX, tup_reg)]
+      let tuple_slot_offset = RegOffsetReg (RAX, R11, word_size, word_size) in
+      [ILineComment "==== Begin set-item ===="; IMov (Reg RAX, tup_reg)]
       @ check_tuple not_a_tuple_access_label
+      @ [IMov (Reg RAX, tup_reg)]
       @ check_not_nil nil_deref_label
-      @ [ ISub (Reg RAX, Const 1L);
+      @ [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [ IMov (Reg RAX, tup_reg);
+          ISub (Reg RAX, Const 1L);
           IMov (Reg R11, idx_reg);
           IShr (Reg R11, Const 1L);
           ICmp (Reg R11, Const 0L);
           IJl index_low_label;
           ICmp (Reg R11, Reg RAX);
           IJge index_high_label;
+          (* IInstrComment
+            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
+          IMov (Reg scratch_reg2, val_reg);
           IInstrComment
-            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length");
-          IInstrComment
-            ( IMov (Reg RAX, RegOffsetReg (RAX, R11, 8, 0)),
-              "Store the location of the relevant value in RAX" ) ]
-      @ move_with_scratch (RegOffset (0, RAX)) val_reg
-      @ [IMov (Reg RAX, Reg scratch_reg); ILineComment "===== End set-item ====="]
+            ( IMov (tuple_slot_offset, Reg scratch_reg2),
+              "Store the location of the relevant value in RAX" );
+          IMov (Reg RAX, Reg scratch_reg2);
+          ILineComment "===== End set-item =====" ]
 
 and compile_imm e env =
   match e with
@@ -1263,14 +1281,14 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
 ;;
 
 (* let pretty_asm_comments (instrs : instruction list) (min_width : int) : instruction list =
-  let rec help (instrs : instruction list) (nest : tag) : instruction list =
-    match instrs with
-    | [] -> []
-    | ILineComment _ :: rest -> raise (NotYetImplemented "Line comments")
-    | instr :: rest ->
-        let asm_str = to_asm [instr] in
-        let l = String.length asm_str in
-        let cmt = String.make 
-  in
-  help instrs 0
-;; *)
+     let rec help (instrs : instruction list) (nest : tag) : instruction list =
+       match instrs with
+       | [] -> []
+       | ILineComment _ :: rest -> raise (NotYetImplemented "Line comments")
+       | instr :: rest ->
+           let asm_str = to_asm [instr] in
+           let l = String.length asm_str in
+           let cmt = String.make
+     in
+     help instrs 0
+   ;; *)

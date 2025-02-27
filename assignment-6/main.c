@@ -17,7 +17,10 @@ uint64_t *HEAP;
 const SNAKEVAL BOOL_TAG = 0x0000000000000001;
 const SNAKEVAL BOOL_TRUE = 0xFFFFFFFFFFFFFFFF;
 const SNAKEVAL BOOL_FALSE = 0x7FFFFFFFFFFFFFFF;
+const SNAKEVAL NIL = 0x0000000000000001;
 
+char* decode(SNAKEVAL val);
+char* decode_tuple(SNAKEVAL *val);
 
 
 char* decode(SNAKEVAL val) {
@@ -39,13 +42,60 @@ char* decode(SNAKEVAL val) {
     sprintf(str_buffer, "false");
     return str_buffer;
   }
+  else if (val == NIL) {
+    char* str_buffer = malloc(3 * sizeof(char));
+    sprintf(str_buffer, "nil");
+    return str_buffer;
+  }
+  else if ((val & BOOL_TAG) == 1)
+  {
+    int64_t *ptr_of_val = (int64_t *) (val ^ 0x1);
+    return decode_tuple(*ptr_of_val);
+  }
   else
   {
     char* str_buffer = malloc(65 * sizeof(char));
     sprintf("Unknown value: %#018llx\n", val); // print unknown val in hex
     return str_buffer;
   }
+}
 
+char* decode_tuple(SNAKEVAL *val) {
+  {
+    int64_t length = val[0];
+    // Empty tuple
+    if (length == 0) {
+      return strdup("()");
+    } 
+    
+    // Single
+    else if (length == 1)
+    {
+      char* item = decode(val);
+      char* str_buffer = malloc((4 + strlen(item)) * sizeof(char));
+      sprintf(str_buffer, "(%s,)", item);
+      return str_buffer;
+    } 
+
+    // >1-tuple
+    else 
+    {
+      int size = 2 * sizeof(char);
+      char* result = malloc(size);
+      sprintf(result, "(");
+
+      for (int i = 1; i <= length; ++i) {
+        char* decoded = decode(val[i]);
+        strcat(result, decoded);
+        free(decoded);
+      }
+
+      result = (char*)realloc(result, strlen(result) + 2);
+      strcat(result, ")");
+
+      return result;
+    }
+  }
 }
 
 void printHelp(FILE *out, SNAKEVAL val)
@@ -95,15 +145,15 @@ char* decode_error(uint64_t code) {
   }
   else if (code == 7)
   {
-    sprintf(str_buffer, "Index out of range of tuple (index too small)! Got: ");
+    sprintf(str_buffer, "index out of range of tuple (index too small)! Got: ");
   }
   else if (code == 8)
   {
-    sprintf(str_buffer, "Index out of range of tuple (index too large)! Got: ");
+    sprintf(str_buffer, "index out of range of tuple (index too large)! Got: ");
   }
   else if (code == 9)
   {
-    sprintf(str_buffer, "Index expected a number, got: ");
+    sprintf(str_buffer, "index expected a number, got: ");
   }
   else if (code == 10)
   {
