@@ -827,6 +827,10 @@ let check_num (goto : string) : instruction list =
 
 (* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
 let check_tuple (goto : string) : instruction list =
+  (* TODO: This mangles RAX, btw.
+     We must either reset rax after this,
+     or use a temp register here.
+  *)
   [ IAnd (Reg RAX, HexConst tuple_tag_mask);
     IMov (Reg scratch_reg, HexConst tuple_tag);
     ICmp (Reg RAX, Reg scratch_reg);
@@ -1105,7 +1109,8 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       @ [IMov (Reg RAX, tup_reg)]
       @ check_tuple not_a_tuple_access_label
       @ check_not_nil nil_deref_label
-      @ [ ISub (Reg RAX, Const 1L);
+      @ [ IMov (Reg RAX, tup_reg); (* Because we mangled RAX in check_tuple.*)
+          ISub (Reg RAX, Const 1L);
           IMov (Reg R11, idx_reg);
           IShr (Reg R11, Const 1L);
           ICmp (Reg R11, Const 0L);
@@ -1256,3 +1261,16 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   |> add_phase locate_bindings naive_stack_allocation
   |> add_phase result compile_prog
 ;;
+
+(* let pretty_asm_comments (instrs : instruction list) (min_width : int) : instruction list =
+  let rec help (instrs : instruction list) (nest : tag) : instruction list =
+    match instrs with
+    | [] -> []
+    | ILineComment _ :: rest -> raise (NotYetImplemented "Line comments")
+    | instr :: rest ->
+        let asm_str = to_asm [instr] in
+        let l = String.length asm_str in
+        let cmt = String.make 
+  in
+  help instrs 0
+;; *)

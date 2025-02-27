@@ -113,6 +113,7 @@ char* decode_error(uint64_t code) {
   {
     sprintf(str_buffer, "Unknown error code.");
   }
+  return str_buffer;
 }
 
 
@@ -129,7 +130,7 @@ void errorHelp(FILE *out, uint64_t code, SNAKEVAL bad_val) {
 
 void error(uint64_t code, SNAKEVAL bad_val)
 {
-  errorHelp(stdout, code, bad_val);
+  errorHelp(stderr, code, bad_val);
   printf("\n");
   fflush(stdout);
   exit(code);
