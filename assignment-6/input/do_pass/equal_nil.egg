@@ -1,0 +1,7 @@
+let a = (
+    equal(true, nil),
+	equal(false, nil),
+	equal(0, nil),
+	equal(nil, ()),
+	equal(nil, nil)
+) in a

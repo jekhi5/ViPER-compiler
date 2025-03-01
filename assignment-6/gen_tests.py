@@ -69,7 +69,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-d", "--dir", type=str, default="input/")
-    parser.add_argument("-s", "--splitter", type=str, default="#")
+    parser.add_argument("-s", "--splitter", type=str, default="@")
     parser.add_argument("-v", "--verbose", type=int, default=0)
     parser.add_argument("-f", "--filetype", type=str, default=".egg")
 

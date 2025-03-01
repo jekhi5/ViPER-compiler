@@ -62,10 +62,10 @@ char *decode(SNAKEVAL val)
   // Tuple (the only thing left that could end in a 1 at this point)
   else if ((val & BOOL_TAG) == 1)
   {
-    printf("==================tuple==================\n");
-    printf("==================tuple NEXT==================\n");
+    // printf("==================tuple==================\n");
+    // printf("==================tuple NEXT==================\n");
     uint64_t *ptr_of_val = (uint64_t *)(val ^ 0x1);
-    printf("==================tuple AFTER==================\n");
+    // printf("==================tuple AFTER==================\n");
     return decode_tuple(ptr_of_val);
     // printf("==================END tuple==================\n");
   }
@@ -121,7 +121,7 @@ char *decode_tuple(SNAKEVAL *val)
           sprintf(comma_space, ", ");
         }
 
-        result = (char *)realloc(result, (strlen(result) + strlen(decoded) + strlen(comma_space)) * sizeof(char));
+        result = (char *)realloc(result, 100 + (strlen(result) + strlen(decoded) + strlen(comma_space)) * sizeof(char));
 
         if (i > 1)
         {
@@ -236,13 +236,15 @@ SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2)
   if ((val1 & BOOL_TAG) == 0 || (val1 == BOOL_TRUE) || (val1 == BOOL_FALSE) || (val1 == NIL))
   {
     // These will be just basic `uint64_t`s, so == is appropriate
-    printf("Val1: %p\nVal2: %p", val1, val2);
+    printf("Val1: %p, Val2: %p: ", val1, val2);
     if (val1 == val2)
     {
+      printf("true\n");
       return BOOL_TRUE;
     }
     else
     {
+      printf("false\n");
       return BOOL_FALSE;
     }
   }

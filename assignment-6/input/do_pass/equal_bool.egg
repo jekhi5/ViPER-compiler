@@ -1,0 +1,7 @@
+let a = (
+    equal(true, true),
+	equal(false, false),
+	equal(true, false),
+	equal(false, true),
+	equal(true && false, false || false)
+) in a

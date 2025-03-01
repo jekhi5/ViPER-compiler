@@ -1,0 +1,11 @@
+# This test passed in diamondback.
+# It seems that the `rename` starter code has changed and broken our existing functionality.
+# I don't have enough time to fix this...
+
+def our_code_starts_here():
+    print(true)
+
+let 
+    a = our_code_starts_here()
+in
+    a || false
