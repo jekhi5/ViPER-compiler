@@ -169,7 +169,11 @@ type funenvt = call_type envt
 
 let initial_fun_env : funenvt =
   [ (* call_types indicate whether a given function is implemented by something in the runtime,
-       as a snake function, as a primop (in case that's useful), or just unknown so far *) ]
+       as a snake function, as a primop (in case that's useful), or just unknown so far *)
+    ("print", Prim);
+    ("input", Native);
+    ("equal", Native);
+       ]
 ;;
 
 let rename_and_tag (p : tag program) : tag program =
@@ -826,10 +830,11 @@ let naive_stack_allocation (AProgram (decls, body, _) as prog : tag aprogram) :
 (* We could check a parameterized register, but that creates complexity in reporting the error. *)
 (* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
 let check_bool (goto : string) : instruction list =
-  [ IMov (Reg scratch_reg, HexConst bool_tag_mask);
-    IAnd (Reg RAX, Reg scratch_reg);
-    ICmp (Reg RAX, HexConst bool_tag);
-    IJz goto ]
+  [ IMov (Reg scratch_reg2, Reg RAX);
+    IMov (Reg scratch_reg, HexConst bool_tag_mask);
+    IAnd (Reg scratch_reg2, Reg scratch_reg);
+    ICmp (Reg scratch_reg2, HexConst bool_tag);
+    IJnz goto ]
 ;;
 
 (* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
@@ -1085,6 +1090,12 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
             IMov (Reg RAX, const_true);
             ILabel done_label ] )
   | CApp (fun_name, args, call_type, _) ->
+      let x = match call_type with
+      | Native -> []
+      | Snake -> []
+      | Prim -> raise (NotYetImplemented "Haven't implemented prim funcs")
+      | Unknown -> raise (NotYetImplemented "Haven't implemented unknown funcs")
+      in
       let arg_regs = List.map (fun a -> compile_imm a env) args in
       (* We need to handle our caller-save registers here, and set up the args. *)
       let m = List.length args in
@@ -1236,7 +1247,7 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) (heap_setup : i
 let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
   (* let all_decls = decls @ [ADFun ("our_code_starts_here", [], body, t)] in *)
   let compiled_decls = List.concat_map (fun d -> compile_decl d env []) decls in
-  let body_prologue = "section .text\nextern error\nextern print\nglobal our_code_starts_here" in
+  let body_prologue = "section .text\nextern error\nextern print\nextern input\nextern equal\nglobal our_code_starts_here" in
   let heap_start =
     [ ILineComment "=== Heap start ===";
       ILineComment "First, put the end of the head onto the stack";

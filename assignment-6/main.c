@@ -30,8 +30,9 @@ char *decode(SNAKEVAL val)
   if ((val & BOOL_TAG) == 0)
   {
     // printf("==================number==================\n");
-    char *str_buffer = (char *)malloc(22 * sizeof(char)); // val is even ==> number
-    sprintf(str_buffer, "%ld", ((int64_t)(val)) / 2);    // shift bits right to remove tag
+    char *str_buffer = (char *)malloc(100 * sizeof(char)); // val is even ==> number
+    sprintf(str_buffer, "%ld", ((int64_t)(val)) / 2);     // shift bits right to remove tag
+    // printf("val is at address: %p\n", str_buffer);
     return str_buffer;
   }
   // True
@@ -61,10 +62,10 @@ char *decode(SNAKEVAL val)
   // Tuple (the only thing left that could end in a 1 at this point)
   else if ((val & BOOL_TAG) == 1)
   {
-    // printf("==================tuple==================\n");
-    // printf("==================tuple NEXT==================\n");
+    printf("==================tuple==================\n");
+    printf("==================tuple NEXT==================\n");
     uint64_t *ptr_of_val = (uint64_t *)(val ^ 0x1);
-    // printf("==================tuple AFTER==================\n");
+    printf("==================tuple AFTER==================\n");
     return decode_tuple(ptr_of_val);
     // printf("==================END tuple==================\n");
   }
@@ -79,7 +80,7 @@ char *decode(SNAKEVAL val)
 }
 
 char *decode_tuple(SNAKEVAL *val)
-{
+{ 
   {
     int64_t length = val[0];
     // Empty tuple
@@ -149,8 +150,9 @@ void printHelp(FILE *out, SNAKEVAL val)
 
 SNAKEVAL print(SNAKEVAL val)
 {
+
   printHelp(stdout, val);
-  printf("\n");
+  fprintf(stdout, "\n");
   fflush(stdout);
   return val;
 }
@@ -223,18 +225,18 @@ void errorHelp(FILE *out, uint64_t code, SNAKEVAL bad_val)
 void error(uint64_t code, SNAKEVAL bad_val)
 {
   errorHelp(stderr, code, bad_val);
-  printf("\n");
-  fflush(stdout);
+  fprintf(stderr, "\n");
+  fflush(stderr);
   exit(code);
 }
 
 SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2)
 {
-
   // Atomic types
   if ((val1 & BOOL_TAG) == 0 || (val1 == BOOL_TRUE) || (val1 == BOOL_FALSE) || (val1 == NIL))
   {
     // These will be just basic `uint64_t`s, so == is appropriate
+    printf("Val1: %p\nVal2: %p", val1, val2);
     if (val1 == val2)
     {
       return BOOL_TRUE;
@@ -287,6 +289,7 @@ SNAKEVAL tuple_equals(SNAKEVAL *val1, SNAKEVAL *val2)
 // for debugging...
 int main(int argc, char **argv)
 {
+
   int size = 100000;
   if (argc > 1)
   {
