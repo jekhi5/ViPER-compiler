@@ -1267,10 +1267,11 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) (heap_setup : i
     Int64.of_int
       ( 8
       *
+      (* TODO: FIX THIS HACK! *)
       if vars mod 2 = 1 then
-        vars + 1
+        vars + 3
       else
-        vars )
+        vars + 2)
   in
   let stack_setup =
     [ ILabel fname;
