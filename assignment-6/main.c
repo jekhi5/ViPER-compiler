@@ -10,6 +10,7 @@ extern void error(uint64_t code, SNAKEVAL val) asm("error");
 extern SNAKEVAL print(SNAKEVAL val) asm("print");
 extern SNAKEVAL input() asm("input");
 extern SNAKEVAL printStack(SNAKEVAL val, uint64_t *esp, uint64_t *ebp, int args) asm("print_stack");
+extern SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2);
 extern uint64_t *STACK_BOTTOM asm("STACK_BOTTOM");
 
 uint64_t *HEAP;
@@ -28,8 +29,8 @@ char *decode(SNAKEVAL val)
   if ((val & BOOL_TAG) == 0)
   {
     printf("==================number==================\n");
-    char *str_buffer = (char *)malloc(22 * sizeof(char));      // val is even ==> number
-    sprintf(str_buffer, "%lld", ((int64_t)(val)) / 2); // shift bits right to remove tag
+    char *str_buffer = (char *)malloc(22 * sizeof(char)); // val is even ==> number
+    sprintf(str_buffer, "%lld", ((int64_t)(val)) / 2);    // shift bits right to remove tag
     return str_buffer;
   }
   // True
@@ -89,13 +90,19 @@ char *decode_tuple(SNAKEVAL *val)
     // Single
     else if (length == 1)
     {
-      char *item = decode(val);
+      // char *item = decode(val);
+
+      // I think this needs to be the following line,
+      // rather than what it was before (above) because that would just
+      // cycle us back to this function, right? The whole val is a tuple,
+      // which we're decoding here. So we need to decode the pieces
+      char *item = decode(val[1]);
       char *str_buffer = (char *)malloc((4 + strlen(item)) * sizeof(char));
       sprintf(str_buffer, "(%s,)", item);
       return str_buffer;
     }
 
-    // >1-tuple
+    // >0-tuple
     else
     {
       int size = 2 * sizeof(char);
@@ -105,13 +112,11 @@ char *decode_tuple(SNAKEVAL *val)
       for (int i = 1; i <= length; i += 1)
       {
         char *decoded = decode(val[i]);
-        size_t comma_space_size = 0;
         char *comma_space = (char *)malloc(0);
         if (i > 1)
         {
           *comma_space = (char *)realloc(comma_space, 3 * sizeof(char));
           sprintf(comma_space, ", ");
-          comma_space_size = strlen(comma_space);
         }
 
         result = (char *)realloc(result, (strlen(result) + strlen(decoded) + strlen(comma_space)) * sizeof(char));
@@ -220,6 +225,59 @@ void error(uint64_t code, SNAKEVAL bad_val)
   printf("\n");
   fflush(stdout);
   exit(code);
+}
+
+SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2)
+{
+
+  // Atomic types
+  if ((val1 & BOOL_TAG) == 0 || (val1 == BOOL_TRUE) || (val1 == BOOL_FALSE) || (val1 == NIL))
+  {
+    // These will be just basic `uint64_t`s, so == is appropriate
+    if (val1 == val2)
+    {
+      return BOOL_TRUE;
+    }
+    else
+    {
+      return BOOL_FALSE;
+    }
+  }
+  // Tuple (the only thing left that could end in a 1 at this point)
+  else if ((val1 & BOOL_TAG) == 1 && (val2 & BOOL_TAG) == 1)
+  {
+    uint64_t *ptr_of_val1 = (uint64_t *)(val1 ^ 0x1);
+    uint64_t *ptr_of_val2 = (uint64_t *)(val2 ^ 0x1);
+    return tuple_equals(ptr_of_val1, ptr_of_val2);
+  }
+  else
+  {
+    return BOOL_FALSE;
+  }
+}
+
+SNAKEVAL tuple_equals(SNAKEVAL *val1, SNAKEVAL *val2)
+{
+  int64_t size1 = val1[0];
+  int64_t size2 = val2[0];
+
+  if (size1 != size2)
+  {
+    return BOOL_FALSE;
+  }
+
+  for (int i = 1; i <= size1; i += 1)
+  {
+    char *cur_item_1 = decode(val1[i]);
+    char *cur_item_2 = decode(val2[i]);
+
+    if (strcmp(cur_item_1, cur_item_2) != 0)
+    {
+      return BOOL_FALSE;
+    }
+  }
+
+  return BOOL_TRUE;
 }
 
 // main should remain unchanged
