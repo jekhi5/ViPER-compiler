@@ -22,21 +22,22 @@ const SNAKEVAL NIL = 0x0000000000000001;
 
 char *decode(SNAKEVAL val);
 char *decode_tuple(SNAKEVAL *val);
+SNAKEVAL tuple_equals(SNAKEVAL *val1, SNAKEVAL *val2);
 
 char *decode(SNAKEVAL val)
 {
   // Number
   if ((val & BOOL_TAG) == 0)
   {
-    printf("==================number==================\n");
+    // printf("==================number==================\n");
     char *str_buffer = (char *)malloc(22 * sizeof(char)); // val is even ==> number
-    sprintf(str_buffer, "%lld", ((int64_t)(val)) / 2);    // shift bits right to remove tag
+    sprintf(str_buffer, "%ld", ((int64_t)(val)) / 2);    // shift bits right to remove tag
     return str_buffer;
   }
   // True
   else if (val == BOOL_TRUE)
   {
-    printf("==================true==================\n");
+    // printf("==================true==================\n");
     char *str_buffer = (char *)malloc(5 * sizeof(char));
     sprintf(str_buffer, "true");
     return str_buffer;
@@ -44,7 +45,7 @@ char *decode(SNAKEVAL val)
   // False
   else if (val == BOOL_FALSE)
   {
-    printf("==================false==================\n");
+    // printf("==================false==================\n");
     char *str_buffer = (char *)malloc(6 * sizeof(char));
     sprintf(str_buffer, "false");
     return str_buffer;
@@ -52,7 +53,7 @@ char *decode(SNAKEVAL val)
   // Nil
   else if (val == NIL)
   {
-    printf("==================nil==================\n");
+    // printf("==================nil==================\n");
     char *str_buffer = (char *)malloc(4 * sizeof(char));
     sprintf(str_buffer, "nil");
     return str_buffer;
@@ -60,19 +61,19 @@ char *decode(SNAKEVAL val)
   // Tuple (the only thing left that could end in a 1 at this point)
   else if ((val & BOOL_TAG) == 1)
   {
-    printf("==================tuple==================\n");
-    printf("==================tuple NEXT==================\n");
+    // printf("==================tuple==================\n");
+    // printf("==================tuple NEXT==================\n");
     uint64_t *ptr_of_val = (uint64_t *)(val ^ 0x1);
-    printf("==================tuple AFTER==================\n");
+    // printf("==================tuple AFTER==================\n");
     return decode_tuple(ptr_of_val);
-    printf("==================END tuple==================\n");
+    // printf("==================END tuple==================\n");
   }
   // BAD VALUE
   else
   {
-    printf("==================unknown val==================\n");
+    // printf("==================unknown val==================\n");
     char *str_buffer = (char *)malloc(65 * sizeof(char));
-    sprintf("Unknown value: %#018llx\n", val); // print unknown val in hex
+    sprintf(str_buffer, "Unknown value: %#018lx\n", val); // print unknown val in hex
     return str_buffer;
   }
 }
@@ -115,7 +116,7 @@ char *decode_tuple(SNAKEVAL *val)
         char *comma_space = (char *)malloc(0);
         if (i > 1)
         {
-          *comma_space = (char *)realloc(comma_space, 3 * sizeof(char));
+          comma_space = (char *)realloc(comma_space, 3 * sizeof(char));
           sprintf(comma_space, ", ");
         }
 
@@ -142,7 +143,7 @@ char *decode_tuple(SNAKEVAL *val)
 void printHelp(FILE *out, SNAKEVAL val)
 {
   char *str = decode(val);
-  fprintf(out, str);
+  fprintf(out, "%s", str);
   free(str);
 }
 
@@ -178,11 +179,11 @@ char *decode_error(uint64_t code)
   }
   else if (code == 5)
   {
-    sprintf(str_buffer, "Integer overflow! Got: ");
+    sprintf(str_buffer, "integer overflow! Got: ");
   }
   else if (code == 6)
   {
-    sprintf(str_buffer, "Expected a tuple, got: ");
+    sprintf(str_buffer, "expected a tuple, got: ");
   }
   else if (code == 7)
   {
@@ -212,10 +213,10 @@ void errorHelp(FILE *out, uint64_t code, SNAKEVAL bad_val)
   char *error_text = decode_error(code);
   char *bad_val_text = decode(bad_val);
 
-  fprintf(out, error_text);
+  fprintf(out, "%s", error_text);
   free(error_text);
 
-  fprintf(out, bad_val_text);
+  fprintf(out, "%s", bad_val_text);
   free(bad_val_text);
 }
 

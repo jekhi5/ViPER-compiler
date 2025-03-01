@@ -843,15 +843,16 @@ let check_tuple (goto : string) : instruction list =
      We must either reset rax after this,
      or use a temp register here.
   *)
-  [ IAnd (Reg RAX, HexConst tuple_tag_mask);
+  [ IMov (Reg scratch_reg2, Reg RAX);
+    IAnd (Reg scratch_reg2, HexConst tuple_tag_mask);
     IMov (Reg scratch_reg, HexConst tuple_tag);
-    ICmp (Reg RAX, Reg scratch_reg);
+    ICmp (Reg scratch_reg2, Reg scratch_reg);
     IJnz goto ]
 ;;
 
 (* Enforces that the value in RAX is a nil. Goes to the specified label if not. *)
 let check_not_nil (goto : string) : instruction list =
-  [IMov (Reg scratch_reg, HexConst nil_tag_mask); ITest (Reg RAX, Reg scratch_reg); IJz goto]
+  [IMov (Reg scratch_reg, HexConst nil_tag); ICmp (Reg RAX, Reg scratch_reg); IJz goto]
 ;;
 
 let check_overflow = IJo overflow_label
@@ -1233,7 +1234,7 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) (heap_setup : i
 ;;
 
 let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
-  let all_decls = decls @ [ADFun ("our_code_starts_here", [], body, t)] in
+  (* let all_decls = decls @ [ADFun ("our_code_starts_here", [], body, t)] in *)
   let compiled_decls = List.concat_map (fun d -> compile_decl d env []) decls in
   let body_prologue = "section .text\nextern error\nextern print\nglobal our_code_starts_here" in
   let heap_start =
@@ -1249,7 +1250,9 @@ let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
           "Load heap_reg with our argument, the heap pointer" );
       IInstrComment (IAdd (Reg heap_reg, Const 15L), "Align it to the nearest multiple of 16");
       IInstrComment
-        (IAnd (Reg heap_reg, HexConst 0xFFFFFFFFFFFFFFF0L), "by adding no more than 15 to it") ]
+        (IAnd (Reg heap_reg, HexConst 0xFFFFFFFFFFFFFFF0L), "by adding no more than 15 to it") ;
+       ILineComment "==== Heap end ====";
+        ]
   in
   let ocsh = compile_decl (ADFun ("our_code_starts_here", [], body, t)) env heap_start in
   let main = to_asm (ocsh @ compiled_decls @ runtime_errors) in
