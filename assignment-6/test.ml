@@ -4,6 +4,7 @@ open OUnit2
 open Pretty
 open Exprs
 open Errors
+open ExtLib
 
 let t name program input expected =
   name >:: test_run ~args:[] ~std_input:input program name expected
@@ -194,7 +195,9 @@ let desugar_tests =
                      0 ),
                  0 ) ],
            ENumber (2L, 0),
-           0 ) ) ]
+           0 ) ) ;
+  "splitting" >:: (fun _ -> assert_equal (split_at [1;2;3;4;5] 3) ([1;2;3], [4;5;]) ~printer:dump);
+           ]
 ;;
 
 let anf_tests = [ (* TODO: Write these *) ]

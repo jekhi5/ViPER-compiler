@@ -172,8 +172,15 @@ let initial_fun_env : funenvt =
        as a snake function, as a primop (in case that's useful), or just unknown so far *)
     ("print", Prim);
     ("input", Native);
-    ("equal", Native);
-       ]
+    ("equal", Native) ]
+;;
+
+let initial_fun_arity_env : int envt =
+  [ (* call_types indicate whether a given function is implemented by something in the runtime,
+       as a snake function, as a primop (in case that's useful), or just unknown so far *)
+    ("print", 1);
+    ("input", 0);
+    ("equal", 2) ]
 ;;
 
 let rename_and_tag (p : tag program) : tag program =
@@ -378,7 +385,9 @@ let seq_to_let (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) : 
     | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
     | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
     | ELet (bindings, body, a) ->
-        let desugared_bindings = List.map (fun (bind, bound, a) -> (bind, helpE bound, a)) bindings in
+        let desugared_bindings =
+          List.map (fun (bind, bound, a) -> (bind, helpE bound, a)) bindings
+        in
         ELet (desugared_bindings, helpE body, a)
     | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
     | EApp (n, args, c, a) -> EApp (n, List.map helpE args, c, a)
@@ -433,12 +442,30 @@ let eliminate_blank_bindings (Program ((decls : 'a decl list), (body : 'a expr),
   Program (List.map helpD decls, helpE body, a)
 ;;
 
+(* Convert each EApp to the appropriate type, using initial_fun_envt. *)
+(* ASSUME: All EApps are unknown. *)
+(* INVARIANT: No EApp is unknown. *)
+let annotate_call_types (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) : 'a program
+    =
+  let rec helpE e =
+    match e with
+    | EApp (fname, args, _, a) -> (
+      match List.assoc_opt fname initial_fun_env with
+      (* TODO: We can add name filters for Prims. *)
+      | Some ctype -> EApp (fname, args, ctype, a)
+      | None -> EApp (fname, args, Snake, a) )
+    | _ -> e
+  and helpD (DFun (name, args, body, a)) = DFun (name, args, helpE body, a) in
+  Program (List.map helpD decls, helpE body, a)
+;;
+
 let desugar (p : 'a program) : 'a program =
   p
   |> seq_to_let (* Introduces blank bindings, so must precede their elimination. *)
   |> simplify_tuple_bindings (* Removes nested binds, making some following phases simpler.*)
   |> eliminate_blank_bindings
   |> simplify_multi_bindings
+  |> annotate_call_types
 ;;
 
 (* Happens last, once new bindings will no longer be created. *)
@@ -607,6 +634,7 @@ let get_decl_env (decls : 'a decl list) : (string * int) list =
       match d with
       | DFun (funname, args, _, _) -> (funname, List.length args) )
     decls
+  @ initial_fun_arity_env
 ;;
 
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
@@ -758,6 +786,15 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       match total_errors with
       | [] -> Ok p
       | _ -> Error total_errors )
+;;
+
+let rec split_at (lst : 'a list) (i : int) : 'a list * 'a list =
+  match (lst, i) with
+  | [], _ -> ([], [])
+  | more, 0 -> ([], more)
+  | car :: cdr, n ->
+      let left, right = split_at cdr (n - 1) in
+      (car :: left, right)
 ;;
 
 let remove_dups (lst : 'a list) : 'a list =
@@ -1089,20 +1126,30 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
             ILabel true_label;
             IMov (Reg RAX, const_true);
             ILabel done_label ] )
-  | CApp (fun_name, args, call_type, _) ->
-      let x = match call_type with
-      | Native -> []
-      | Snake -> []
-      | Prim -> raise (NotYetImplemented "Haven't implemented prim funcs")
-      | Unknown -> raise (NotYetImplemented "Haven't implemented unknown funcs")
-      in
+  | CApp (fun_name, args, call_type, _) -> (
       let arg_regs = List.map (fun a -> compile_imm a env) args in
-      (* We need to handle our caller-save registers here, and set up the args. *)
       let m = List.length args in
-      List.concat
-        (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
-      @ [ICall fun_name]
-      @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
+      match call_type with
+      (* C functions *)
+      | Native ->
+          let reg_args, stack_args = split_at arg_regs m in
+          let first_regs, _ = split_at first_six_args_registers m in
+          List.map2 (fun a reg -> IMov (Reg reg, a)) reg_args first_regs
+          @ List.concat
+              (List.rev_map
+                 (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)])
+                 stack_args )
+          @ [ICall fun_name]
+          @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
+      (* Snakeval declared functions *)
+      | Snake ->
+          (* We need to handle our caller-save registers here, and set up the args. *)
+          List.concat
+            (List.rev_map (fun a -> [IMov (Reg scratch_reg, a); IPush (Reg scratch_reg)]) arg_regs)
+          @ [ICall fun_name]
+          @ [IAdd (Reg RSP, Const (Int64.of_int (8 * m)))]
+      | Prim -> raise (NotYetImplemented "Haven't implemented prim funcs")
+      | Unknown -> raise (NotYetImplemented "Haven't implemented unknown funcs") )
   | CTuple (items, _) ->
       let n = List.length items in
       let heap_bump_amt =
@@ -1144,7 +1191,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           ICmp (Reg R11, Reg RAX);
           IJge index_high_label;
           (* IInstrComment
-            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
+             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
           ILineComment "Multiply the value in R11 by 8 with no further offset" ]
       @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, word_size, word_size))
       @ [ILineComment "===== End get-item ====="]
@@ -1168,7 +1215,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           ICmp (Reg R11, Reg RAX);
           IJge index_high_label;
           (* IInstrComment
-            (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
+             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
           IMov (Reg scratch_reg2, val_reg);
           IInstrComment
             ( IMov (tuple_slot_offset, Reg scratch_reg2),
@@ -1247,7 +1294,14 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) (heap_setup : i
 let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
   (* let all_decls = decls @ [ADFun ("our_code_starts_here", [], body, t)] in *)
   let compiled_decls = List.concat_map (fun d -> compile_decl d env []) decls in
-  let body_prologue = "section .text\nextern error\nextern print\nextern input\nextern equal\nglobal our_code_starts_here" in
+  let body_prologue =
+    "section .text\n\
+     extern error\n\
+     extern print\n\
+     extern input\n\
+     extern equal\n\
+     global our_code_starts_here"
+  in
   let heap_start =
     [ ILineComment "=== Heap start ===";
       ILineComment "First, put the end of the head onto the stack";
@@ -1261,9 +1315,8 @@ let compile_prog (AProgram (decls, body, t), (env : arg envt)) : string =
           "Load heap_reg with our argument, the heap pointer" );
       IInstrComment (IAdd (Reg heap_reg, Const 15L), "Align it to the nearest multiple of 16");
       IInstrComment
-        (IAnd (Reg heap_reg, HexConst 0xFFFFFFFFFFFFFFF0L), "by adding no more than 15 to it") ;
-       ILineComment "==== Heap end ====";
-        ]
+        (IAnd (Reg heap_reg, HexConst 0xFFFFFFFFFFFFFFF0L), "by adding no more than 15 to it");
+      ILineComment "==== Heap end ====" ]
   in
   let ocsh = compile_decl (ADFun ("our_code_starts_here", [], body, t)) env heap_start in
   let main = to_asm (ocsh @ compiled_decls @ runtime_errors) in
