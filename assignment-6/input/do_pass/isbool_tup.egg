@@ -1,0 +1,3 @@
+isbool((1, 2))
+@
+false
