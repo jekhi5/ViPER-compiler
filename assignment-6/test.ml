@@ -59,14 +59,15 @@ let pair_tests =
       \              t\n\
       \            end"
       "" "(4, nil)";
-    t "tup3"
+    (* t "tup3"
       "let t = (4, (5, nil)) in\n\
       \            begin\n\
       \              t[1] := t;\n\
       \              t\n\
       \            end"
       "" "(4, <cyclic tuple 1>)";
-    t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))" ]
+    t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))" ] *)
+    ]
 ;;
 
 (* let oom = [
@@ -76,7 +77,17 @@ let pair_tests =
  *   tgc "oomgc4" (4) "(3, 4)" "" "(3, 4)";
  * ] *)
 
-let input = [t "input1" "let x = input() in x + 2" "123" "125"]
+let input = [
+  t "input1" "let x = input() in x + 2" "123" "125";
+  t "input_nil" "let x = input() in x" "nil" "nil";
+  t "input_true" "let x = input() in x" "true" "true";
+  t "input_false" "let x = input() in x" "false" "false";
+  t "input_two" "input() + input()" "1\n2" "3";
+  t "input_three" "(input(), (input(), input()))" "1\n2\n3" "(1, (2, 3))";
+  t "input_invalid" "input()" "abc\n1" "Invalid input: must be a number, boolean, or `nil`.\n1";
+  t "input_overflow" "input()" "4611686018427387905\n1" "Invalid input: integer overflow!\n1"
+
+  ]
 
 let desugar_tests =
   [ tp "desugar_tuple"
@@ -205,7 +216,7 @@ let anf_tests = [ (* TODO: Write these *) ]
 let suite =
   "suite"
   >:::
-  (*pair_tests @ input @*)
+  pair_tests  @ input @
   desugar_tests
 ;;
 

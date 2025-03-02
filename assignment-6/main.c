@@ -287,7 +287,6 @@ SNAKEVAL tuple_equals(SNAKEVAL *val1, SNAKEVAL *val2)
 
 SNAKEVAL input()
 {
-
   while (1)
   {
     // Amanda and Maya helped us learn about how to take user input in C.
@@ -312,9 +311,9 @@ SNAKEVAL input()
     {
       // https://www.tutorialspoint.com/c_standard_library/c_function_strtoul.htm
       char *endptr;
-      uint64_t num = strtoul(read, &endptr, 10);
+      int64_t num = strtoul(read, &endptr, 10);
 
-      if (num >= 4611686018427387904 || num <= -4611686018427387905)
+      if (num > 4611686018427387903 || num < -4611686018427387904)
       {
         printf("Invalid input: integer overflow!\n");
       }
