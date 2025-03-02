@@ -101,41 +101,33 @@ char *decode_tuple(SNAKEVAL *val)
       char *item = decode(val[1]);
       char *str_buffer = (char *)malloc((4 + strlen(item)) * sizeof(char));
       sprintf(str_buffer, "(%s,)", item);
+      free(item);
       return str_buffer;
     }
 
-    // >0-tuple
+    // >1-tuple
     else
     {
-      int size = 2 * sizeof(char);
-      char *result = (char *)malloc(size);
-      sprintf(result, "(");
+      char *result = strdup("(");
+      size_t size = strlen(result) * sizeof(char);
 
       for (int i = 1; i <= length; i += 1)
       {
         char *decoded = decode(val[i]);
-        char *comma_space = (char *)malloc(0);
-        if (i > 1)
-        {
-          comma_space = (char *)realloc(comma_space, 3 * sizeof(char));
-          sprintf(comma_space, ", ");
+        size_t decoded_size = (5 + strlen(decoded) + strlen(result)) * sizeof(char);
+        size = decoded_size;
+        char *new_result = malloc(size);
+        if (i == 1){
+          sprintf(new_result, "%s%s", result, decoded); 
+        } else if (i == length) {
+          sprintf(new_result, "%s, %s)", result, decoded);
+        } else {
+          sprintf(new_result, "%s, %s", result, decoded);
         }
-
-        result = (char *)realloc(result, 100 + (strlen(result) + strlen(decoded) + strlen(comma_space)) * sizeof(char));
-
-        if (i > 1)
-        {
-          strcat(result, comma_space);
-        }
-
-        strcat(result, decoded);
+        free(result);
         free(decoded);
-        free(comma_space);
+        result = new_result;
       }
-
-      result = (char *)realloc(result, strlen(result) + 2);
-      strcat(result, ")");
-
       return result;
     }
   }
