@@ -31,7 +31,7 @@ char *decode(SNAKEVAL val)
   {
     // printf("==================number==================\n");
     char *str_buffer = (char *)malloc(100 * sizeof(char)); // val is even ==> number
-    sprintf(str_buffer, "%ld", ((int64_t)(val)) / 2);     // shift bits right to remove tag
+    sprintf(str_buffer, "%ld", ((int64_t)(val)) / 2);      // shift bits right to remove tag
     // printf("val is at address: %p\n", str_buffer);
     return str_buffer;
   }
@@ -80,7 +80,7 @@ char *decode(SNAKEVAL val)
 }
 
 char *decode_tuple(SNAKEVAL *val)
-{ 
+{
   {
     int64_t length = val[0];
     // Empty tuple
@@ -283,6 +283,50 @@ SNAKEVAL tuple_equals(SNAKEVAL *val1, SNAKEVAL *val2)
   }
 
   return BOOL_TRUE;
+}
+
+SNAKEVAL input()
+{
+
+  while (1)
+  {
+    // Amanda and Maya helped us learn about how to take user input in C.
+    char *read = NULL;
+    size_t min_size = 4;
+    getline(&read, &min_size, stdin);
+
+    if (strcmp(read, "true") == 0)
+    {
+      return BOOL_TRUE;
+    }
+    else if (strcmp(read, "false") == 0)
+    {
+      return BOOL_FALSE;
+    }
+    else if (strcmp(read, "nil") == 0)
+    {
+      return NIL;
+    }
+    else
+    // Number case
+    {
+      // https://www.tutorialspoint.com/c_standard_library/c_function_strtoul.htm
+      char *endptr;
+      uint64_t num = strtoul(read, &endptr, 10);
+
+      if (num >= 4611686018427387904 || num <= -4611686018427387905)
+      {
+        printf("Invalid input: integer overflow!\n");
+      }
+      else if (endptr == read)
+      {
+        printf("Invalid input: must be a number, boolean, or `nil`.\n");
+      }
+      else {
+        return num << 1;
+      }
+    }
+  }
 }
 
 // main should remain unchanged

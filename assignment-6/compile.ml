@@ -1154,7 +1154,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       let n = List.length items in
       let heap_bump_amt =
         if n mod 2 == 0 then
-          8L
+          Int64.of_int word_size
         else
           0L
       in
@@ -1169,7 +1169,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       @ loading_instrs
       @ [ IMov (Reg RAX, Reg R15);
           IAdd (Reg RAX, Const 1L);
-          IAdd (Reg R15, Const (Int64.of_int (8 * (n + 1))));
+          IAdd (Reg R15, Const (Int64.of_int (word_size * (n + 1))));
           IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "8 if even items, 0 if odd") ]
       @ [ILineComment "==== End tuple initialization ===="]
   | CGetItem (tup, idx, _) ->
@@ -1347,16 +1347,3 @@ let compile_to_string (prog : sourcespan program pipeline) : string pipeline =
   |> add_phase locate_bindings naive_stack_allocation
   |> add_phase result compile_prog
 ;;
-
-(* let pretty_asm_comments (instrs : instruction list) (min_width : int) : instruction list =
-     let rec help (instrs : instruction list) (nest : tag) : instruction list =
-       match instrs with
-       | [] -> []
-       | ILineComment _ :: rest -> raise (NotYetImplemented "Line comments")
-       | instr :: rest ->
-           let asm_str = to_asm [instr] in
-           let l = String.length asm_str in
-           let cmt = String.make
-     in
-     help instrs 0
-   ;; *)
