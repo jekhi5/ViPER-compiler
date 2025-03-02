@@ -892,7 +892,7 @@ let check_tuple (goto : string) : instruction list =
     IJnz goto ]
 ;;
 
-(* Enforces that the value in RAX is a nil. Goes to the specified label if not. *)
+(* Enforces that the value in RAX is not nil. Goes to the specified label if it is. *)
 let check_not_nil (goto : string) : instruction list =
   [IMov (Reg scratch_reg, HexConst nil_tag); ICmp (Reg RAX, Reg scratch_reg); IJz goto]
 ;;
@@ -1102,7 +1102,18 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
           [ (* Print both passes its value to the external function, and returns it. *)
             IMov (Reg RDI, e_reg);
             ICall "print" (* The answer goes in RAX :) *) ]
-      | IsTuple -> raise (NotYetImplemented "IsTuple not implemented yet")
+      | IsTuple ->
+          let false_label = sprintf "is_tuple_false#%d" t in
+          let done_label = sprintf "is_tuple_done#%d" t in
+          [ILineComment (sprintf "BEGIN is_tuple%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_tuple false_label
+          @ check_not_nil false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp done_label;
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_tuple%d   -------------" t) ]
       | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
       (* TODO *) )
   | CPrim2 (op, e1, e2, t) -> (
@@ -1271,7 +1282,7 @@ let compile_decl (ADFun (fname, args, body, _)) (env : arg envt) (heap_setup : i
       if vars mod 2 = 1 then
         vars + 3
       else
-        vars + 2)
+        vars + 2 )
   in
   let stack_setup =
     [ ILabel fname;
