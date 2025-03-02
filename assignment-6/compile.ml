@@ -1074,30 +1074,25 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
       | IsBool ->
           let false_label = sprintf "is_bool_false#%d" t in
           let done_label = sprintf "is_bool_done#%d" t in
-          [ ILineComment (sprintf "BEGIN is_bool%d -------------" t);
-            IMov (Reg RAX, e_reg);
-            ITest (Reg RAX, HexConst num_tag_mask);
-            IJz false_label;
-            IMov (Reg RAX, const_true);
-            IJmp done_label;
-            ILabel false_label;
-            IMov (Reg RAX, const_false);
-            ILabel done_label;
-            ILineComment (sprintf "END is_bool%d   -------------" t) ]
+          [ILineComment (sprintf "BEGIN is_bool%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_bool false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp done_label;
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_bool%d   -------------" t) ]
       | IsNum ->
           let false_label = sprintf "is_num_false#%d" t in
           let done_label = sprintf "is_num_done#%d" t in
-          [ ILineComment (sprintf "BEGIN is_num%d -------------" t);
-            IMov (Reg RAX, e_reg);
-            ITest (Reg RAX, HexConst num_tag_mask);
-            (* Jump not zero because this is the inverted case from is_bool *)
-            IJnz false_label;
-            IMov (Reg RAX, const_true);
-            IJmp done_label;
-            ILabel false_label;
-            IMov (Reg RAX, const_false);
-            ILabel done_label;
-            ILineComment (sprintf "END is_num%d   -------------" t) ]
+          [ILineComment (sprintf "BEGIN is_num%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_num false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp done_label;
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_num%d   -------------" t) ]
       | Print ->
           [ (* Print both passes its value to the external function, and returns it. *)
             IMov (Reg RDI, e_reg);
