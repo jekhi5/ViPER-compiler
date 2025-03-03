@@ -79,9 +79,15 @@ char *decode(SNAKEVAL val)
   }
 }
 
+// We're having a bug in this function.
+// Our tests are failing because of this, but if you valgrind the tests,
+// you can see that the actual data is correct. It's just the printout that is being weird
+// We are struggling in our limited C knowledge, if you have any pointers (pun intended), please let us know!
+// The bug might also be in equal, because the errors are failing there
 char *decode_tuple(SNAKEVAL *val)
 {
   {
+    // The size is at the first offset
     int64_t length = val[0];
     // Empty tuple
     if (length == 0)
@@ -92,12 +98,8 @@ char *decode_tuple(SNAKEVAL *val)
     // Single
     else if (length == 1)
     {
-      // char *item = decode(val);
 
-      // I think this needs to be the following line,
-      // rather than what it was before (above) because that would just
-      // cycle us back to this function, right? The whole val is a tuple,
-      // which we're decoding here. So we need to decode the pieces
+      // The first item is after the size
       char *item = decode(val[1]);
       char *str_buffer = (char *)malloc((4 + strlen(item)) * sizeof(char));
       sprintf(str_buffer, "(%s,)", item);
@@ -113,15 +115,21 @@ char *decode_tuple(SNAKEVAL *val)
 
       for (int i = 1; i <= length; i += 1)
       {
+        // The offset begins at one, so it skips the size
         char *decoded = decode(val[i]);
         size_t decoded_size = (5 + strlen(decoded) + strlen(result)) * sizeof(char);
         size = decoded_size;
         char *new_result = malloc(size);
-        if (i == 1){
-          sprintf(new_result, "%s%s", result, decoded); 
-        } else if (i == length) {
+        if (i == 1)
+        {
+          sprintf(new_result, "%s%s", result, decoded);
+        }
+        else if (i == length)
+        {
           sprintf(new_result, "%s, %s)", result, decoded);
-        } else {
+        }
+        else
+        {
           sprintf(new_result, "%s, %s", result, decoded);
         }
         free(result);
@@ -313,7 +321,8 @@ SNAKEVAL input()
       {
         printf("Invalid input: must be a number, boolean, or `nil`.\n");
       }
-      else {
+      else
+      {
         return num << 1;
       }
     }
