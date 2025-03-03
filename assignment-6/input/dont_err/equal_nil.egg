@@ -1,3 +1,6 @@
+# Fails due to the bug with equal/print.
+# Doesn't give the right answer. 
+
 let a = (
     equal(true, nil),
 	equal(false, nil),

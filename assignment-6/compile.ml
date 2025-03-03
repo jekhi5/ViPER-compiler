@@ -287,7 +287,7 @@ let deepest_stack e env =
 
 (* IMPLEMENT EVERYTHING BELOW *)
 
-let rec recur (e : 'a expr) (f : 'a expr -> 'a expr) : 'a expr =
+(* let rec recur (e : 'a expr) (f : 'a expr -> 'a expr) : 'a expr =
   match e with
   | ESeq (e1, e2, a) -> ELet ([(BBlank a, e1, a)], f e2, a)
   | EPrim1 (op, e, a) -> EPrim1 (op, f e, a)
@@ -301,7 +301,7 @@ let rec recur (e : 'a expr) (f : 'a expr -> 'a expr) : 'a expr =
       let desugared_bindings = List.map (fun (bind, bound, a) -> (bind, f bound, a)) bindings in
       ELet (desugared_bindings, f body, a)
   | _ -> e
-;;
+;; *)
 
 (* Convert a Let with multiple bindings into multiple Lets with one binding. *)
 (* INVARIANT: All `ELet`s have a single binding. *)
@@ -497,6 +497,7 @@ let annotate_call_types (Program ((decls : 'a decl list), (body : 'a expr), (a :
     | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
     | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
     | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
+    | ELet (bindings, body, a) -> ELet ((List.map (fun (b, e, a) -> (b, helpE e, a)) bindings), helpE body, a)
     | _ -> e
   and helpD (DFun (name, args, body, a)) = DFun (name, args, helpE body, a) in
   Program (List.map helpD decls, helpE body, a)
@@ -717,10 +718,9 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       (List.concat_map un_nest_binding bindings)
   and check_fun_errors funname args loc decl_env =
     let unbound_fun_error =
-      if find_one (fst @@ List.split @@ decl_env) funname ( = ) then
-        []
-      else
-        [UnboundFun (funname, loc)]
+      match List.assoc_opt funname decl_env with
+        | Some _ -> []  
+        | None -> [UnboundFun (funname, loc)]
     in
     if unbound_fun_error = [] then
       (* We made sure that the function name is in the `decl_env` above, so `List.assoc` will not error *)
@@ -731,7 +731,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       else
         [Arity (expected_arity, given_arity, loc)]
     else
-      []
+      unbound_fun_error
   (* END EXPR CHECKS *)
   (* BEGIN DECL CHECKS *)
   (* Check for duplicate function names *)

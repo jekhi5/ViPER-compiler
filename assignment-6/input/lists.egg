@@ -32,9 +32,9 @@ def sum(lst):
     else:
         # not using car/cdr to demonstrate unpacking
         let 
-            _ = 4
+            (fst, rest) = lst
         in
-            lst[0] + sum(lst[1])
+            fst + sum(rest)
 
 def append(l1, l2):
     if nullp(l1):

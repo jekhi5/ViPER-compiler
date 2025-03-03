@@ -1,0 +1,32 @@
+# Let's demonstrate our language by sorting a list!
+
+# Only supports positive steps for now
+def range(start, End, step):
+    if start >= End:
+        nil
+    else:
+        (start, range(start + step, End, step))
+
+
+def insert(a, lst):
+    if lst == nil:
+        (a, nil)
+    else:
+        let 
+            (fst, rest) = lst
+        in
+            if a > fst:
+                (fst, insert(a, rest))
+            else:
+                (a, lst)
+
+def insertionSort(lst):
+    if lst == nil:
+        nil
+    else:
+        let 
+            (fst, rest) = lst
+        in
+            insert(fst, insertionSort(rest))
+
+insertionSort((5, (4, (3, (2, (1, nil))))))

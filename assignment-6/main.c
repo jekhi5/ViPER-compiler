@@ -228,7 +228,7 @@ SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2)
   if ((val1 & BOOL_TAG) == 0 || (val1 == BOOL_TRUE) || (val1 == BOOL_FALSE) || (val1 == NIL))
   {
     // These will be just basic `uint64_t`s, so == is appropriate
-    printf("Val1: %p, Val2: %p: ", val1, val2);
+    printf("Val1: %lu, Val2: %lu: ", val1, val2);
     if (val1 == val2)
     {
       printf("true\n");
