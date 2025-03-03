@@ -1,0 +1,63 @@
+def cons(a, lst):
+    (a, lst)
+
+def car((fst, _)):
+    fst
+
+def cdr((_, rest)):
+    rest
+
+def nullp(x):
+    x == nil
+
+# Only supports positive steps for now
+# Interestingly, the parser complained when I named the argument "end"...
+def range(start, End, step):
+    if start >= End:
+        nil
+    else:
+        (start, range(start + step, End, step))
+
+def values(len, v):
+    if len <= 0:
+        nil
+    else:
+        (v, values(len - 1, v))
+
+# REQUIRED FUNCTIONS
+
+def sum(lst):
+    if nullp(lst):
+        0
+    else:
+        # not using car/cdr to demonstrate unpacking
+        let 
+            _ = 4
+        in
+            lst[0] + sum(lst[1])
+
+def append(l1, l2):
+    if nullp(l1):
+        l2
+    else:
+        cons(car(l1), append(cdr(l1), l2))
+
+def reverse(lst):
+    if nullp(lst):
+        nil
+    else:
+        # This is what Joel Spolsky calls a "Schlemiel the painter's algorithm"...
+        append(reverse(cdr(lst)), cons(car(lst), nil))
+
+
+let
+    a = range(0, 10, 1),
+    b = reverse(a),
+    c = sum(a),
+    d = range(0, 5, 1),
+    e = append(a, d)
+in
+    print(a);
+    print(b);
+    print(c);
+    e

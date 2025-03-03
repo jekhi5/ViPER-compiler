@@ -287,6 +287,22 @@ let deepest_stack e env =
 
 (* IMPLEMENT EVERYTHING BELOW *)
 
+let rec recur (e : 'a expr) (f : 'a expr -> 'a expr) : 'a expr =
+  match e with
+  | ESeq (e1, e2, a) -> ELet ([(BBlank a, e1, a)], f e2, a)
+  | EPrim1 (op, e, a) -> EPrim1 (op, f e, a)
+  | EPrim2 (op, e1, e2, a) -> EPrim2 (op, f e1, f e2, a)
+  | ETuple (items, a) -> ETuple (List.map f items, a)
+  | EGetItem (t, e, a) -> EGetItem (f t, f e, a)
+  | ESetItem (t, e, v, a) -> ESetItem (f t, f e, f v, a)
+  | EIf (c, t, e, a) -> EIf (f c, f t, f e, a)
+  | EApp (n, args, c, a) -> EApp (n, List.map f args, c, a)
+  | ELet (bindings, body, a) ->
+      let desugared_bindings = List.map (fun (bind, bound, a) -> (bind, f bound, a)) bindings in
+      ELet (desugared_bindings, f body, a)
+  | _ -> e
+;;
+
 (* Convert a Let with multiple bindings into multiple Lets with one binding. *)
 (* INVARIANT: All `ELet`s have a single binding. *)
 let simplify_multi_bindings (Program ((decls : 'a decl list), (body : 'a expr), (a : 'a))) :
@@ -297,6 +313,13 @@ let simplify_multi_bindings (Program ((decls : 'a decl list), (body : 'a expr), 
     | ELet (_ :: [], _, _) -> e
     | ELet (binding :: rest_bindings, body, a) ->
         ELet ([binding], helpE (ELet (rest_bindings, body, a)), a)
+    | EPrim1 (op, e, a) -> EPrim1 (op, helpE e, a)
+    | EPrim2 (op, e1, e2, a) -> EPrim2 (op, helpE e1, helpE e2, a)
+    | ETuple (items, a) -> ETuple (List.map helpE items, a)
+    | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
+    | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
+    | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
+    | EApp (n, args, c, a) -> EApp (n, List.map helpE args, c, a)
     | _ -> e
   in
   let helpD d =
@@ -343,6 +366,13 @@ let simplify_tuple_bindings (Program ((decls : 'a decl list), (body : 'a expr), 
     | ELet ([], _, _) -> e
     | ELet (bindings, body, a) ->
         ELet (List.concat_map (fun binding -> help_bind binding) bindings, helpE body, a)
+    | EPrim1 (op, e, a) -> EPrim1 (op, helpE e, a)
+    | EPrim2 (op, e1, e2, a) -> EPrim2 (op, helpE e1, helpE e2, a)
+    | ETuple (items, a) -> ETuple (List.map helpE items, a)
+    | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
+    | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
+    | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
+    | EApp (n, args, c, a) -> EApp (n, List.map helpE args, c, a)
     | _ -> e
   in
   let helpD d =
@@ -364,7 +394,7 @@ let simplify_tuple_bindings (Program ((decls : 'a decl list), (body : 'a expr), 
         let bindings = List.concat context in
         let new_body =
           if List.length bindings > 0 then
-            ELet (bindings, helpE body, a)
+            ELet (List.concat_map help_bind bindings, helpE body, a)
           else
             helpE body
         in
@@ -422,6 +452,13 @@ let eliminate_blank_bindings (Program ((decls : 'a decl list), (body : 'a expr),
               bindings,
             helpE body,
             a )
+    | EPrim1 (op, e, a) -> EPrim1 (op, helpE e, a)
+    | EPrim2 (op, e1, e2, a) -> EPrim2 (op, helpE e1, helpE e2, a)
+    | ETuple (items, a) -> ETuple (List.map helpE items, a)
+    | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
+    | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
+    | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
+    | EApp (n, args, c, a) -> EApp (n, List.map helpE args, c, a)
     | _ -> e
   in
   let helpD d =
@@ -454,6 +491,12 @@ let annotate_call_types (Program ((decls : 'a decl list), (body : 'a expr), (a :
       (* TODO: We can add name filters for Prims. *)
       | Some ctype -> EApp (fname, args, ctype, a)
       | None -> EApp (fname, args, Snake, a) )
+    | EPrim1 (op, e, a) -> EPrim1 (op, helpE e, a)
+    | EPrim2 (op, e1, e2, a) -> EPrim2 (op, helpE e1, helpE e2, a)
+    | ETuple (items, a) -> ETuple (List.map helpE items, a)
+    | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
+    | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
+    | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
     | _ -> e
   and helpD (DFun (name, args, body, a)) = DFun (name, args, helpE body, a) in
   Program (List.map helpD decls, helpE body, a)
@@ -483,7 +526,8 @@ let anf (p : tag program) : unit aprogram =
             (fun a ->
               match a with
               | BName (a, _, _) -> a
-              | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
+              | _ ->
+                  raise (InternalCompilerError "Expected only BNames at this stage.") )
             args
         in
         ADFun (name, args, helpA body, ())
@@ -506,6 +550,7 @@ let anf (p : tag program) : unit aprogram =
           let exp_ans, exp_setup = helpC exp in
           let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
           (body_ans, exp_setup @ [(id, exp_ans)] @ body_setup)
+      | BBlank _ -> raise (InternalCompilerError "Found a blank!")
       | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
     | EApp (funname, args, ct, _) ->
         let new_args, new_setup = List.split (List.map helpI args) in
@@ -556,7 +601,8 @@ let anf (p : tag program) : unit aprogram =
           let exp_ans, exp_setup = helpC exp in
           let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
           (body_ans, exp_setup @ [(id, exp_ans)] @ body_setup)
-      | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
+      | _ ->
+          raise (InternalCompilerError "Expected only BNames at this stage.") )
     | ESeq _ -> raise (InternalCompilerError "We do not have sequences at this stage.")
     | ETuple (exprs, tag) ->
         let tmp = sprintf "tuple_%d" tag in

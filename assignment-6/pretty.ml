@@ -64,14 +64,14 @@ let name_of_op2 op =
 
 let rec string_of_bind (b : 'a bind) : string =
   match b with
-  | BBlank _ -> "_"
+  | BBlank _ -> "___"
   | BName (name, allow_shadow, _) ->
       ( if allow_shadow then
           "shadow "
         else
           "" )
       ^ name
-  | BTuple (binds, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ ")"
+  | BTuple (binds, _) -> "([" ^ ExtString.String.join ", " (List.map string_of_bind binds) ^ "])"
 ;;
 
 let string_of_call_type ct =
