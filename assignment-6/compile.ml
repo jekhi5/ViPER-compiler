@@ -497,7 +497,8 @@ let annotate_call_types (Program ((decls : 'a decl list), (body : 'a expr), (a :
     | EGetItem (t, e, a) -> EGetItem (helpE t, helpE e, a)
     | ESetItem (t, e, v, a) -> ESetItem (helpE t, helpE e, helpE v, a)
     | EIf (c, t, e, a) -> EIf (helpE c, helpE t, helpE e, a)
-    | ELet (bindings, body, a) -> ELet ((List.map (fun (b, e, a) -> (b, helpE e, a)) bindings), helpE body, a)
+    | ELet (bindings, body, a) ->
+        ELet (List.map (fun (b, e, a) -> (b, helpE e, a)) bindings, helpE body, a)
     | _ -> e
   and helpD (DFun (name, args, body, a)) = DFun (name, args, helpE body, a) in
   Program (List.map helpD decls, helpE body, a)
@@ -527,8 +528,7 @@ let anf (p : tag program) : unit aprogram =
             (fun a ->
               match a with
               | BName (a, _, _) -> a
-              | _ ->
-                  raise (InternalCompilerError "Expected only BNames at this stage.") )
+              | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
             args
         in
         ADFun (name, args, helpA body, ())
@@ -602,8 +602,7 @@ let anf (p : tag program) : unit aprogram =
           let exp_ans, exp_setup = helpC exp in
           let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
           (body_ans, exp_setup @ [(id, exp_ans)] @ body_setup)
-      | _ ->
-          raise (InternalCompilerError "Expected only BNames at this stage.") )
+      | _ -> raise (InternalCompilerError "Expected only BNames at this stage.") )
     | ESeq _ -> raise (InternalCompilerError "We do not have sequences at this stage.")
     | ETuple (exprs, tag) ->
         let tmp = sprintf "tuple_%d" tag in
@@ -719,8 +718,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   and check_fun_errors funname args loc decl_env =
     let unbound_fun_error =
       match List.assoc_opt funname decl_env with
-        | Some _ -> []  
-        | None -> [UnboundFun (funname, loc)]
+      | Some _ -> []
+      | None -> [UnboundFun (funname, loc)]
     in
     if unbound_fun_error = [] then
       (* We made sure that the function name is in the `decl_env` above, so `List.assoc` will not error *)
@@ -927,7 +926,7 @@ let check_num (goto : string) : instruction list =
 
 (* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
 let check_tuple (goto : string) : instruction list =
-  (* TODO: This mangles RAX, btw.
+  (* This mangles RAX, btw.
      We must either reset rax after this,
      or use a temp register here.
   *)
@@ -1155,8 +1154,7 @@ and compile_cexpr (e : tag cexpr) (env : arg envt) (num_args : int) (is_tail : b
               IMov (Reg RAX, const_false);
               ILabel done_label;
               ILineComment (sprintf "END is_tuple%d   -------------" t) ]
-      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
-      (* TODO *) )
+      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here") )
   | CPrim2 (op, e1, e2, t) -> (
       let e1_reg = compile_imm e1 env in
       let e2_reg = compile_imm e2 env in

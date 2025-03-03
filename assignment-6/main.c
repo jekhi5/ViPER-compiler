@@ -29,7 +29,6 @@ char *decode(SNAKEVAL val)
   // Number
   if ((val & BOOL_TAG) == 0)
   {
-    // printf("==================number==================\n");
     char *str_buffer = (char *)malloc(100 * sizeof(char)); // val is even ==> number
     sprintf(str_buffer, "%ld", ((int64_t)(val)) / 2);      // shift bits right to remove tag
     // printf("val is at address: %p\n", str_buffer);
@@ -38,7 +37,6 @@ char *decode(SNAKEVAL val)
   // True
   else if (val == BOOL_TRUE)
   {
-    // printf("==================true==================\n");
     char *str_buffer = (char *)malloc(5 * sizeof(char));
     sprintf(str_buffer, "true");
     return str_buffer;
@@ -46,7 +44,6 @@ char *decode(SNAKEVAL val)
   // False
   else if (val == BOOL_FALSE)
   {
-    // printf("==================false==================\n");
     char *str_buffer = (char *)malloc(6 * sizeof(char));
     sprintf(str_buffer, "false");
     return str_buffer;
@@ -54,7 +51,6 @@ char *decode(SNAKEVAL val)
   // Nil
   else if (val == NIL)
   {
-    // printf("==================nil==================\n");
     char *str_buffer = (char *)malloc(4 * sizeof(char));
     sprintf(str_buffer, "nil");
     return str_buffer;
@@ -62,17 +58,12 @@ char *decode(SNAKEVAL val)
   // Tuple (the only thing left that could end in a 1 at this point)
   else if ((val & BOOL_TAG) == 1)
   {
-    // printf("==================tuple==================\n");
-    // printf("==================tuple NEXT==================\n");
     uint64_t *ptr_of_val = (uint64_t *)(val ^ 0x1);
-    // printf("==================tuple AFTER==================\n");
     return decode_tuple(ptr_of_val);
-    // printf("==================END tuple==================\n");
   }
   // BAD VALUE
   else
   {
-    // printf("==================unknown val==================\n");
     char *str_buffer = (char *)malloc(65 * sizeof(char));
     sprintf(str_buffer, "Unknown value: %#018lx\n", val); // print unknown val in hex
     return str_buffer;
