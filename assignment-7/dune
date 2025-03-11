@@ -1,0 +1,26 @@
+(library
+ (name fdl_impl)
+ (modules assembly compile errors exprs phases pretty runner lexer parser)
+ (libraries ounit2 extlib str)
+ (wrapped false))
+
+(ocamllex
+ (modules lexer))
+
+(ocamlyacc
+ (modules parser))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries unix str fdl_impl))
+
+(test
+ (name test)
+ (modules test)
+ (libraries unix str fdl_impl))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))
