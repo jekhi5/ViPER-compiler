@@ -489,7 +489,7 @@ let anf (p : tag program) : unit aprogram =
                bindings
         in
         let bindings_setup = List.concat bindings_setups in
-        let bindings_anf = BLetRec (bindings_ans) in
+        let bindings_anf = BLetRec bindings_ans in
         (body_ans, bindings_setup @ [bindings_anf] @ body_setup)
   (* Hint: use BLetRec for each of the binds, and BLet for the final answer *)
   and helpA e : unit aexpr =
@@ -998,12 +998,103 @@ let desugar (p : 'a program) : 'a program =
   |> elim_declss
 ;;
 
-let free_vars (e : 'a aexpr) : string list =
-  raise (NotYetImplemented "Implement free_vars for expressions")
+let remove_dups (lst : 'a list) : 'a list =
+  List.fold_right
+    (fun x acc ->
+      if List.exists (fun e -> fst e = fst x) acc then
+        acc
+      else
+        x :: acc )
+    lst []
 ;;
 
-let naive_stack_allocation (prog : tag aprogram) : tag aprogram * arg envt =
-  raise (NotYetImplemented "Implement stack allocation for egg-eater")
+let free_vars (e : 'a aexpr) : string list =
+  let rec helpI (e : 'a immexpr) (bound_ids : string list) : string list =
+    match e with
+    | ImmId (id, _) ->
+        if List.mem id bound_ids then
+          []
+        else
+          [id]
+    | _ -> []
+  and helpC (e : 'a cexpr) (bound_ids : string list) : string list =
+    match e with
+    | CIf (cond, thn, els, _) -> helpI cond bound_ids @ helpA thn bound_ids @ helpA els bound_ids
+    | CPrim1 (_, expr, _) -> helpI expr bound_ids
+    | CPrim2 (_, left, right, _) -> helpI left bound_ids @ helpI right bound_ids
+    | CApp (func, args, _, _) ->
+        helpI func bound_ids @ List.concat_map (fun arg -> helpI arg bound_ids) args
+    | CImmExpr expr -> helpI expr bound_ids
+    | CTuple (args, _) -> List.concat_map (fun arg -> helpI arg bound_ids) args
+    | CGetItem (tup, idx, _) -> helpI tup bound_ids @ helpI idx bound_ids
+    | CSetItem (tup, idx, new_elem, _) ->
+        helpI tup bound_ids @ helpI idx bound_ids @ helpI new_elem bound_ids
+    | CLambda (ids, body, _) -> helpA body (ids @ bound_ids)
+  and helpA (e : 'a aexpr) (bound_ids : string list) : string list =
+    match e with
+    | ASeq (first, next, _) -> helpC first bound_ids @ helpA next bound_ids
+    | ALet (name, bound, body, _) -> helpC bound bound_ids @ helpA body (name :: bound_ids)
+    | ALetRec (binds, body, _) ->
+        let declared, free =
+          List.fold_left
+            (fun (declared, free) (name, cexpr) ->
+              (name :: declared, helpC cexpr (name :: declared) @ free) )
+            (bound_ids, []) binds
+        in
+        helpA body declared @ free
+    | ACExpr cexpr -> helpC cexpr bound_ids
+  in
+  helpA e []
+;;
+
+let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
+
+let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) : tag aprogram * arg envt =
+  (* For the Xexpr helpers:
+   * - Immediate values don't care about the env, so we ignore those.
+   * - Cexprs are only interesting in the `CIf` case, since this case
+   *   contains two Aexprs.
+   * - Aexprs are where the main logic happens, since that is where we make new bindings.
+       We convert the stack index to a RegOffset, then look at the bound expr, then the body.
+       Note that whenever we recursively call helpA, we need to increment the stack index. 
+   *)
+  let rec helpC (cexp : tag cexpr) (env : arg envt) (si : int) : arg envt =
+    match cexp with
+    | CIf (_, thn, els, _) -> helpA thn env (si + 1) @ helpA els env (si + 1)
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
+    | CLambda (ids, body, _) ->
+        let body_env = helpA body env (si + 1) in
+        (* TODO: revisit adding 2 instead of 1 (we add 2 because before the ids 
+         *       we put RBP and the return address (?)) 
+         *)
+        let args_env = List.mapi (fun index id -> (id, RegOffset (index + 2, RBP))) ids in
+        args_env @ body_env
+  and helpA (aexp : tag aexpr) (env : arg envt) (si : int) : arg envt =
+    match aexp with
+    | ALet (id, bound, body, _) ->
+        let offset = (id, si_to_arg si) in
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        (offset :: bound_offset) @ body_offset
+    | ACExpr cexp -> helpC cexp env si
+    | ASeq (first, next, _) -> helpC first env si @ helpA next env (si + 1)
+    | ALetRec ([], body, _) -> helpA body env (si + 1)
+    | ALetRec ((id, bound) :: [], body, _) ->
+        let offset = (id, si_to_arg si) in
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        (offset :: bound_offset) @ body_offset
+    | ALetRec ((id, bound) :: rest, body, tag) ->
+        let offset = (id, si_to_arg si) in
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        (offset :: bound_offset) @ body_offset @ helpA (ALetRec (rest, body, tag)) env (si + 1)
+  in
+  let body_env = helpA body [] 1 in
+  (* We were rather sloppy with the process of adding to the environment,
+   * so we just remove the duplicates in O(n^2) time at the end.
+   *)
+  (prog, remove_dups body_env)
 ;;
 
 let rec compile_fun (fun_name : string) args body env : instruction list =
