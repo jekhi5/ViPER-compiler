@@ -338,18 +338,56 @@ let anf (p : tag program) : unit aprogram =
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
-    | ELet ((BTuple (binds, _), exp, _) :: rest, body, pos) ->
+    | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
     | ESeq (e1, e2, _) ->
         let e1_ans, e1_setup = helpC e1 in
         let e2_ans, e2_setup = helpC e2 in
         (e2_ans, e1_setup @ [BSeq e1_ans] @ e2_setup)
-    | EApp (func, args, _, _) -> raise (NotYetImplemented "Revise this case")
-    | ETuple (args, _) -> raise (NotYetImplemented "Finish this case")
-    | EGetItem (tup, idx, _) -> raise (NotYetImplemented "Finish this case")
-    | ESetItem (tup, idx, newval, _) -> raise (NotYetImplemented "Finish this case")
-    | ELambda (binds, body, _) -> raise (NotYetImplemented "Finish this case")
-    | ELetRec (binds, body, _) -> raise (NotYetImplemented "Finish this case")
+    | EApp (func, args, call_type, _) ->
+        let args_ans, args_setup = List.split (List.map helpI args) in
+        let func_ans, func_setup = helpI func in
+        (* TODO: Do we need to flip the order of the setup?? *)
+        (CApp (func_ans, args_ans, call_type, ()), func_setup @ List.concat args_setup)
+    | ETuple (args, _) ->
+        let imm_exprs, exprs_setup = List.split (List.map helpI args) in
+        (CTuple (imm_exprs, ()), List.concat exprs_setup)
+    | EGetItem (tuple, index, _) ->
+        let imm_tuple, tuple_setup = helpI tuple in
+        let imm_index, index_setup = helpI index in
+        (CGetItem (imm_tuple, imm_index, ()), tuple_setup @ index_setup)
+    | ESetItem (tuple, index, new_val, _) ->
+        let imm_tuple, tuple_setup = helpI tuple in
+        let imm_index, index_setup = helpI index in
+        let imm_val, val_setup = helpI new_val in
+        (CSetItem (imm_tuple, imm_index, imm_val, ()), tuple_setup @ index_setup @ val_setup)
+    | ELambda (binds, body, _) ->
+        let anf_body = helpA body in
+        let bind_names =
+          List.map
+            (fun bind ->
+              match bind with
+              | BName (name, _, _) -> name
+              | BBlank tag -> sprintf "blank_arg#%d" tag
+              | _ -> raise (InternalCompilerError "Encountered BTuple in ANF - lambda.") )
+            binds
+        in
+        (CLambda (bind_names, anf_body, ()), [])
+    | ELetRec (bindings, body, _) -> 
+      let body_ans, body_setup = helpC body in
+      let bindings_ans, bindings_setups = List.split @@ List.map (fun binding -> 
+        match binding with
+        | (BName (name, _, _), bound, _) -> 
+          let b_ans, b_setup = helpC bound in
+          ((name, b_ans), b_setup)
+        | (BBlank (tag), bound, _) -> 
+          let b_ans, b_setup = helpC bound in
+          (* TODO: Replace with a BSeq somehow *)
+          (((sprintf "blank_lr#%d" tag), b_ans), b_setup)
+        | _ -> raise (InternalCompilerError "Encountered BTuple in ANF - letrec.")
+        ) bindings in
+        let bindings_setup = List.concat bindings_setups in
+      (body_ans, body_setup @ bindings_setup @ [BLetRec (bindings_ans)])
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -360,13 +398,25 @@ let anf (p : tag program) : unit aprogram =
     | EId (name, _) -> (ImmId (name, ()), [])
     | ENil _ -> (ImmNil (), [])
     | ESeq (e1, e2, _) ->
-        let e1_imm, e1_setup = helpI e1 in
+        let _, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
     | ETuple (args, tag) ->
-        raise (NotYetImplemented "Finish this case") (* Hint: use BLet to bind the result *)
-    | EGetItem (tup, idx, tag) -> raise (NotYetImplemented "Finish this case")
-    | ESetItem (tup, idx, newval, tag) -> raise (NotYetImplemented "Finish this case")
+      let tmp = sprintf "tuple_%d" tag in
+      let imm_args, args_setups = List.split (List.map helpI args) in
+      let args_setup = List.concat args_setups in
+      (ImmId (tmp, ())), args_setup @ [BLet (tmp, CTuple (imm_args, ()))]
+    | EGetItem (tup, idx, tag) ->
+      let tmp = sprintf "getItem_%d" tag in
+      let imm_tup, tup_setup = helpI tup in
+      let imm_idx, idx_setup = helpI idx in
+      (ImmId (tmp, ())), tup_setup @ idx_setup @ [BLet (tmp, CGetItem (imm_tup, imm_idx, ()))]
+    | ESetItem (tup, idx, newval, tag) ->
+      let tmp = sprintf "getItem_%d" tag in
+      let imm_tup, tup_setup = helpI tup in
+      let imm_idx, idx_setup = helpI idx in
+      let imm_newval, newval_setup = helpI newval in
+      (ImmId (tmp, ())), tup_setup @ idx_setup @ newval_setup @ [BLet (tmp, CSetItem (imm_tup, imm_idx, imm_newval, ()))]
     | EPrim1 (op, arg, tag) ->
         let tmp = sprintf "unary_%d" tag in
         let arg_imm, arg_setup = helpI arg in
@@ -381,7 +431,12 @@ let anf (p : tag program) : unit aprogram =
         let tmp = sprintf "if_%d" tag in
         let cond_imm, cond_setup = helpI cond in
         (ImmId (tmp, ()), cond_setup @ [BLet (tmp, CIf (cond_imm, helpA _then, helpA _else, ()))])
-    | EApp (func, args, _, tag) -> raise (NotYetImplemented "Revise this case")
+    | EApp (func, args, call_type, tag) -> 
+      let tmp = sprintf "app_%d" tag in
+      let imm_func, func_setup = helpI func in
+      let imm_args, args_setups = List.split (List.map helpI args) in
+      let args_setup = List.concat args_setups in
+      (ImmId (tmp, ()), func_setup @ args_setup @ [BLet (tmp, CApp(imm_func, imm_args, call_type, ()))])
     | ELet ([], body, _) -> helpI body
     | ELet ((BBlank _, exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpI exp in
@@ -389,6 +444,7 @@ let anf (p : tag program) : unit aprogram =
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ body_setup)
     | ELambda (binds, body, tag) ->
+      (* RESUME!!!! *)
         raise (NotYetImplemented "Finish this case") (* Hint: use BLet to bind the answer *)
     | ELet ((BName (bind, _, _), exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
@@ -464,7 +520,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       ([ (* bind, body, loc *) ], [ (* exns *) ])
       (List.concat_map un_nest_binding bindings)
   (* Check scope in each binding body *)
-  and check_scope (bindings : 'a binding list) _ id_env decl_env (is_rec : bool) =
+  and check_scope
+      (bindings : 'a binding list)
+      _
+      id_env
+      (non_shadowable_ids : sourcespan envt)
+      decl_env
+      (is_rec : bool) =
     (* Each bound body is allowed to use the names of all previous, bindings 
      * Note that this is a little weird for tuple bindings:
      * Since we check for each sub-binding individually against the same body,
@@ -476,20 +538,23 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     List.fold_left
       (fun (let_env, non_shadowed_ids, exns) (bind, body, _) ->
         let new_env = bind_name bind :: let_env in
-        ( new_env,
-          ( match bind with
+        let non_shadowable =
+          match bind with
           | BName (name, shadowable, loc) ->
               if shadowable then
                 non_shadowed_ids
               else
                 (name, loc) :: non_shadowed_ids
-          | _ -> non_shadowed_ids ),
+          | _ -> non_shadowed_ids
+        in
+        ( new_env,
+          non_shadowable,
           wf_E body
             ( if is_rec then
                 new_env
               else
                 let_env )
-            decl_env
+            non_shadowable_ids decl_env
           @ ( match bind with
             | BName (name, _, loc2) -> (
               match List.assoc_opt name non_shadowed_ids with
@@ -497,7 +562,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
               | _ -> [] )
             | _ -> [] )
           @ exns ) )
-      (id_env, [], [])
+      (id_env, non_shadowable_ids, [])
       (List.concat_map un_nest_binding bindings)
   (* END EXPR CHECKS *)
   (* BEGIN DECL CHECKS *)
@@ -538,8 +603,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
              (List.concat_map un_nest_bind args) ) )
       ds
   (* END DECL CHECKS *)
-  and wf_E (e : sourcespan expr) (id_env : string list) (decl_env : (string * int) list) : exn list
-      =
+  (* `nsis` => "Non-Shadowable Ids" *)
+  and wf_E
+      (e : sourcespan expr)
+      (id_env : string list)
+      (nsis : sourcespan envt)
+      (decl_env : (string * int) list) : exn list =
     match e with
     | EBool _ -> []
     | ENumber (n, loc) ->
@@ -553,12 +622,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           []
         else
           [UnboundId (x, loc)]
-    | EPrim1 (_, e, _) -> wf_E e id_env decl_env
-    | EPrim2 (_, l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
-    | EIf (c, t, f, _) -> wf_E c id_env decl_env @ wf_E t id_env decl_env @ wf_E f id_env decl_env
+    | EPrim1 (_, e, _) -> wf_E e id_env nsis decl_env
+    | EPrim2 (_, l, r, _) -> wf_E l id_env nsis decl_env @ wf_E r id_env nsis decl_env
+    | EIf (c, t, f, _) ->
+        wf_E c id_env nsis decl_env @ wf_E t id_env nsis decl_env @ wf_E f id_env nsis decl_env
     | ELet (bindings, body, _) ->
         let _, dup_bind_exns = check_dup_binding bindings body in
-        let _, bind_body_exns = check_scope bindings body id_env decl_env false in
+        let _, new_nsis, bind_body_exns = check_scope bindings body id_env nsis decl_env false in
         (* Pass 3: Check scope in the let body *)
         let let_body_exns =
           wf_E body
@@ -566,16 +636,19 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                 (fun (bind, _, _) -> bind_name bind)
                 (List.concat_map un_nest_binding bindings)
             @ id_env )
-            decl_env
+            new_nsis decl_env
         in
         dup_bind_exns @ bind_body_exns @ let_body_exns
-    | EApp (fval, args, _, loc) ->
-        wf_E fval id_env decl_env @ List.concat_map (fun arg -> wf_E arg id_env decl_env) args
-    | ESeq (l, r, _) -> wf_E l id_env decl_env @ wf_E r id_env decl_env
-    | ETuple (items, _) -> List.concat_map (fun x -> wf_E x id_env decl_env) items
-    | EGetItem (tup, idx, _) -> wf_E tup id_env decl_env @ wf_E idx id_env decl_env
+    | EApp (fval, args, _, _) ->
+        wf_E fval id_env nsis decl_env
+        @ List.concat_map (fun arg -> wf_E arg id_env nsis decl_env) args
+    | ESeq (l, r, _) -> wf_E l id_env nsis decl_env @ wf_E r id_env nsis decl_env
+    | ETuple (items, _) -> List.concat_map (fun x -> wf_E x id_env nsis decl_env) items
+    | EGetItem (tup, idx, _) -> wf_E tup id_env nsis decl_env @ wf_E idx id_env nsis decl_env
     | ESetItem (tup, idx, value, _) ->
-        wf_E tup id_env decl_env @ wf_E idx id_env decl_env @ wf_E value id_env decl_env
+        wf_E tup id_env nsis decl_env
+        @ wf_E idx id_env nsis decl_env
+        @ wf_E value id_env nsis decl_env
     | ENil _ -> []
     | ELambda (binds, body, tag) ->
         (* This is a hack to let us reuse the bindings for these checks *)
@@ -583,7 +656,9 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           List.map (fun bind -> (bind, ENil tag, tag)) binds
         in
         let _, dup_bind_exns = check_dup_binding hacked_bindings body in
-        let _, bind_body_exns = check_scope hacked_bindings body id_env decl_env false in
+        let _, new_nsis, bind_body_exns =
+          check_scope hacked_bindings body id_env nsis decl_env false
+        in
         (* Pass 3: Check scope in the let body *)
         let let_body_exns =
           wf_E body
@@ -591,12 +666,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                 (fun (bind, _, _) -> bind_name bind)
                 (List.concat_map un_nest_binding hacked_bindings)
             @ id_env )
-            decl_env
+            new_nsis decl_env
         in
         dup_bind_exns @ bind_body_exns @ let_body_exns
     | ELetRec (bindings, body, _) ->
         let _, dup_bind_exns = check_dup_binding bindings body in
-        let _, bind_body_exns = check_scope bindings body id_env decl_env true in
+        let _, new_nsis, bind_body_exns = check_scope bindings body id_env nsis decl_env true in
         (* Pass 3: Check scope in the let body *)
         let let_body_exns =
           wf_E body
@@ -604,7 +679,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                 (fun (bind, _, _) -> bind_name bind)
                 (List.concat_map un_nest_binding bindings)
             @ id_env )
-            decl_env
+            new_nsis decl_env
         in
         dup_bind_exns @ bind_body_exns @ let_body_exns
   and wf_D (ds : 'a decl list) (decl_env : (string * int) list) : exn list =
@@ -616,7 +691,17 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     let decl_body_exns =
       List.concat_map
         (fun (DFun (_, args, body, _)) ->
-          wf_E body (List.map bind_name (List.concat_map un_nest_bind args)) decl_env )
+          let all_args = List.concat_map un_nest_bind args in
+          let all_arg_names = List.map bind_name all_args in
+          let non_shadowable_args =
+            List.concat_map
+              (fun bind ->
+                match bind with
+                | BName (name, false, loc) -> [(name, loc)]
+                | _ -> [] )
+              all_args
+          in
+          wf_E body all_arg_names non_shadowable_args decl_env )
         ds
     in
     dup_fname_exns @ dup_arg_exns @ decl_body_exns
@@ -625,7 +710,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   | Program (declss, body, _) -> (
       let decl_envs = List.map get_decl_env declss in
       let decls_results = List.map2 (fun decls decl_env -> wf_D decls decl_env) declss decl_envs in
-      let body_result = wf_E body [] (List.concat decl_envs) in
+      let body_result = wf_E body [] [] (List.concat decl_envs) in
       let total_errors = List.concat decls_results @ body_result in
       match total_errors with
       | [] -> Ok p
