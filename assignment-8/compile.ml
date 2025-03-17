@@ -373,21 +373,25 @@ let anf (p : tag program) : unit aprogram =
             binds
         in
         (CLambda (bind_names, anf_body, ()), [])
-    | ELetRec (bindings, body, _) -> 
-      let body_ans, body_setup = helpC body in
-      let bindings_ans, bindings_setups = List.split @@ List.map (fun binding -> 
-        match binding with
-        | (BName (name, _, _), bound, _) -> 
-          let b_ans, b_setup = helpC bound in
-          ((name, b_ans), b_setup)
-        | (BBlank (tag), bound, _) -> 
-          let b_ans, b_setup = helpC bound in
-          (* TODO: Replace with a BSeq somehow *)
-          (((sprintf "blank_lr#%d" tag), b_ans), b_setup)
-        | _ -> raise (InternalCompilerError "Encountered BTuple in ANF - letrec.")
-        ) bindings in
+    | ELetRec (bindings, body, _) ->
+        let body_ans, body_setup = helpC body in
+        let bindings_ans, bindings_setups =
+          List.split
+          @@ List.map
+               (fun binding ->
+                 match binding with
+                 | BName (name, _, _), bound, _ ->
+                     let b_ans, b_setup = helpC bound in
+                     ((name, b_ans), b_setup)
+                 | BBlank tag, bound, _ ->
+                     let b_ans, b_setup = helpC bound in
+                     (* TODO: Replace with a BSeq somehow *)
+                     ((sprintf "blank_lr#%d" tag, b_ans), b_setup)
+                 | _ -> raise (InternalCompilerError "Encountered BTuple in ANF - letrec.") )
+               bindings
+        in
         let bindings_setup = List.concat bindings_setups in
-      (body_ans, body_setup @ bindings_setup @ [BLetRec (bindings_ans)])
+        (body_ans, body_setup @ bindings_setup @ [BLetRec bindings_ans])
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -402,21 +406,23 @@ let anf (p : tag program) : unit aprogram =
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
     | ETuple (args, tag) ->
-      let tmp = sprintf "tuple_%d" tag in
-      let imm_args, args_setups = List.split (List.map helpI args) in
-      let args_setup = List.concat args_setups in
-      (ImmId (tmp, ())), args_setup @ [BLet (tmp, CTuple (imm_args, ()))]
+        let tmp = sprintf "tuple_%d" tag in
+        let imm_args, args_setups = List.split (List.map helpI args) in
+        let args_setup = List.concat args_setups in
+        (ImmId (tmp, ()), args_setup @ [BLet (tmp, CTuple (imm_args, ()))])
     | EGetItem (tup, idx, tag) ->
-      let tmp = sprintf "getItem_%d" tag in
-      let imm_tup, tup_setup = helpI tup in
-      let imm_idx, idx_setup = helpI idx in
-      (ImmId (tmp, ())), tup_setup @ idx_setup @ [BLet (tmp, CGetItem (imm_tup, imm_idx, ()))]
+        let tmp = sprintf "getItem_%d" tag in
+        let imm_tup, tup_setup = helpI tup in
+        let imm_idx, idx_setup = helpI idx in
+        (ImmId (tmp, ()), tup_setup @ idx_setup @ [BLet (tmp, CGetItem (imm_tup, imm_idx, ()))])
     | ESetItem (tup, idx, newval, tag) ->
-      let tmp = sprintf "getItem_%d" tag in
-      let imm_tup, tup_setup = helpI tup in
-      let imm_idx, idx_setup = helpI idx in
-      let imm_newval, newval_setup = helpI newval in
-      (ImmId (tmp, ())), tup_setup @ idx_setup @ newval_setup @ [BLet (tmp, CSetItem (imm_tup, imm_idx, imm_newval, ()))]
+        let tmp = sprintf "getItem_%d" tag in
+        let imm_tup, tup_setup = helpI tup in
+        let imm_idx, idx_setup = helpI idx in
+        let imm_newval, newval_setup = helpI newval in
+        ( ImmId (tmp, ()),
+          tup_setup @ idx_setup @ newval_setup
+          @ [BLet (tmp, CSetItem (imm_tup, imm_idx, imm_newval, ()))] )
     | EPrim1 (op, arg, tag) ->
         let tmp = sprintf "unary_%d" tag in
         let arg_imm, arg_setup = helpI arg in
@@ -431,28 +437,60 @@ let anf (p : tag program) : unit aprogram =
         let tmp = sprintf "if_%d" tag in
         let cond_imm, cond_setup = helpI cond in
         (ImmId (tmp, ()), cond_setup @ [BLet (tmp, CIf (cond_imm, helpA _then, helpA _else, ()))])
-    | EApp (func, args, call_type, tag) -> 
-      let tmp = sprintf "app_%d" tag in
-      let imm_func, func_setup = helpI func in
-      let imm_args, args_setups = List.split (List.map helpI args) in
-      let args_setup = List.concat args_setups in
-      (ImmId (tmp, ()), func_setup @ args_setup @ [BLet (tmp, CApp(imm_func, imm_args, call_type, ()))])
+    | EApp (func, args, call_type, tag) ->
+        let tmp = sprintf "app_%d" tag in
+        let imm_func, func_setup = helpI func in
+        let imm_args, args_setups = List.split (List.map helpI args) in
+        let args_setup = List.concat args_setups in
+        ( ImmId (tmp, ()),
+          func_setup @ args_setup @ [BLet (tmp, CApp (imm_func, imm_args, call_type, ()))] )
     | ELet ([], body, _) -> helpI body
     | ELet ((BBlank _, exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpI exp in
         (* MUST BE helpI, to avoid any missing final steps *)
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ body_setup)
-    | ELambda (binds, body, tag) ->
-      (* RESUME!!!! *)
-        raise (NotYetImplemented "Finish this case") (* Hint: use BLet to bind the answer *)
     | ELet ((BName (bind, _, _), exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
-    | ELet ((BTuple (binds, _), exp, _) :: rest, body, pos) ->
+    | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
-    | ELetRec (binds, body, tag) -> raise (NotYetImplemented "Finish this case")
+    | ELambda (binds, body, tag) ->
+        let tmp = sprintf "lambda_%d" tag in
+        let body_ans = helpA body in
+        let bind_names =
+          List.map
+            (fun bind ->
+              match bind with
+              | BName (name, _, _) -> name
+              | BBlank tag -> sprintf "blank_arg#%d" tag
+              | _ -> raise (InternalCompilerError "Encountered BTuple in ANF - lambda.") )
+            binds
+        in
+        (ImmId (tmp, ()), [BLet (tmp, CLambda (bind_names, body_ans, ()))])
+        (* Hint: use BLet to bind the answer *)
+    | ELetRec (bindings, body, _) ->
+        (* TODO: Revise! I'm not sure if this is correct. I don't know where we would use BLet for the final answer. *)
+        let body_ans, body_setup = helpI body in
+        let bindings_ans, bindings_setups =
+          List.split
+          @@ List.map
+               (fun binding ->
+                 match binding with
+                 | BName (name, _, _), bound, _ ->
+                     let b_ans, b_setup = helpC bound in
+                     ((name, b_ans), b_setup)
+                 | BBlank tag, bound, _ ->
+                     let b_ans, b_setup = helpC bound in
+                     (* TODO: Replace with a BSeq somehow *)
+                     ((sprintf "blank_lr#%d" tag, b_ans), b_setup)
+                 | _ -> raise (InternalCompilerError "Encountered BTuple in ANF - letrec.") )
+               bindings
+        in
+        let bindings_setup = List.concat bindings_setups in
+        let bindings_anf = BLetRec (bindings_ans) in
+        (body_ans, bindings_setup @ [bindings_anf] @ body_setup)
   (* Hint: use BLetRec for each of the binds, and BLet for the final answer *)
   and helpA e : unit aexpr =
     let ans, ans_setup = helpC e in
