@@ -144,6 +144,34 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           @ exns ) )
       (id_env, non_shadowable_ids, [])
       (List.concat_map un_nest_binding bindings)
+  (* Enforce two conditions:
+   *  1. LetRecs only bind lambdas
+   *  2. Accordingly, LetRecs can only have BNames.
+   *)
+  and letrec_lambda e : exn list =
+    match e with
+    | ELetRec (bindings, body, _) ->
+        List.concat_map
+          (fun ((bind : 'a bind), (bound : 'a expr), (loc : 'a)) ->
+            match bind with
+            | BBlank _ | BTuple _ -> LetRecNonFunction (bind, loc) :: letrec_lambda bound
+            | BName _ -> (
+              match bound with
+              | ELambda (_, lambda_body, _) -> letrec_lambda lambda_body @ letrec_lambda bound
+              | _ -> LetRecNonFunction (bind, loc) :: letrec_lambda bound ) )
+          (* TODO: Should there be a different error message? *)
+          bindings
+        @ letrec_lambda body
+    | ELambda (_, exp, _) | EPrim1 (_, exp, _) -> letrec_lambda exp
+    | EPrim2 (_, e1, e2, _) | ESeq (e1, e2, _) | EGetItem (e1, e2, _) ->
+        letrec_lambda e1 @ letrec_lambda e2
+    | EApp (e1, es, _, _) -> List.concat_map letrec_lambda (e1 :: es)
+    | ETuple (es, _) -> List.concat_map letrec_lambda es
+    | ESetItem (e1, e2, e3, _) | EIf (e1, e2, e3, _) ->
+        letrec_lambda e1 @ letrec_lambda e2 @ letrec_lambda e3
+    | ELet (binds, exp, _) ->
+        List.concat_map letrec_lambda (exp :: List.map (fun (_, bound, _) -> bound) binds)
+    | EBool _ | ENil _ | EId _ | ENumber _ -> []
   (* END EXPR CHECKS *)
   (* BEGIN DECL CHECKS *)
   (* Check for duplicate function names *)
@@ -189,6 +217,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       (id_env : string list)
       (nsis : sourcespan envt)
       (decl_env : (string * int) list) : exn list =
+    letrec_lambda e @
     match e with
     | EBool _ -> []
     | ENumber (n, loc) ->

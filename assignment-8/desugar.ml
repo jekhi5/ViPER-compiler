@@ -3,6 +3,7 @@ open Exprs
 open Phases
 open Printf
 
+
 (* Convert a Let with multiple bindings into multiple Lets with one binding. *)
 (* INVARIANT: All `ELet`s have a single binding. *)
 let simplify_multi_bindings (Program ((declss : 'a decl list list), (body : 'a expr), (a : 'a))) :
