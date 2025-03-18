@@ -236,7 +236,8 @@ let elim_declss (Program ((declss : 'a decl list list), (prog_body : 'a expr), (
 
 let desugar (p : 'a program) : 'a program =
   p
-  |> seq_to_let (* Introduces blank bindings, so must precede their elimination. *)
+  (* |> seq_to_let  Introduces blank bindings, so must precede their elimination. *)
+  (* Disabled for now, since we should handle this in ANF. *)
   |> simplify_tuple_bindings (* Removes nested binds, making some following phases simpler.*)
   |> eliminate_blank_bindings
   |> simplify_multi_bindings

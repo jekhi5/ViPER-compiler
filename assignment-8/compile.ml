@@ -108,9 +108,6 @@ let rec find ls x =
 ;;
 
 
-
-
-
 let count_vars e =
   let rec helpA e =
     match e with
@@ -134,10 +131,6 @@ let rec replicate x i =
   else
     x :: replicate x (i - 1)
 ;;
-
-
-
-
 
 let rename_and_tag (p : tag program) : tag program =
   let rec rename env p =
@@ -467,14 +460,10 @@ let anf (p : tag program) : unit aprogram =
   helpP p
 ;;
 
-
-
-
-
-let remove_dups (lst : 'a list) : 'a list =
+let remove_dups (lst : 'a list) (eq : 'a -> 'a -> bool) : 'a list =
   List.fold_right
     (fun x acc ->
-      if List.exists (fun e -> fst e = fst x) acc then
+      if List.exists (eq x) acc then
         acc
       else
         x :: acc )
@@ -517,7 +506,7 @@ let free_vars (e : 'a aexpr) : string list =
         helpA body declared @ free
     | ACExpr cexpr -> helpC cexpr bound_ids
   in
-  helpA e []
+  remove_dups (helpA e []) (=)
 ;;
 
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
@@ -567,7 +556,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) : tag apr
   (* We were rather sloppy with the process of adding to the environment,
    * so we just remove the duplicates in O(n^2) time at the end.
    *)
-  (prog, remove_dups body_env)
+  (prog, remove_dups body_env (fun a b -> fst a = fst b))
 ;;
 
 let rec compile_fun (fun_name : string) args body env : instruction list =
