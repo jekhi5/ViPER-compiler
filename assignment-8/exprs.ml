@@ -98,6 +98,13 @@ and 'a aexpr =
 
 and 'a aprogram = AProgram of 'a aexpr * 'a
 
+type 'a envt = (string * 'a) list
+(* You might also find
+     type 'a envt = 'a StringMap.t
+   to be useful instead of a simple list of pairs. *)
+
+type funenvt = call_type envt
+
 let map_opt f v =
   match v with
   | None -> None
