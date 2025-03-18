@@ -559,6 +559,17 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) : tag apr
   (prog, remove_dups body_env (fun a b -> fst a = fst b))
 ;;
 
+
+let compile_lambda (e : 'a cexpr) si env : instruction list =
+  match e with
+  | CLambda (args, body, _) -> 
+    let acexp = ACExpr (e) in
+    let free = List.sort String.compare (free_vars acexp) in
+    let closure = List.map (fun var -> List.assoc v env) free in
+    []
+  | _ -> raise (InternalCompilerError "Expected a CLambda in compile_lambda.")
+;;
+
 let rec compile_fun (fun_name : string) args body env : instruction list =
   raise (NotYetImplemented "Compile funs not yet implemented")
 

@@ -1,6 +1,17 @@
 (library
  (name fdl_impl)
- (modules assembly compile errors exprs phases pretty runner lexer parser wellformed desugar)
+ (modules
+  assembly
+  compile
+  errors
+  exprs
+  phases
+  pretty
+  runner
+  lexer
+  parser
+  wellformed
+  desugar)
  (libraries ounit2 extlib str)
  (wrapped false))
 
@@ -23,4 +34,6 @@
 (env
  (dev
   (flags
-   (:standard -warn-error -A))))
+   (:standard -w -26 -w -27 -w -33 -w -39 -w -32)
+   ;(:standard -warn-error -A)
+   )))
