@@ -319,7 +319,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   | Program (declss, body, _) -> (
       let decl_envs = List.map get_decl_env declss in
       let decls_results = List.map2 (fun decls decl_env -> wf_D decls decl_env) declss decl_envs in
-      let body_result = wf_E body [] [] (List.concat decl_envs) in
+      let decl_names = List.map fst (List.concat decl_envs) in
+      let body_result = wf_E body decl_names [] (List.concat decl_envs) in
       let total_errors = List.concat decls_results @ body_result in
       match total_errors with
       | [] -> Ok p

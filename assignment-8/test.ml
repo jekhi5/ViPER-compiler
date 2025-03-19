@@ -62,6 +62,25 @@ let forty_one = "41"
 
 let forty_one_a = AProgram (ACExpr (CImmExpr (ImmNum (41L, ()))), ())
 
+let free_vars_suite =
+  "free_vars"
+  >::: [
+    tfvs "simple1" "let a = 1, foo = (lambda(x): a + x) in foo(2)" [];
+    tfvs "simple2" "let b = 1, foo = (lambda(x): a + x) in foo(2)" ["a"];
+    tfvs "simple3" "let x = x in x" ["x"];
+    tfvs "simple4" "(lambda(x, y, z): let a = x, b = y, c = z, d = w, e = v in a + b)" ["w"; "v"];
+
+    tfvs "different_scopes1" "if true: let a = 1 in a else: let b = a in b" ["a"];
+    tfvs "different_scopes2" "if true: let a = b in a else: let b = a in b" ["a"; "b"];
+
+    tfvs "lambda1" "let foo = (lambda(x, y): let a = x in a + y) in foo(1, 2) + a" ["a"];
+    tfvs "lambda2" "let a = 1, foo = (lambda(x, y): let a = x in a + y) in foo(1, 2) + a" [];
+    tfvs "lambda3" "let a = 1, foo = (lambda(x, y): let a = x in a + y) in fool(1, 2) + a" ["fool"];
+    
+    tfvs "recursive" "let rec foo = (lambda(x): 1 + foo(x - 1)) in foo(1)" [];
+  ]
+
+
 let test_prog =
   "let x = if sub1(55) < 54: (if 1 > 0: add1(2) else: add1(3)) else: (if 0 == 0: sub1(4) else: \
    sub1(5)) in x"
@@ -109,4 +128,4 @@ let suite =
        ]
 ;;
 
-let () = run_test_tt_main ("all_tests" >::: [(* suite; *) input_file_test_suite ()])
+let () = run_test_tt_main ("all_tests" >::: [(* suite; *) free_vars_suite; input_file_test_suite ()])
