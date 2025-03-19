@@ -32,6 +32,8 @@ type arg =
   | HexConst of int64
   | Reg of reg
   | RegOffset of int * reg (* int is # words of offset *)
+  | RegOffsetBump of
+      int * int * reg (* int1 is # words of offset int2 is additional bits to offset *)
   | RegOffsetReg of reg * reg * int * int
   | Sized of size * arg
   | LabelContents of string
@@ -99,6 +101,11 @@ let rec arg_to_asm (a : arg) : string =
   | RegOffset (n, r) ->
       if n >= 0 then
         sprintf "[%s+%d]" (r_to_asm r) (word_size * n)
+      else
+        sprintf "[%s-%d]" (r_to_asm r) (-1 * word_size * n)
+  | RegOffsetBump (n, o, r) ->
+      if n >= 0 then
+        sprintf "[%s+%d]" (r_to_asm r) ((word_size * n) + o)
       else
         sprintf "[%s-%d]" (r_to_asm r) (-1 * word_size * n)
   | RegOffsetReg (r1, r2, mul, off) ->

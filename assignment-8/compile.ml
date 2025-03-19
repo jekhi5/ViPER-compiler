@@ -632,30 +632,16 @@ and compile_closure (e : 'a cexpr) si env : instruction list =
         []
   | _ -> raise (InternalCompilerError "Expected a CLambda while compiling a closure")
 
-and compile_lambda (e : 'a cexpr) si env : instruction list =
+and compile_lambda_body (e : 'a cexpr) si env : instruction list =
   match e with
   | CLambda (args, body, tag) ->
-      (* First, we set up all the things we will want to use to compile the function. *)
       let fun_name = sprintf "func#%d" tag in
-      let end_name = fun_name ^ "_end" in
+      let closure_label = sprintf "closure#%d" tag in
+      let after_label = sprintf "after#%d" tag in
+      let vars = deepest_stack body env in
       let acexp = ACExpr e in
-      let arity = List.length args in
       let free = List.sort String.compare (free_vars acexp) in
       let closure = List.map (fun var -> List.assoc var env) free in
-      let closed_count = List.length closure in
-      (* Second, we can do the actual compilation. *)
-      let moveClosureVarToStack idx =
-        IMov
-          ( RegOffset (~-8 * (idx + 1), RBP),
-            (* move the i^th variable to the i^th slot *)
-            RegOffset (24 + (8 * idx), RAX) )
-        (* from the (i+3)^rd slot in the closure *)
-      in
-      let reserveSpace = ISub (Reg RSP, Const (Int64.of_int (8 * List.length free))) in
-      let restoreFvs = List.mapi (fun i fv -> moveClosureVarToStack i) free in
-      let newEnv = List.mapi (fun i fv -> (fv, RegOffset (~-8 * (i + 1), RBP))) free @ env in
-      let compiledBody = compile_aexpr body (List.length args) newEnv in
-      let vars = deepest_stack body env in
       let stack_size =
         Int64.of_int
           ( 8
@@ -666,21 +652,17 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
           else
             vars + 2 )
       in
+      let reserveSpace = ISub (Reg RSP, Const (Int64.of_int (8 * List.length free))) in
       let stack_setup =
         [ ILabel fun_name;
           ILineComment "==== Stack set-up ====";
           IPush (Reg RBP);
-          IMov (Reg RBP, Reg RSP);
-          ISub (Reg RSP, Const stack_size);
-          ILineComment "======================" ]
-      in
-      let stack_cleanup =
-        [ ILineComment "=== Stack clean-up ===";
-          IMov (Reg RSP, Reg RBP);
-          IPop (Reg RBP);
-          IRet;
-          ILineComment "======================";
-          ILabel end_name ]
+          IMov (Reg RBP, Reg RSP) ]
+        @ List.concat
+            (List.mapi (fun i _ -> [IPush (Sized (QWORD_PTR, RegOffsetBump (i, 3, RAX)))]) closure)
+        @ [ (* TODO: If we have the `reserveSpace` instruction after this, do we also need this? *)
+            ISub (Reg RSP, Const stack_size);
+            ILineComment "======================" ]
       in
       let unpack_closure =
         [ ILineComment "=== Unpack closure ===";
@@ -691,41 +673,33 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
           ILineComment "Load values from the closure";
           ILineComment "======================" ]
       in
-      (* Code for storing the closure itself *)
-      let closure_label = sprintf "closure#%d" tag in
-      let after_label = sprintf "after#%d" tag in
-      let closure_instrs =
-        [IJmp (Label after_label); ILabel closure_label]
-        (* TODO: Insert compiled body here *)
-        @ stack_setup
-        @ [ ILabel after_label;
-            IMov (RegOffset (0, heap_reg), Const (Int64.of_int arity));
-            IMov (RegOffset (1, heap_reg), Label closure_label);
-            IMov (RegOffset (2, heap_reg), Const (Int64.of_int closed_count)) ]
-        (* For each value in the closure, move it into the next slot in the heap block. *)
-        @ List.concat
-            (List.mapi
-               (fun i var ->
-                 [IMov (Reg scratch_reg, var); IMov (RegOffset (i + 3, heap_reg), Reg scratch_reg)] )
-               closure )
-        @ [ (* Return the closure *)
-            IMov (Reg RAX, Reg heap_reg);
-            (* Tag the closure to make it a SNAKEVAL *)
-            IAdd (Reg RAX, Const closure_tag);
-            (* Bump the heap by the appropriate amount. *)
-            IAdd (Reg heap_reg, Const (Int64.of_int (word_size * (3 + closed_count)))) ]
-          (* Note that we have 3 words of metadata: arity, code pointer, # vars.
-           * In order to ensure that we keep the heap 16-aligned,
-           * Closures must be an even number of words.
-           * Since our metadata is odd, we only add padding if the # vars is even.
-           *)
-        @
-        if closed_count mod 2 = 0 then
-          [IAdd (Reg heap_reg, Const (Int64.of_int word_size))]
-        else
-          []
-      in
-      closure_instrs
+      [IJmp (Label after_label); ILabel closure_label]
+      @ stack_setup
+      @ unpack_closure
+      @ List.concat
+          (List.mapi
+             (fun i var ->
+               [ IMov (Reg RAX, RegOffset (i + 3, scratch_reg));
+                 IMov (RegOffset (~-(i + 1), RBP), Reg RAX) ] )
+             closure )
+      @ [ILineComment "=== Actual function body ==="]
+      @ [ IInstrComment
+            (ISub (Reg RSP, Const (Int64.of_int vars)), "reserve space on the stack for locals") ]
+      @ compile_aexpr body si env (* TODO: come back to this number -> *) vars false
+      @ [ILineComment "============================"]
+      @ [ILineComment "=== Epilogue ==="]
+      @ [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
+      @ [ILineComment "================"]
+  | _ -> raise (InternalCompilerError "Expected a CLambda while compiling a lambda body")
+
+and compile_lambda (e : 'a cexpr) si env : instruction list =
+  match e with
+  | CLambda (args, body, tag) ->
+      (* First, we set up all the things we will want to use to compile the function. *)
+      let compiled_closure = compile_closure e si env in
+      (* Second, we can do the actual compilation. *)
+      let compiled_body = compile_lambda_body e si env in
+      compiled_body @ compiled_closure
   | _ -> raise (InternalCompilerError "Expected a CLambda in compile_lambda.")
 
 and compile_aexpr (e : tag aexpr) (si : int) (env : arg envt) (num_args : int) (is_tail : bool) :
