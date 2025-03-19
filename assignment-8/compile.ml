@@ -577,8 +577,7 @@ let err_arity_mismatch_label = "err_arity_mismatch#"
 (* Assumes that the given argument is a function! *)
 let check_arity (reg : arg) (arity : int) =
   let arity_const = Const (Int64.of_int arity) in
-  [
-    IMov (Reg scratch_reg, reg);
+  [ IMov (Reg scratch_reg, reg);
     (* Remove the tag *)
     ISub (Reg scratch_reg, Const closure_tag);
     (* The function arity is the first value stored.
@@ -587,11 +586,51 @@ let check_arity (reg : arg) (arity : int) =
     ICmp (RegOffset (0, scratch_reg), arity_const);
     (* Move the arity into RAX so we can report it as a potential bad value. *)
     IMov (Reg RAX, arity_const);
-    IJne (Label err_arity_mismatch_label);
-  ]
+    IJne (Label err_arity_mismatch_label) ]
+;;
 
 let rec compile_fun (fun_name : string) args body env : instruction list =
   raise (NotYetImplemented "Compile funs not yet implemented")
+
+and compile_closure (e : 'a cexpr) si env : instruction list =
+  match e with
+  | CLambda (args, body, tag) ->
+      let acexp = ACExpr e in
+      let arity = List.length args in
+      let free = List.sort String.compare (free_vars acexp) in
+      let closure = List.map (fun var -> List.assoc var env) free in
+      let closed_count = List.length closure in
+      let closure_label = sprintf "closure#%d" tag in
+      let after_label = sprintf "after#%d" tag in
+      [ ILabel after_label;
+        IMov (RegOffset (0, heap_reg), Const (Int64.of_int arity));
+        IMov (RegOffset (1, heap_reg), Label closure_label);
+        IMov (RegOffset (2, heap_reg), Const (Int64.of_int closed_count)) ]
+      (* For each value in the closure, move it into the next slot in the heap block. *)
+      @ List.concat
+          (List.mapi
+             (fun i var ->
+               [ IMov (Reg scratch_reg, var);
+                 (*line break :/ *)
+                 IMov (RegOffset (i + 3, heap_reg), Reg scratch_reg) ] )
+             closure )
+      @ [ (* Return the closure *)
+          IMov (Reg RAX, Reg heap_reg);
+          (* Tag the closure to make it a SNAKEVAL *)
+          IAdd (Reg RAX, Const closure_tag);
+          (* Bump the heap by the appropriate amount. *)
+          IAdd (Reg heap_reg, Const (Int64.of_int (word_size * (3 + closed_count)))) ]
+        (* Note that we have 3 words of metadata: arity, code pointer, # vars.
+         * In order to ensure that we keep the heap 16-aligned,
+         * Closures must be an even number of words.
+         * Since our metadata is odd, we only add padding if the # vars is even.
+         *)
+      @
+      if closed_count mod 2 = 0 then
+        [IAdd (Reg heap_reg, Const (Int64.of_int word_size))]
+      else
+        []
+  | _ -> raise (InternalCompilerError "Expected a CLambda while compiling a closure")
 
 and compile_lambda (e : 'a cexpr) si env : instruction list =
   match e with
@@ -634,13 +673,14 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
           IMov (Reg RBP, Reg RSP);
           ISub (Reg RSP, Const stack_size);
           ILineComment "======================" ]
-      in let stack_cleanup =
+      in
+      let stack_cleanup =
         [ ILineComment "=== Stack clean-up ===";
-        IMov (Reg RSP, Reg RBP);
-        IPop (Reg RBP);
-        IRet;
-        ILineComment "======================";
-        ILabel end_name ]
+          IMov (Reg RSP, Reg RBP);
+          IPop (Reg RBP);
+          IRet;
+          ILineComment "======================";
+          ILabel end_name ]
       in
       let unpack_closure =
         [ ILineComment "=== Unpack closure ===";
@@ -655,16 +695,13 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
       let closure_label = sprintf "closure#%d" tag in
       let after_label = sprintf "after#%d" tag in
       let closure_instrs =
-        [ IJmp (Label after_label);
-          ILabel closure_label;
-        ] @ 
-          (* TODO: Insert compiled body here *)
-          stack_setup
-         @ [
-          ILabel after_label;
-          IMov (RegOffset (0, heap_reg), Const (Int64.of_int arity));
-          IMov (RegOffset (1, heap_reg), Label closure_label);
-          IMov (RegOffset (2, heap_reg), Const (Int64.of_int closed_count)) ]
+        [IJmp (Label after_label); ILabel closure_label]
+        (* TODO: Insert compiled body here *)
+        @ stack_setup
+        @ [ ILabel after_label;
+            IMov (RegOffset (0, heap_reg), Const (Int64.of_int arity));
+            IMov (RegOffset (1, heap_reg), Label closure_label);
+            IMov (RegOffset (2, heap_reg), Const (Int64.of_int closed_count)) ]
         (* For each value in the closure, move it into the next slot in the heap block. *)
         @ List.concat
             (List.mapi
