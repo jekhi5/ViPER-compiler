@@ -576,7 +576,7 @@ let err_arity_mismatch_label = "err_arity_mismatch#"
 
 (* Assumes that the given argument is a function! *)
 let check_arity (reg : arg) (arity : int) =
-  let arity_const = Const (Int64.of_int arity)
+  let arity_const = Const (Int64.of_int arity) in
   [
     IMov (Reg scratch_reg, reg);
     (* Remove the tag *)
@@ -598,7 +598,7 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
   | CLambda (args, body, tag) ->
       (* First, we set up all the things we will want to use to compile the function. *)
       let fun_name = sprintf "func#%d" tag in
-      let fun_label, end_label = (ILabel fun_name, ILabel (fun_name ^ "_end")) in
+      let end_name = fun_name ^ "_end" in
       let acexp = ACExpr e in
       let arity = List.length args in
       let free = List.sort String.compare (free_vars acexp) in
@@ -634,6 +634,13 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
           IMov (Reg RBP, Reg RSP);
           ISub (Reg RSP, Const stack_size);
           ILineComment "======================" ]
+      in let stack_cleanup =
+        [ ILineComment "=== Stack clean-up ===";
+        IMov (Reg RSP, Reg RBP);
+        IPop (Reg RBP);
+        IRet;
+        ILineComment "======================";
+        ILabel end_name ]
       in
       let unpack_closure =
         [ ILineComment "=== Unpack closure ===";
