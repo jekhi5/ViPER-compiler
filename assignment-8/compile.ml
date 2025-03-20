@@ -124,6 +124,8 @@ let err_arity_mismatch_label = "err_arity_mismatch"
 
 let err_unpack_err_label = "err_unpack_err"
 
+let err_out_of_memory_label = "err_out_of_memory"
+
 let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 (* You may find some of these helpers useful *)
@@ -777,7 +779,8 @@ let check_arity (reg : arg) (arity : int) =
     (* The function arity is the first value stored.
      * It is stored as a regular number, not as a SNAKEVAL.
      *)
-    ICmp (RegOffset (0, scratch_reg), arity_const);
+    IMov (Reg scratch_reg2, arity_const);
+    ICmp (RegOffset (0, scratch_reg), Reg scratch_reg2);
     (* Move the arity into RAX so we can report it as a potential bad value. *)
     IMov (Reg RAX, arity_const);
     IJne (Label err_arity_mismatch_label) ]
@@ -795,11 +798,11 @@ and compile_closure (e : 'a cexpr) si env : instruction list =
       let closure = List.map (fun var -> List.assoc var env) free in
       let closed_count = List.length closure in
       let closure_label = sprintf "closure#%d" tag in
-      let after_label = sprintf "after#%d" tag in
-      [ ILabel after_label;
-        IMov (RegOffset (0, heap_reg), Const (Int64.of_int arity));
-        IMov (RegOffset (1, heap_reg), Label closure_label);
-        IMov (RegOffset (2, heap_reg), Const (Int64.of_int closed_count)) ]
+      let after_label = sprintf "closure_end#%d" tag in
+      [ILabel after_label]
+      @ move_with_scratch (RegOffset (0, heap_reg)) (Const (Int64.of_int arity))
+      @ move_with_scratch (RegOffset (1, heap_reg)) (Label closure_label)
+      @ move_with_scratch (RegOffset (2, heap_reg)) (Const (Int64.of_int closed_count))
       (* For each value in the closure, move it into the next slot in the heap block. *)
       @ List.concat
           (List.mapi
@@ -852,8 +855,8 @@ and compile_lambda_body (e : 'a cexpr) si env : instruction list =
           ILineComment "==== Stack set-up ====";
           IPush (Reg RBP);
           IMov (Reg RBP, Reg RSP) ]
-        @ List.concat
-            (List.mapi (fun i _ -> [IPush (Sized (QWORD_PTR, RegOffsetBump (i, 3, RAX)))]) closure)
+        (* @ List.concat
+            (List.mapi (fun i _ -> [IPush (Sized (QWORD_PTR, RegOffsetBump (i, 3, RAX)))]) closure) *)
         @ [ (* TODO: If we have the `reserveSpace` instruction after this, do we also need this? *)
             ISub (Reg RSP, Const stack_size);
             ILineComment "======================" ]
@@ -886,6 +889,47 @@ and compile_lambda_body (e : 'a cexpr) si env : instruction list =
       @ [ILineComment "================"]
   | _ -> raise (InternalCompilerError "Expected a CLambda while compiling a lambda body")
 
+and compile_lambda_body2 (e : 'a cexpr) si env : instruction list =
+  match e with
+  | CLambda (args, body, tag) ->
+      let fun_name = sprintf "func#%d" tag in
+      let closure_label = sprintf "closure#%d" tag in
+      let after_label = sprintf "after#%d" tag in
+      let vars = deepest_stack body env in
+      let acexp = ACExpr e in
+      let free = List.sort String.compare (free_vars acexp) in
+      let closure = List.map (fun var -> List.assoc var env) free in
+      let stack_size =
+        Int64.of_int
+          ( 8
+          *
+          (* TODO: FIX THIS HACK! *)
+          if vars mod 2 = 1 then
+            vars + 3
+          else
+            vars + 2 )
+      in
+      let reserveSpace = ISub (Reg RSP, Const (Int64.of_int (8 * List.length free))) in
+      let stack_setup = [IPush (Reg RBP); IMov (Reg RBP, Reg RSP); reserveSpace] in
+      let closure_unpack =
+        [ (* Unpack the self argument *)
+          IMov (Reg scratch_reg, RegOffset (2 * word_size, RBP));
+          (* Untag it *)
+          ISub (Reg scratch_reg, Const 5L) ]
+        @ List.concat
+            (List.mapi
+               (fun i free_var ->
+                 [IMov (Reg RAX, RegOffset (i + 3, scratch_reg)); IMov (Reg RAX, free_var)] )
+               closure )
+      in
+      let func_body =
+        ISub (Reg RSP, Const (Int64.of_int vars))
+        :: compile_aexpr body si env (* TODO: come back to this number -> *) vars false
+      in
+      let stack_cleanup = [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet] in
+      stack_setup @ closure_unpack @ func_body @ stack_cleanup
+  | _ -> raise (InternalCompilerError "Expected a closure in compile_lambda_body")
+
 and compile_lambda (e : 'a cexpr) si env : instruction list =
   match e with
   | CLambda (args, body, tag) ->
@@ -894,6 +938,19 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
       (* Second, we can do the actual compilation. *)
       let compiled_body = compile_lambda_body e si env in
       compiled_body @ compiled_closure
+  | _ -> raise (InternalCompilerError "Expected a CLambda in compile_lambda.")
+
+and compile_lambda2 (e : 'a cexpr) si env : instruction list =
+  match e with
+  | CLambda (args, body, tag) ->
+      (* First, we set up all the things we will want to use to compile the function. *)
+      let compiled_closure = compile_closure e si env in
+      (* Second, we can do the actual compilation. *)
+      let compiled_body = compile_lambda_body2 e si env in
+      let closure_label = sprintf "closure#%d" tag in
+      let after_label = sprintf "closure_end#%d" tag in
+      [IJmp (Label after_label); ILabel closure_label]
+      @ compiled_body @ [ILabel after_label] @ compiled_closure
   | _ -> raise (InternalCompilerError "Expected a CLambda in compile_lambda.")
 
 and compile_call (e : 'a cexpr) si env : instruction list =
@@ -1062,7 +1119,7 @@ and compile_cexpr (e : tag cexpr) si env num_args is_tail =
             IMul (Reg RAX, Const 2L);
             (* Note that RAX stores the expected arity. *)
             IJne (Label err_unpack_err_label) ] )
-  | CLambda _ -> compile_lambda e si env
+  | CLambda _ -> compile_lambda2 e si env
   | CApp _ -> compile_call e si env
   | CTuple (items, _) ->
       let n = List.length items in
@@ -1165,7 +1222,10 @@ let runtime_errors =
       (index_high_label, err_GET_HIGH_INDEX);
       (index_low_label, err_GET_LOW_INDEX);
       (nil_deref_label, err_NIL_DEREF);
-      (err_unpack_err_label, err_UNPACK_ERR) ]
+      (err_unpack_err_label, err_UNPACK_ERR);
+      (err_out_of_memory_label, err_OUT_OF_MEMORY);
+      (err_call_not_closure_label, err_CALL_NOT_CLOSURE);
+      (err_arity_mismatch_label, err_CALL_ARITY_ERR) ]
 ;;
 
 let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
@@ -1177,7 +1237,8 @@ let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
          extern print\n\
          extern input\n\
          extern equal\n\
-         global our_code_starts_here"
+         global our_code_starts_here\n\
+         our_code_starts_here:"
       in
       let compiled_body = compile_aexpr body 0 env (deepest_stack body env) false in
       let heap_start =

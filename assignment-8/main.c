@@ -274,7 +274,7 @@ void error(uint64_t code, SNAKEVAL val) {
     fprintf(stderr, "Error: arity mismatch in call\n");
     break;
   case ERR_UNPACK_ERR: 
-    fprint(stderr, "Error: too many values to unpack, expected: "); printHelp(stderr, val);
+    fprintf(stderr, "Error: too many values to unpack, expected: "); printHelp(stderr, val);
     break;
   default:
     fprintf(stderr, "Error: Unknown error code: %ld, val: ", code); printHelp(stderr, val);
