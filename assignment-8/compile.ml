@@ -7,6 +7,17 @@ open Errors
 open Wellformed
 open Desugar
 
+(* 
+  []========================================================[]
+  ||  A note on organization:                               ||
+  ||    We moved the well-formedness and desugaring code    ||
+  ||    to their own respective files:                      ||
+  ||      - wellformed.ml                                   ||
+  ||      - desugar.ml                                      ||
+  []========================================================[]
+*)
+
+
 (* Documentation can be found at https://v2.ocaml.org/api/Set.S.html *)
 module StringSet = Set.Make (String)
 
@@ -780,9 +791,9 @@ let check_arity (reg : arg) (arity : int) =
      * It is stored as a regular number, not as a SNAKEVAL.
      *)
     IMov (Reg scratch_reg2, arity_const);
-    ICmp (RegOffset (0, scratch_reg), Reg scratch_reg2);
     (* Move the arity into RAX so we can report it as a potential bad value. *)
     IMov (Reg RAX, arity_const);
+    ICmp (RegOffset (0, scratch_reg), Reg scratch_reg2);
     IJne (Label err_arity_mismatch_label) ]
 ;;
 
