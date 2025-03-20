@@ -1,0 +1,6 @@
+letrec  
+  a = 1,
+  sum_with_b = (lambda(x): if x <= 0: 0 else: sum(x - 1) + x + b),
+  b = 3,
+in
+  sum(a)
