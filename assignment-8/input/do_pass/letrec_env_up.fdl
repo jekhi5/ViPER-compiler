@@ -1,5 +1,5 @@
-letrec
+let rec
   a = 3,
-  sum = (lambda(x): if x <= 0: 0 else: sum(x - 1) + x)
+  sum = (lambda(x): if (x <= 0): 0 else: sum(x - 1) + x)
 in
   sum(a)
