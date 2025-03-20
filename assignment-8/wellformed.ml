@@ -268,8 +268,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         let _, new_nsis, bind_body_exns =
           check_scope hacked_bindings body id_env nsis decl_env false
         in
-        (* Pass 3: Check scope in the let body *)
-        let let_body_exns =
+        (* Pass 3: Check scope in the lambda body *)
+        let lambda_body_exns =
           wf_E body
             ( List.map
                 (fun (bind, _, _) -> bind_name bind)
@@ -277,7 +277,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
             @ id_env )
             new_nsis decl_env
         in
-        dup_bind_exns @ bind_body_exns @ let_body_exns
+        dup_bind_exns @ bind_body_exns @ lambda_body_exns
     | ELetRec (bindings, body, _) ->
         let _, dup_bind_exns = check_dup_binding bindings body in
         let _, new_nsis, bind_body_exns = check_scope bindings body id_env nsis decl_env true in
