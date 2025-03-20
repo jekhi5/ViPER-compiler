@@ -977,6 +977,7 @@ and compile_call (e : 'a cexpr) si env : instruction list =
       @ [IMov (Reg RAX, func_reg)]
       @ check_arity (Reg RAX) arity
       (* 3. Push all the arguments. *)
+      @ [IMov (Reg RAX, func_reg); ISub (Reg RAX, Const 5L)]
       @ List.concat
           (List.rev_map
              (fun arg_reg -> [IMov (Reg scratch_reg, arg_reg); IPush (Reg scratch_reg)])
@@ -984,7 +985,7 @@ and compile_call (e : 'a cexpr) si env : instruction list =
       @ [ (* 4. Push the closure itself. *)
           IPush (Reg RAX);
           (* 5. Call the code-label in the closure. *)
-          IMov (Reg RAX, RegOffset (3, RAX));
+          IMov (Reg RAX, RegOffset (1, RAX));
           ICall (Reg RAX);
           (* 6. Pop the arguments and the closure. *)
           (* NOTE: We need `arity + 1` to account for the implicit self argument. *)
