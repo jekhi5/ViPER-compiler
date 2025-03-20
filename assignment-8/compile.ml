@@ -799,9 +799,8 @@ and compile_closure (e : 'a cexpr) si env : instruction list =
       let closed_count = List.length closure in
       let closure_label = sprintf "closure#%d" tag in
       let after_label = sprintf "closure_end#%d" tag in
-      [ILabel after_label]
-      @ move_with_scratch (RegOffset (0, heap_reg)) (Const (Int64.of_int arity))
-      @ move_with_scratch (RegOffset (1, heap_reg)) (Label closure_label)
+      move_with_scratch (RegOffset (0, heap_reg)) (Const (Int64.of_int arity))
+      @ [ILea ((Reg scratch_reg), (RelLabel closure_label)); IMov ((RegOffset (1, heap_reg)), Reg scratch_reg)]
       @ move_with_scratch (RegOffset (2, heap_reg)) (Const (Int64.of_int closed_count))
       (* For each value in the closure, move it into the next slot in the heap block. *)
       @ List.concat
@@ -816,7 +815,7 @@ and compile_closure (e : 'a cexpr) si env : instruction list =
           (* Tag the closure to make it a SNAKEVAL *)
           IAdd (Reg RAX, Const closure_tag);
           (* Bump the heap by the appropriate amount. *)
-          IAdd (Reg heap_reg, Const (Int64.of_int (word_size * (3 + closed_count)))) ]
+          IAdd (Reg heap_reg, Const (Int64.of_int (word_size * (5 + closed_count)))) ]
         (* Note that we have 3 words of metadata: arity, code pointer, # vars.
          * In order to ensure that we keep the heap 16-aligned,
          * Closures must be an even number of words.
@@ -909,24 +908,35 @@ and compile_lambda_body2 (e : 'a cexpr) si env : instruction list =
           else
             vars + 2 )
       in
-      let reserveSpace = ISub (Reg RSP, Const (Int64.of_int (8 * List.length free))) in
-      let stack_setup = [IPush (Reg RBP); IMov (Reg RBP, Reg RSP); reserveSpace] in
+      let reserveSpace = ISub (Reg RSP, Const (Int64.of_int (word_size * List.length free))) in
+      let stack_setup =
+        [ ILineComment "==== Stack set-up ====";
+          IPush (Reg RBP);
+          IMov (Reg RBP, Reg RSP);
+          reserveSpace;
+          ILineComment "======================" ]
+      in
       let closure_unpack =
-        [ (* Unpack the self argument *)
-          IMov (Reg scratch_reg, RegOffset (2 * word_size, RBP));
+        [ ILineComment "=== Unpack closure ===";
+          (* Unpack the self argument *)
+          IMov (Reg scratch_reg, RegOffset (2, RBP));
           (* Untag it *)
           ISub (Reg scratch_reg, Const 5L) ]
         @ List.concat
             (List.mapi
                (fun i free_var ->
-                 [IMov (Reg RAX, RegOffset (i + 3, scratch_reg)); IMov (Reg RAX, free_var)] )
+                 [IMov (Reg RAX, RegOffset (i + 3, scratch_reg)); IMov (free_var, Reg RAX)] )
                closure )
+        @ [ ISub (Reg RSP, Const stack_size);
+            (* IMov (RegOffset (0, RSP), Reg RDI); *)
+            ILineComment "======================" ]
       in
       let func_body =
-        ISub (Reg RSP, Const (Int64.of_int vars))
-        :: compile_aexpr body si env (* TODO: come back to this number -> *) vars false
+        compile_aexpr body si env (* TODO: come back to this number -> *) vars false
       in
-      let stack_cleanup = [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet] in
+      let stack_cleanup =
+        [ILineComment "=== Epilogue ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
+      in
       stack_setup @ closure_unpack @ func_body @ stack_cleanup
   | _ -> raise (InternalCompilerError "Expected a closure in compile_lambda_body")
 
@@ -1240,7 +1250,23 @@ let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
          global our_code_starts_here\n\
          our_code_starts_here:"
       in
-      let compiled_body = compile_aexpr body 0 env (deepest_stack body env) false in
+      let vars = deepest_stack body env in
+      let stack_size =
+        Int64.of_int
+          ( 8
+          *
+          (* TODO: FIX THIS HACK! *)
+          if vars mod 2 = 1 then
+            vars + 3
+          else
+            vars + 2 )
+      in
+      let compiled_body = compile_aexpr body 0 env vars false in
+      let stack_setup =
+        [IPush (Reg RBP); IMov (Reg RBP, Reg RSP); ISub (Reg RSP, Const stack_size)]
+      in
+      let stack_cleanup = 
+        [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet] in
       let heap_start =
         [ ILineComment "=== Heap start ===";
           IInstrComment
@@ -1255,7 +1281,7 @@ let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
               "by adding no more than 15 to it" );
           ILineComment "==== Heap end ====" ]
       in
-      let main = to_asm (heap_start @ compiled_body @ runtime_errors) in
+      let main = to_asm (stack_setup @ heap_start @ compiled_body @ stack_cleanup @ runtime_errors) in
       sprintf "%s%s\n" body_prologue main
 ;;
 
