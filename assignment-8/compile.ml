@@ -941,12 +941,11 @@ and compile_aexpr (e : tag aexpr) (si : int) (env : arg envt) (num_args : int) (
         List.fold_left
           (fun (acc_env, acc_instrs) (binder, bound) ->
             (* We know that new functions are always at the top of the heap, right before we compile. *)
-            let new_env = ((binder, Reg heap_reg) :: acc_env) in
+            let new_env = (binder, Reg heap_reg) :: acc_env in
             let offset = find env binder in
             let compiled_bound = compile_cexpr bound si new_env num_args is_tail in
-            
             (* TODO: Before or after? *)
-            (new_env, acc_instrs @ compiled_bound @ [IMov (offset, Reg RAX)]))
+            (new_env, acc_instrs @ compiled_bound @ [IMov (offset, Reg RAX)]) )
           (env, [ (* compiled code *) ]) bindings
       in
       let compiled_body = compile_aexpr body si new_env num_args is_tail in
@@ -1048,25 +1047,21 @@ and compile_cexpr (e : tag cexpr) si env num_args is_tail =
             IJmp (Label done_label);
             ILabel true_label;
             IMov (Reg RAX, const_true);
-            ILabel done_label ] 
+            ILabel done_label ]
       | CheckSize ->
           (* Check that the tuple `e1` has size `e2`.
            * We don't have to type-check these since:
            * - By the time we evaluate a CheckSize, we have already guaranteed that e1 is a tuple
            * - We create CheckSize during desugaring, and we only ever make `e2` an ENumber.
            *)
-           [
-            IMov (Reg RAX, e1_reg);
+          [ IMov (Reg RAX, e1_reg);
             IMov (Reg scratch_reg, RegOffset (0, RAX));
             IMov (Reg RAX, e2_reg);
             ISar (Reg RAX, Const 1L);
             ICmp (Reg scratch_reg, Reg RAX);
             IMul (Reg RAX, Const 2L);
             (* Note that RAX stores the expected arity. *)
-            IJne (Label err_unpack_err_label);
-           ]
-        )
-
+            IJne (Label err_unpack_err_label) ] )
   | CLambda _ -> compile_lambda e si env
   | CApp _ -> compile_call e si env
   | CTuple (items, _) ->
@@ -1151,14 +1146,42 @@ and compile_imm e env =
   | ImmNil _ -> Const tuple_tag
 ;;
 
+let runtime_errors =
+  List.concat_map
+    (fun (label, err_code) ->
+      [ ILabel label;
+        IMov (Reg RDI, Const err_code);
+        (* We ended up ignoring this argument in main.c. *)
+        IMov (Reg RSI, Reg RAX);
+        ICall (Label "error");
+        IRet (* Theoretically we don't need this `ret`.*) ] )
+    [ (not_a_number_comp_label, err_COMP_NOT_NUM);
+      (not_a_number_arith_label, err_ARITH_NOT_NUM);
+      (not_a_bool_logic_label, err_LOGIC_NOT_BOOL);
+      (not_a_bool_if_label, err_IF_NOT_BOOL);
+      (overflow_label, err_OVERFLOW);
+      (not_a_tuple_access_label, err_GET_NOT_TUPLE);
+      (not_a_number_index_label, err_GET_NOT_NUM);
+      (index_high_label, err_GET_HIGH_INDEX);
+      (index_low_label, err_GET_LOW_INDEX);
+      (nil_deref_label, err_NIL_DEREF);
+      (err_unpack_err_label, err_UNPACK_ERR) ]
+;;
+
 let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
   match anfed with
   | AProgram (body, _) ->
-      let body_prologue, comp_body, body_epilogue =
-        raise (NotYetImplemented "... do stuff with body ...")
+      let body_prologue =
+        "section .text\n\
+         extern error\n\
+         extern print\n\
+         extern input\n\
+         extern equal\n\
+         global our_code_starts_here"
       in
+      let compiled_body = compile_aexpr body 0 env (deepest_stack body env) false in
       let heap_start =
-        [ ILineComment "heap start";
+        [ ILineComment "=== Heap start ===";
           IInstrComment
             ( IMov (Sized (QWORD_PTR, Reg heap_reg), Reg (List.nth first_six_args_registers 0)),
               "Load heap_reg with our argument, the heap pointer" );
@@ -1168,10 +1191,11 @@ let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
           IMov (Reg scratch_reg, HexConst 0xFFFFFFFFFFFFFFF0L);
           IInstrComment
             ( IAnd (Sized (QWORD_PTR, Reg heap_reg), Reg scratch_reg),
-              "by adding no more than 15 to it" ) ]
+              "by adding no more than 15 to it" );
+          ILineComment "==== Heap end ====" ]
       in
-      let main = to_asm (body_prologue @ heap_start @ comp_body @ body_epilogue) in
-      raise (NotYetImplemented "... combine main with any needed extra setup and error handling ...")
+      let main = to_asm (heap_start @ compiled_body @ runtime_errors) in
+      sprintf "%s%s\n" body_prologue main
 ;;
 
 (* Feel free to add additional phases to your pipeline.
