@@ -49,6 +49,7 @@ let simplify_tuple_bindings (Program ((declss : 'a decl list list), (body : 'a e
     | BTuple (sub_binds, alpha) ->
         let temp_name = gensym "temp_tuple_name" in
         let temp_id = EId (temp_name, alpha) in
+        let check_size = EPrim2(CheckSize, temp_id, ENumber (Int64.of_int (List.length sub_binds), alpha), alpha) in
         (* Check for shadow (later) *)
         (BName (temp_name, false, alpha), bound, alpha)
         :: List.concat
@@ -58,7 +59,8 @@ let simplify_tuple_bindings (Program ((declss : 'a decl list list), (body : 'a e
                   match sub_bind with
                   | BName _ | BBlank _ -> [(sub_bind, EGetItem (temp_id, indexer, alpha), alpha)]
                   | BTuple _ -> help_bind (sub_bind, EGetItem (temp_id, indexer, alpha), alpha) )
-                sub_binds )
+                sub_binds ) @ [(BBlank alpha, check_size, alpha)]
+            
     | _ -> [binding]
   in
   let rec helpE e =
@@ -240,7 +242,7 @@ let desugar (p : 'a program) : 'a program =
   (* |> seq_to_let  Introduces blank bindings, so must precede their elimination. *)
   (* Disabled for now, since we should handle this in ANF. *)
   |> simplify_tuple_bindings (* Removes nested binds, making some following phases simpler.*)
-  |> eliminate_blank_bindings
+  (* |> eliminate_blank_bindings *)
   |> simplify_multi_bindings
   |> annotate_call_types
   |> elim_declss

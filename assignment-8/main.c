@@ -48,6 +48,7 @@ const uint64_t ERR_SET_NOT_NUM      = 14;
 const uint64_t ERR_SET_HIGH_INDEX   = 15;
 const uint64_t ERR_CALL_NOT_CLOSURE = 16;
 const uint64_t ERR_CALL_ARITY_ERR   = 17;
+const uint64_t ERR_UNPACK_ERR   = 18;
 
 uint64_t* STACK_BOTTOM;
 
@@ -271,6 +272,9 @@ void error(uint64_t code, SNAKEVAL val) {
     break;
   case ERR_CALL_ARITY_ERR:
     fprintf(stderr, "Error: arity mismatch in call\n");
+    break;
+  case ERR_UNPACK_ERR: 
+    fprint(stderr, "Error: too many values to unpack, expected: "); printHelp(stderr, val);
     break;
   default:
     fprintf(stderr, "Error: Unknown error code: %ld, val: ", code); printHelp(stderr, val);

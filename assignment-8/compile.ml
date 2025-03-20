@@ -87,6 +87,8 @@ let err_CALL_NOT_CLOSURE = 16L
 
 let err_CALL_ARITY_ERR = 17L
 
+let err_UNPACK_ERR = 18L
+
 let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 let heap_reg = R15
@@ -94,6 +96,35 @@ let heap_reg = R15
 let scratch_reg = R11
 
 let scratch_reg2 = R10
+
+let not_a_number_comp_label = "error_not_number_comp"
+
+let not_a_number_arith_label = "error_not_number_arith"
+
+let not_a_bool_logic_label = "error_not_bool_logic"
+
+let not_a_bool_if_label = "error_not_bool_if"
+
+let overflow_label = "error_overflow"
+
+(* Errors for tuples *)
+let not_a_tuple_access_label = "error_not_tuple_access"
+
+let not_a_number_index_label = "error_not_number_index"
+
+let index_high_label = "error_get_high_index"
+
+let index_low_label = "error_get_low_index"
+
+let nil_deref_label = "error_nil_deref"
+
+let err_call_not_closure_label = "err_not_closure"
+
+let err_arity_mismatch_label = "err_arity_mismatch"
+
+let err_unpack_err_label = "err_unpack_err"
+
+let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
 (* You may find some of these helpers useful *)
 
@@ -560,9 +591,174 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) : tag apr
   (prog, remove_dups body_env (fun a b -> fst a = fst b))
 ;;
 
-let err_call_not_closure_label = "err_not_closure#"
+(* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
+(* We could check a parameterized register, but that creates complexity in reporting the error. *)
+(* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
+let check_bool (goto : string) : instruction list =
+  [ IMov (Reg scratch_reg2, Reg RAX);
+    IMov (Reg scratch_reg, HexConst bool_tag_mask);
+    IAnd (Reg scratch_reg2, Reg scratch_reg);
+    ICmp (Reg scratch_reg2, HexConst bool_tag);
+    IJnz (Label goto) ]
+;;
 
-(* Checks that the value in the given location ends in 0x5 (the closure tag). *)
+(* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
+let check_num (goto : string) : instruction list =
+  [ IMov (Reg scratch_reg, HexConst num_tag_mask);
+    ITest (Reg RAX, Reg scratch_reg);
+    IJnz (Label goto) ]
+;;
+
+(* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
+let check_tuple (goto : string) : instruction list =
+  (* This mangles RAX, btw.
+     We must either reset rax after this,
+     or use a temp register here.
+  *)
+  [ IMov (Reg scratch_reg2, Reg RAX);
+    IAnd (Reg scratch_reg2, HexConst tuple_tag_mask);
+    IMov (Reg scratch_reg, HexConst tuple_tag);
+    ICmp (Reg scratch_reg2, Reg scratch_reg);
+    IJnz (Label goto) ]
+;;
+
+(* Enforces that the value in RAX is not nil. Goes to the specified label if it is. *)
+let check_not_nil (goto : string) : instruction list =
+  [IMov (Reg scratch_reg, HexConst tuple_tag); ICmp (Reg RAX, Reg scratch_reg); IJz (Label goto)]
+;;
+
+let check_overflow = IJo (Label overflow_label)
+
+(* Note: compile_cexpr helpers are directly copied from the previous assignment.  *)
+
+(* Helper for numeric comparisons *)
+let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
+  let string_op = "comparison_label" in
+  let comp_label = sprintf "%s#%d" string_op t in
+  let jump =
+    match op with
+    | Greater -> IJg (Label comp_label)
+    | GreaterEq -> IJge (Label comp_label)
+    | Less -> IJl (Label comp_label)
+    | LessEq -> IJle (Label comp_label)
+    | _ -> raise (InternalCompilerError "Expected comparison operator.")
+  in
+  let comp_done_label = sprintf "%s_done#%d" string_op t in
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_comp_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_comp_label
+  @ [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
+      IMov (Reg RAX, e1);
+      (* cmp is weird and breaks if we don't use a temp register... *)
+      IMov (Reg scratch_reg, e2);
+      ICmp (Reg RAX, Reg scratch_reg);
+      jump;
+      IMov (Reg RAX, const_false);
+      IJmp (Label comp_done_label);
+      ILabel comp_label;
+      IMov (Reg RAX, const_true);
+      ILabel comp_done_label;
+      ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
+;;
+
+(* Helper for arithmetic operations *)
+let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_arith_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_arith_label
+  @
+  match op with
+  (* Arithmetic operators *)
+  | Plus -> [IMov (Reg scratch_reg, e1); IAdd (Reg RAX, Reg scratch_reg); check_overflow]
+  (* Make sure to check for overflow BEFORE shifting on multiplication! *)
+  | Times ->
+      [ IMov (Reg scratch_reg, e1);
+        IMul (Reg RAX, Reg scratch_reg);
+        check_overflow;
+        ISar (Reg RAX, Const 1L) ]
+  (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
+   * while also preserving the order in which our arguments will fail a typecheck.
+   * So, `false - true` will fail on `false` every time.
+   *)
+  | Minus ->
+      [ IMov (Reg scratch_reg, e2);
+        IMov (Reg RAX, e1);
+        ISub (Reg RAX, Reg scratch_reg);
+        check_overflow ]
+  (* Comparison operators *)
+  | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
+;;
+
+(* Helper for boolean and *)
+let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  let true_label = sprintf "true#%d" t in
+  let false_label = sprintf "false#%d" t in
+  let logic_done_label = sprintf "and_done#%d" t in
+  [ ILineComment (sprintf "BEGIN and#%d -------------" t);
+    (* Move the first arg into RAX so we can type-check it. *)
+    IMov (Reg RAX, e1) ]
+  @ check_bool not_a_bool_logic_label
+    (* In order to handle short-circuiting, we don't look at the second arg until later.
+     * This means that `false and 5` will NOT raise a type error.
+     *)
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label false_label);
+      IMov (Reg RAX, e2) ]
+  @ check_bool not_a_bool_logic_label
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label false_label);
+      ILabel true_label;
+      IMov (Reg RAX, const_true);
+      IJmp (Label logic_done_label);
+      ILabel false_label;
+      IMov (Reg RAX, const_false);
+      ILabel logic_done_label;
+      ILineComment (sprintf "END and#%d   -------------" t) ]
+;;
+
+(* Helper for boolean or *)
+let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  let true_label = sprintf "true#%d" t in
+  let false_label = sprintf "false#%d" t in
+  let logic_done_label = sprintf "or_done#%d" t in
+  [ ILineComment (sprintf "BEGIN and#%d -------------" t);
+    (* Move the first arg into RAX so we can type-check it. *)
+    IMov (Reg RAX, e1) ]
+  @ check_bool not_a_bool_logic_label
+    (* In order to handle short-circuiting, we don't look at the second arg until later.
+     * This means that `true or 5` will NOT raise a type error.
+     *)
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJnz (Label true_label);
+      IMov (Reg RAX, e2) ]
+  @ check_bool not_a_bool_logic_label
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJnz (Label true_label);
+      ILabel false_label;
+      IMov (Reg RAX, const_false);
+      IJmp (Label logic_done_label);
+      ILabel true_label;
+      IMov (Reg RAX, const_true);
+      ILabel logic_done_label;
+      ILineComment (sprintf "END or#%d   -------------" t) ]
+;;
+
+let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
+
+(* Checks that the value in the given location ends in 0x5 (the closure tag).
+ * With this and `check_arity`, we make sure not to edit the original register.
+ * We need to preserve the tag!
+ *)
 let check_function (reg : arg) =
   [ IMov (Reg scratch_reg, reg);
     IAnd (Reg scratch_reg, Const closure_tag_mask);
@@ -571,8 +767,6 @@ let check_function (reg : arg) =
     ICmp (Reg scratch_reg, Const closure_tag);
     IJne (Label err_call_not_closure_label) ]
 ;;
-
-let err_arity_mismatch_label = "err_arity_mismatch#"
 
 (* Assumes that the given argument is a function! *)
 let check_arity (reg : arg) (arity : int) =
@@ -702,12 +896,251 @@ and compile_lambda (e : 'a cexpr) si env : instruction list =
       compiled_body @ compiled_closure
   | _ -> raise (InternalCompilerError "Expected a CLambda in compile_lambda.")
 
+and compile_call (e : 'a cexpr) si env : instruction list =
+  match e with
+  | CApp (func, args, call_type, tag) ->
+      let func_reg = compile_imm func env in
+      let arg_regs = List.map (fun a -> compile_imm a env) args in
+      (* Note that this does not include the implicit self argument. *)
+      let arity = List.length args in
+      [ILineComment "=== Function call ==="; IMov (Reg RAX, func_reg)]
+      (* 1. Retrieve the function value, and check that it’s tagged as a closure. *)
+      @ check_function (Reg RAX)
+      (* 2. Check that the arity matches the number of arguments being applied. *)
+      @ [IMov (Reg RAX, func_reg)]
+      @ check_arity (Reg RAX) arity
+      (* 3. Push all the arguments. *)
+      @ List.concat
+          (List.rev_map
+             (fun arg_reg -> [IMov (Reg scratch_reg, arg_reg); IPush (Reg scratch_reg)])
+             arg_regs )
+      @ [ (* 4. Push the closure itself. *)
+          IPush (Reg RAX);
+          (* 5. Call the code-label in the closure. *)
+          IMov (Reg RAX, RegOffset (3, RAX));
+          ICall (Reg RAX);
+          (* 6. Pop the arguments and the closure. *)
+          (* NOTE: We need `arity + 1` to account for the implicit self argument. *)
+          IAdd (Reg RSP, Const (Int64.of_int (8 * (arity + 1)))) ]
+      @ [ILineComment "====================="]
+  | _ -> raise (InternalCompilerError "Expected a CApp in compile_call")
+
 and compile_aexpr (e : tag aexpr) (si : int) (env : arg envt) (num_args : int) (is_tail : bool) :
     instruction list =
-  raise (NotYetImplemented "Compile aexpr not yet implemented")
+  match e with
+  | ALet (id, bound, body, _) ->
+      let prelude =
+        compile_cexpr bound si env num_args (* TODO: Come back to this number *) false
+      in
+      let body = compile_aexpr body si env num_args (* TODO: Come back to this number *) is_tail in
+      let offset = find env id in
+      prelude @ [IMov (offset, Reg RAX)] @ body
+  | ALetRec (bindings, body, _) ->
+      let binders, bounds = List.split bindings in
+      let new_env, compiled_bindings =
+        List.fold_left
+          (fun (acc_env, acc_instrs) (binder, bound) ->
+            (* We know that new functions are always at the top of the heap, right before we compile. *)
+            let new_env = ((binder, Reg heap_reg) :: acc_env) in
+            let offset = find env binder in
+            let compiled_bound = compile_cexpr bound si new_env num_args is_tail in
+            
+            (* TODO: Before or after? *)
+            (new_env, acc_instrs @ compiled_bound @ [IMov (offset, Reg RAX)]))
+          (env, [ (* compiled code *) ]) bindings
+      in
+      let compiled_body = compile_aexpr body si new_env num_args is_tail in
+      compiled_bindings @ compiled_body
+  | ASeq (first, next, tag) ->
+      let compiled_first = compile_cexpr first si env num_args is_tail in
+      let compiled_next = compile_aexpr next si env num_args is_tail in
+      compiled_first @ compiled_next
+  | ACExpr cexp -> compile_cexpr cexp si env num_args is_tail
 
 and compile_cexpr (e : tag cexpr) si env num_args is_tail =
-  raise (NotYetImplemented "Compile cexpr not yet implemented")
+  match e with
+  | CImmExpr immexp ->
+      [IMov (Reg scratch_reg, compile_imm immexp env); IMov (Reg RAX, Reg scratch_reg)]
+  | CIf (cond, thn, els, t) ->
+      let else_label = sprintf "if_else#%d" t in
+      let done_label = sprintf "if_done#%d" t in
+      (let cond_reg = compile_imm cond env in
+       [ILineComment (sprintf "BEGIN conditional#%d   -------------" t); IMov (Reg RAX, cond_reg)]
+       @ check_bool not_a_bool_if_label
+       @ [ IMov (Reg scratch_reg, bool_mask);
+           ITest (Reg RAX, Reg scratch_reg);
+           IJz (Label else_label);
+           ILineComment "  Then case:" ]
+       @ compile_aexpr thn si env num_args is_tail
+       @ [IJmp (Label done_label); ILineComment "  Else case:"; ILabel else_label]
+       @ compile_aexpr els si env num_args is_tail )
+      @ [ILabel done_label; ILineComment (sprintf "END conditional#%d     -------------" t)]
+  | CPrim1 (op, e, t) -> (
+      let e_reg = compile_imm e env in
+      match op with
+      | Add1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const 2L); check_overflow]
+      | Sub1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const (-2L)); check_overflow]
+      (* `xor` can't take a 64-bit literal, *)
+      | Not ->
+          (IMov (Reg RAX, e_reg) :: check_bool not_a_bool_logic_label)
+          @ [IMov (Reg scratch_reg, bool_mask); IXor (Reg RAX, Reg scratch_reg)]
+      | IsBool ->
+          let false_label = sprintf "is_bool_false#%d" t in
+          let done_label = sprintf "is_bool_done#%d" t in
+          [ILineComment (sprintf "BEGIN is_bool%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_bool false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp (Label done_label);
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_bool%d   -------------" t) ]
+      | IsNum ->
+          let false_label = sprintf "is_num_false#%d" t in
+          let done_label = sprintf "is_num_done#%d" t in
+          [ILineComment (sprintf "BEGIN is_num%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_num false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp (Label done_label);
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_num%d   -------------" t) ]
+      | Print ->
+          [ (* Print both passes its value to the external function, and returns it. *)
+            IMov (Reg RDI, e_reg);
+            (* TODO: Is this right?? *)
+            ICall (Label "print") (* The answer goes in RAX :) *) ]
+      | IsTuple ->
+          let false_label = sprintf "is_tuple_false#%d" t in
+          let done_label = sprintf "is_tuple_done#%d" t in
+          [ILineComment (sprintf "BEGIN is_tuple%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_tuple false_label
+          @ check_not_nil false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp (Label done_label);
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_tuple%d   -------------" t) ]
+      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here") )
+  | CPrim2 (op, e1, e2, t) -> (
+      let e1_reg = compile_imm e1 env in
+      let e2_reg = compile_imm e2 env in
+      match op with
+      | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg
+      | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1_reg e2_reg t
+      | And -> and_prim2 e1_reg e2_reg t
+      | Or -> or_prim2 e1_reg e2_reg t
+      | Eq ->
+          let true_label = sprintf "equal#%d" t in
+          let done_label = sprintf "equal_done#%d" t in
+          (* No typechecking for Eq. We can just see if the two values are equivalent. *)
+          [ IMov (Reg RAX, e1_reg);
+            IMov (Reg scratch_reg, e2_reg);
+            ICmp (Reg RAX, Reg scratch_reg);
+            IJe (Label true_label);
+            IMov (Reg RAX, const_false);
+            IJmp (Label done_label);
+            ILabel true_label;
+            IMov (Reg RAX, const_true);
+            ILabel done_label ] 
+      | CheckSize ->
+          (* Check that the tuple `e1` has size `e2`.
+           * We don't have to type-check these since:
+           * - By the time we evaluate a CheckSize, we have already guaranteed that e1 is a tuple
+           * - We create CheckSize during desugaring, and we only ever make `e2` an ENumber.
+           *)
+           [
+            IMov (Reg RAX, e1_reg);
+            IMov (Reg scratch_reg, RegOffset (0, RAX));
+            IMov (Reg RAX, e2_reg);
+            ISar (Reg RAX, Const 1L);
+            ICmp (Reg scratch_reg, Reg RAX);
+            IMul (Reg RAX, Const 2L);
+            (* Note that RAX stores the expected arity. *)
+            IJne (Label err_unpack_err_label);
+           ]
+        )
+
+  | CLambda _ -> compile_lambda e si env
+  | CApp _ -> compile_call e si env
+  | CTuple (items, _) ->
+      let n = List.length items in
+      let heap_bump_amt =
+        if n mod 2 == 0 then
+          Int64.of_int word_size
+        else
+          0L
+      in
+      let loading_instrs =
+        List.concat
+        @@ List.mapi
+             (fun i item -> move_with_scratch (RegOffset (i + 1, R15)) (compile_imm item env))
+             items
+      in
+      ILineComment "=== Begin tuple initialization ==="
+      :: move_with_scratch (RegOffset (0, R15)) (HexConst (Int64.of_int n))
+      @ loading_instrs
+      @ [ IMov (Reg RAX, Reg R15);
+          IAdd (Reg RAX, Const 1L);
+          IAdd (Reg R15, Const (Int64.of_int (word_size * (n + 1))));
+          IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "8 if even items, 0 if odd") ]
+      @ [ILineComment "==== End tuple initialization ===="]
+  | CGetItem (tup, idx, _) ->
+      let tup_reg = compile_imm tup env in
+      let idx_reg = compile_imm idx env in
+      [ILineComment "==== Begin get-item ===="; IMov (Reg RAX, tup_reg)]
+      @ check_tuple not_a_tuple_access_label
+      @ [IMov (Reg RAX, tup_reg)]
+      @ check_not_nil nil_deref_label
+      @ [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [ IMov (Reg RAX, tup_reg);
+          (* Because we mangled RAX in check_tuple.*)
+          ISub (Reg RAX, Const 1L);
+          IMov (Reg R11, idx_reg);
+          IShr (Reg R11, Const 1L);
+          ICmp (Reg R11, Const 0L);
+          IJl (Label index_low_label);
+          ICmp (Reg R11, Reg RAX);
+          IJge (Label index_high_label);
+          (* IInstrComment
+             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
+          ILineComment "Multiply the value in R11 by 8 with no further offset" ]
+      @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, word_size, word_size))
+      @ [ILineComment "===== End get-item ====="]
+  | CSetItem (tup, idx, value, _) ->
+      let tup_reg = compile_imm tup env in
+      let idx_reg = compile_imm idx env in
+      let val_reg = compile_imm value env in
+      let tuple_slot_offset = RegOffsetReg (RAX, R11, word_size, word_size) in
+      [ILineComment "==== Begin set-item ===="; IMov (Reg RAX, tup_reg)]
+      @ check_tuple not_a_tuple_access_label
+      @ [IMov (Reg RAX, tup_reg)]
+      @ check_not_nil nil_deref_label
+      @ [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [ IMov (Reg RAX, tup_reg);
+          ISub (Reg RAX, Const 1L);
+          IMov (Reg R11, idx_reg);
+          IShr (Reg R11, Const 1L);
+          ICmp (Reg R11, Const 0L);
+          IJl (Label index_low_label);
+          ICmp (Reg R11, Reg RAX);
+          IJge (Label index_high_label);
+          (* IInstrComment
+             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
+          IMov (Reg scratch_reg2, val_reg);
+          IInstrComment
+            ( IMov (tuple_slot_offset, Reg scratch_reg2),
+              "Store the location of the relevant value in RAX" );
+          IMov (Reg RAX, Reg scratch_reg2);
+          ILineComment "===== End set-item =====" ]
 
 and compile_imm e env =
   match e with
