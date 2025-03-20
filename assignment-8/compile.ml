@@ -1024,7 +1024,7 @@ and compile_aexpr (e : tag aexpr) (si : int) (env : arg envt) (num_args : int) (
             let offset = find env binder in
             let compiled_bound = compile_cexpr bound si new_env num_args is_tail in
             (* TODO: Before or after? *)
-            (new_env, acc_instrs @ compiled_bound @ [IMov (offset, Reg RAX)]) )
+            (env, acc_instrs @ compiled_bound @ [IMov (offset, Reg RAX)]) )
           (env, [ (* compiled code *) ]) bindings
       in
       let compiled_body = compile_aexpr body si new_env num_args is_tail in
