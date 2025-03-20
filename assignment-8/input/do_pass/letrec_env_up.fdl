@@ -1,5 +1,5 @@
 let rec
-  a = 3,
-  sum = (lambda(x): if (x <= 0): 0 else: sum(x - 1) + x)
+  identity = (lambda(x): x),
+  sum = (lambda(x): if (x <= 0): 0 else: sum(x - 1) + identity(0))
 in
-  sum(a)
+  sum(5)

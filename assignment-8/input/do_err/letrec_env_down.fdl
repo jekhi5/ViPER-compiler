@@ -1,6 +1,5 @@
 let rec  
-  a = 1,
-  sum_with_b = (lambda(x): if x <= 0: 0 else: sum(x - 1) + x + b),
-  b = 3
+  sum_with_b = (lambda(x): if x <= 0: 0 else: sum(x - 1) + x + b(0)),
+  b = (lambda(y): y)
 in
   sum(a)
