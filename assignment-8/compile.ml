@@ -17,7 +17,6 @@ open Desugar
   []========================================================[]
 *)
 
-
 (* Documentation can be found at https://v2.ocaml.org/api/Set.S.html *)
 module StringSet = Set.Make (String)
 
@@ -811,7 +810,8 @@ and compile_closure (e : 'a cexpr) si env : instruction list =
       let closure_label = sprintf "closure#%d" tag in
       let after_label = sprintf "closure_end#%d" tag in
       move_with_scratch (RegOffset (0, heap_reg)) (Const (Int64.of_int arity))
-      @ [ILea ((Reg scratch_reg), (RelLabel closure_label)); IMov ((RegOffset (1, heap_reg)), Reg scratch_reg)]
+      @ [ ILea (Reg scratch_reg, RelLabel closure_label);
+          IMov (RegOffset (1, heap_reg), Reg scratch_reg) ]
       @ move_with_scratch (RegOffset (2, heap_reg)) (Const (Int64.of_int closed_count))
       (* For each value in the closure, move it into the next slot in the heap block. *)
       @ List.concat
@@ -936,7 +936,15 @@ and compile_lambda_body2 (e : 'a cexpr) si env : instruction list =
         @ List.concat
             (List.mapi
                (fun i free_var ->
-                 [IMov (Reg RAX, RegOffset (i + 3, scratch_reg)); IMov (free_var, Reg RAX)] )
+                 match free_var with
+                 | Reg heap_reg ->
+                     [ IMov (Reg RAX, Reg heap_reg);
+                       IAdd (Reg RAX, Const closure_tag);
+                       IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ]
+                 | _ ->
+                     [ IMov (Sized (QWORD_PTR, Reg RAX), free_var);
+                       IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ] )
+                 (* [IMov (Reg RAX, RegOffset (i + 3, scratch_reg)); IMov (free_var, Reg RAX)] *)
                closure )
         @ [ ISub (Reg RSP, Const stack_size);
             (* IMov (RegOffset (0, RSP), Reg RDI); *)
@@ -1141,172 +1149,181 @@ and compile_cexpr (e : tag cexpr) si env num_args is_tail =
             IMul (Reg RAX, Const 2L);
             (* Note that RAX stores the expected arity. *)
             IJne (Label err_unpack_err_label) ] )
-  | CLambda (args, body, lambda_tag) -> 
-    (* compile_lambda2 e si env *)
-    let temp_name_start = sprintf "temp_%d" lambda_tag in
-      let temp_name_end = sprintf "temp_%d_end" lambda_tag in
-      let var_count = deepest_stack (ACExpr e) env in
-      let args_length = List.length args in
-      let free_variables = remove_dups (free_vars (ACExpr e)) (=) in
-      let num_free_vars = List.length free_variables in
-      let heap_addition = Int64.of_int ((4 + num_free_vars) * word_size) in
-      let move_args_into_closure_instr =
+  | CLambda (args, body, tag) ->
+      (* compile_lambda2 e si env *)
+      let fun_label = sprintf "func#%d" tag in
+      let after_label = sprintf "func_end#%d" tag in
+      let acexp = ACExpr e in
+      let vars = deepest_stack acexp env in
+      let arity = List.length args in
+      let free_vars = List.sort String.compare (free_vars (ACExpr e)) in
+      let free_var_regs = List.map (fun v -> List.assoc v env) free_vars in
+      let num_free = List.length free_vars in
+      let heap_push_amt = Int64.of_int ((4 + num_free) * word_size) in
+      let load_closure =
         List.concat
           (List.mapi
-             (fun i (arg : string) ->
-               let arg_mov_value = List.assoc arg env in
-               let reg15_offset = 3 + i in
-               match arg_mov_value with
+             (fun i (arg : arg) ->
+               match arg with
                | Reg heap_reg ->
-                   [ ILineComment (sprintf "moving in closure as var:");
-                     IMov (Reg RAX, Reg heap_reg);
+                   [ IMov (Reg RAX, arg);
                      IAdd (Reg RAX, Const closure_tag);
-                     IMov (Sized (QWORD_PTR, RegOffset (reg15_offset, heap_reg)), Reg RAX) ]
+                     IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ]
                | _ ->
-                   [ ILineComment (sprintf "moving: into closure");
-                     IMov (Sized (QWORD_PTR, Reg RAX), arg_mov_value);
-                     IMov (Sized (QWORD_PTR, RegOffset (reg15_offset, heap_reg)), Reg RAX) ] )
-             free_variables )
+                   [ IMov (Sized (QWORD_PTR, Reg RAX), arg);
+                     IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ] )
+             free_var_regs )
       in
-      let get_closure_args, _, _, new_env =
+      let stack_padding =
+        if vars mod 2 = 1 then
+          vars + 1
+        else
+          vars
+      in
+      let _, _, unpack_closure_instrs, new_env =
+        (* This fold needs two counters, so it can't just be a mapi.
+         * i: The index in the closure
+         * j: The offset from RBP, where we will move the variable.
+         *)
         List.fold_left
-          (fun (old_instr, old_closure_index, old_stack_slot, old_env) variable ->
-            let new_instr =
-              [ ILineComment (sprintf "moving variable: %s" variable);
-                IMov (Reg RAX, RegOffset (old_closure_index, scratch_reg));
-                IMov (RegOffset (old_stack_slot, RBP), Reg RAX) ]
-              @ old_instr
-            in
-            let new_env = (variable, RegOffset (old_stack_slot, RBP)) :: old_env in
-            let new_closure_index = old_closure_index + 1 in
-            let new_stack_slot = old_stack_slot - 1 in
-            (new_instr, new_closure_index, new_stack_slot, new_env) )
-          ([], 3, -1, []) free_variables
+          (fun (i, j, acc_instrs, old_env) id ->
+            let offset = RegOffset (j, RBP) in
+            ( (* Advance to the next word in the closure *)
+              i + 1,
+              (* Move up to the next slot above RBP *)
+              j - 1,
+              (* At this point in time, the closure pointer
+               * should be stored in the scratch register. *)
+              IMov (Reg RAX, RegOffset (i, scratch_reg)) (* Grab the closure ptr*)
+              :: IMov (offset, Reg RAX) (* Put it where it belongs*)
+              :: acc_instrs,
+              (id, offset) :: old_env ) )
+          (* Start the index at 3 to skip the metadata words. *)
+          (3, ~-1, [], env)
+          free_vars
       in
-      let valid_env = new_env @ env in
-      let cur_heap_alignment = (args_length * word_size) + (4 * word_size) in
-      let total_heap_alignment =
-        if cur_heap_alignment mod 16 == 0 then
-          cur_heap_alignment
-        else
-          cur_heap_alignment + 8
+      let cur_heap_alignment = word_size * (4 + arity) in
+      let heap_padding =
+        ( if (4 + arity) mod 2 == 0 then
+            4 + arity
+          else
+            4 + arity + 1 )
+        * word_size
       in
-      (* stack alignment must be odd, so stack_size should be even (since RBP is on stack already) *)
-      let align_stack =
-        if var_count mod 2 = 1 then
-          var_count + 1
-        else
-          var_count
+      let stack_size = Int64.of_int (word_size * (2 + stack_padding)) in
+      let prelude =
+        [IJmp (Label after_label); ILabel fun_label; IPush (Reg RBP); IMov (Reg RBP, Reg RSP)]
       in
-      let stack_size = Int64.of_int ((word_size * align_stack) + 16) in
-      [ IJmp (Label temp_name_end);
-        ILabel temp_name_start;
-        IPush (Reg RBP);
-        IMov (Reg RBP, Reg RSP);
-        ILineComment "Unpacking closure setup";
-        ISub (Reg RSP, Const (Int64.of_int (num_free_vars * word_size)));
-        IMov (Reg scratch_reg, RegOffset (2, RBP));
-        ISub (Reg scratch_reg, Const 5L) ]
-      @ get_closure_args
-      @ [ ISub (Reg RSP, Const stack_size);
-          ILineComment "Adding address of the end of the heap to the top of stack";
-          IMov (RegOffset (0, RSP), Reg RDI);
-          (* move end of heap pointer to beginning of stack *)
-          ILineComment "starting function execution" ]
-      @ compile_aexpr body si valid_env (List.length args) false
-      @ [ILineComment "cleaning up stack"; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
-      @ [ ILabel temp_name_end;
-          ILineComment "filling in closure info";
-          (* The number of args that a lambda takes in will be stored as its ACTUAL value, 
-             not as a SnakeValue. This avoids doing an extra multiplication when 
-             calling CApp *)
-          IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int args_length));
-          ILea (Reg scratch_reg, RelLabel temp_name_start);
+      let load_closure_setup =
+        [ ILineComment "=== Load closure values ===";
+          IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int arity));
+          ILea (Reg scratch_reg, RelLabel fun_label);
           IMov (Sized (QWORD_PTR, RegOffset (1, heap_reg)), Reg scratch_reg);
-          IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int num_free_vars)) ]
-      @ move_args_into_closure_instr
-      @ [ ILineComment "create closure";
+          IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int num_free)) ]
+      in
+      let compiled_body = compile_aexpr body si new_env (List.length args) is_tail in
+      let stack_cleanup =
+        [ILineComment "=== Stack clean-up ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
+      in
+      let bump_heap =
+        [ ILineComment "===========================";
           IMov (Reg RAX, Reg heap_reg);
           IAdd (Reg RAX, Const closure_tag);
-          IAdd (Reg heap_reg, Const (Int64.of_int total_heap_alignment)) ]
-  | CApp (lambda_name, args, Snake, _tag) -> 
-    (* compile_call e si env *)
-    let func_name =
-      match lambda_name with
-      | ImmId (id, _) -> id
-      | _ -> "unknown"
-    in
-    let compiled_lambda = compile_imm lambda_name env in
-    let get_lambda_instr =
-      [ (* moving into RSI in case we call error *)
-        ILineComment (sprintf "checking that %s is actually a function" func_name);
-        IMov (Reg RSI, compiled_lambda);
-        IMov (Reg RAX, compiled_lambda);
-        IMov (Reg scratch_reg, Reg RAX);
-        IAnd (Reg scratch_reg, HexConst closure_tag_mask);
-        ICmp (Reg scratch_reg, HexConst closure_tag);
-        IJne (Label err_call_not_closure_label) ]
-    in
-    let arg_length = List.length args in
-    let untag_instr =
-      [ ILineComment (sprintf "checking arity for %s" func_name);
-        ISub (Reg RAX, HexConst closure_tag);
-        (* Will be comparing the arity to the actual value, not snake_value as that is how
+          IAdd (Reg heap_reg, Const (Int64.of_int heap_padding)) ]
+      in
+      prelude
+      @ [ ILineComment "=== Unpacking closure ===";
+          (* Boost RSP to make room for closed vars *)
+          ISub (Reg RSP, Const (Int64.of_int (num_free * word_size)));
+          (* The scratch reg is going to hold the tuple pointer.
+           * (i.e. the implicit first argument)
+           *)
+          IMov (Reg scratch_reg, RegOffset (2, RBP));
+          ISub (Reg scratch_reg, Const 5L) ]
+      @ unpack_closure_instrs
+      @ [ ISub (Reg RSP, Const stack_size);
+          IMov (RegOffset (0, RSP), Reg RDI);
+          ILineComment "=== Function call ===" ]
+      @ compiled_body @ stack_cleanup @ [ILabel after_label] @ load_closure_setup @ load_closure
+      @ bump_heap
+  | CApp (lambda_name, args, Snake, _tag) ->
+      (* compile_call e si env *)
+      let func_name =
+        match lambda_name with
+        | ImmId (id, _) -> id
+        | _ -> "unknown"
+      in
+      let compiled_lambda = compile_imm lambda_name env in
+      let get_lambda_instr =
+        [ (* moving into RSI in case we call error *)
+          ILineComment (sprintf "checking that %s is actually a function" func_name);
+          IMov (Reg RSI, compiled_lambda);
+          IMov (Reg RAX, compiled_lambda);
+          IMov (Reg scratch_reg, Reg RAX);
+          IAnd (Reg scratch_reg, HexConst closure_tag_mask);
+          ICmp (Reg scratch_reg, HexConst closure_tag);
+          IJne (Label err_call_not_closure_label) ]
+      in
+      let arg_length = List.length args in
+      let untag_instr =
+        [ ILineComment (sprintf "checking arity for %s" func_name);
+          ISub (Reg RAX, HexConst closure_tag);
+          (* Will be comparing the arity to the actual value, not snake_value as that is how
            it is stored in the closure *)
-        ICmp (Sized (QWORD_PTR, RegOffset (0, RAX)), Const (Int64.of_int arg_length));
-        IMov (Reg RSI, Const (Int64.of_int arg_length));
-        IJne (Label err_arity_mismatch_label) ]
-    in
-    let compiled_args = List.map (fun arg -> compile_imm arg env) args in
-    let buffer_arg =
-      if List.length compiled_args mod 2 = 0 then
-        [IMov (Reg scratch_reg, Const 0L); IPush (Reg scratch_reg)]
-      else
-        []
-    in
-    let buffer_value =
-      if buffer_arg = [] then
-        0
-      else
-        1
-    in
-    let fixed_args, new_arg_position =
-      List.fold_right
-        (fun arg (compiled_list, arg_position) ->
-          match arg with
-          | RegOffset (n, RSP) ->
-              (RegOffset (n + arg_position, RSP) :: compiled_list, arg_position + 1)
-          | _ -> (arg :: compiled_list, arg_position + 1) )
-        compiled_args ([], buffer_value)
-    in
-    let actual_moving_args =
-      List.fold_left
-        (fun input_list arg ->
-          [ ILineComment "moving a fixed argument";
-            IMov (Reg scratch_reg, arg);
-            IPush (Reg scratch_reg) ]
-          @ input_list )
-        [] fixed_args
-    in
-    let all_moving_args = buffer_arg @ actual_moving_args in
-    let stack_remove = List.length compiled_args + buffer_value + 1 in
-    let compiled_lambda_move =
-      match compiled_lambda with
-      | RegOffset (n, RSP) -> RegOffset (n + new_arg_position, RSP)
-      | _ -> compiled_lambda
-    in
-    let heap_end_addr =
-      [ILineComment "moving heap_end_addr to rdi"; IMov (Reg RDI, RegOffset (0, RSP))]
-    in
-    let clean_stack = [IAdd (Reg RSP, Const (Int64.of_int (word_size * stack_remove)))] in
-    get_lambda_instr @ untag_instr @ heap_end_addr
-    @ [ILineComment "making function call"]
-    @ all_moving_args
-    @ [ ILineComment "moving the compiled_lambda";
-        IMov (Reg scratch_reg, compiled_lambda_move);
-        IPush (Reg scratch_reg);
-        ICall (RegOffset (1, RAX)) ]
-    @ clean_stack
+          ICmp (Sized (QWORD_PTR, RegOffset (0, RAX)), Const (Int64.of_int arg_length));
+          IMov (Reg RSI, Const (Int64.of_int arg_length));
+          IJne (Label err_arity_mismatch_label) ]
+      in
+      let compiled_args = List.map (fun arg -> compile_imm arg env) args in
+      let buffer_arg =
+        if List.length compiled_args mod 2 = 0 then
+          [IMov (Reg scratch_reg, Const 0L); IPush (Reg scratch_reg)]
+        else
+          []
+      in
+      let buffer_value =
+        if buffer_arg = [] then
+          0
+        else
+          1
+      in
+      let fixed_args, new_arg_position =
+        List.fold_right
+          (fun arg (compiled_list, arg_position) ->
+            match arg with
+            | RegOffset (n, RSP) ->
+                (RegOffset (n + arg_position, RSP) :: compiled_list, arg_position + 1)
+            | _ -> (arg :: compiled_list, arg_position + 1) )
+          compiled_args ([], buffer_value)
+      in
+      let actual_moving_args =
+        List.fold_left
+          (fun input_list arg ->
+            [ ILineComment "moving a fixed argument";
+              IMov (Reg scratch_reg, arg);
+              IPush (Reg scratch_reg) ]
+            @ input_list )
+          [] fixed_args
+      in
+      let all_moving_args = buffer_arg @ actual_moving_args in
+      let stack_remove = List.length compiled_args + buffer_value + 1 in
+      let compiled_lambda_move =
+        match compiled_lambda with
+        | RegOffset (n, RSP) -> RegOffset (n + new_arg_position, RSP)
+        | _ -> compiled_lambda
+      in
+      let heap_end_addr =
+        [ILineComment "moving heap_end_addr to rdi"; IMov (Reg RDI, RegOffset (0, RSP))]
+      in
+      let clean_stack = [IAdd (Reg RSP, Const (Int64.of_int (word_size * stack_remove)))] in
+      get_lambda_instr @ untag_instr @ heap_end_addr
+      @ [ILineComment "making function call"]
+      @ all_moving_args
+      @ [ ILineComment "moving the compiled_lambda";
+          IMov (Reg scratch_reg, compiled_lambda_move);
+          IPush (Reg scratch_reg);
+          ICall (RegOffset (1, RAX)) ]
+      @ clean_stack
   | CTuple (items, _) ->
       let n = List.length items in
       let heap_bump_amt =
@@ -1379,7 +1396,7 @@ and compile_cexpr (e : tag cexpr) si env num_args is_tail =
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
-      | _ -> []
+  | _ -> []
 
 and compile_imm e env =
   match e with
@@ -1442,8 +1459,7 @@ let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
       let stack_setup =
         [IPush (Reg RBP); IMov (Reg RBP, Reg RSP); ISub (Reg RSP, Const stack_size)]
       in
-      let stack_cleanup = 
-        [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet] in
+      let stack_cleanup = [IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet] in
       let heap_start =
         [ ILineComment "=== Heap start ===";
           IInstrComment
@@ -1458,7 +1474,9 @@ let compile_prog ((anfed : tag aprogram), (env : arg envt)) : string =
               "by adding no more than 15 to it" );
           ILineComment "==== Heap end ====" ]
       in
-      let main = to_asm (stack_setup @ heap_start @ compiled_body @ stack_cleanup @ runtime_errors) in
+      let main =
+        to_asm (stack_setup @ heap_start @ compiled_body @ stack_cleanup @ runtime_errors)
+      in
       sprintf "%s%s\n" body_prologue main
 ;;
 

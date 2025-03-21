@@ -156,7 +156,7 @@ void printHelp(FILE *out, SNAKEVAL val) {
       if (i > 1) fprintf(out, ", ");
       printHelp(out, addr[i]);
     }
-    if (len == 1) fprintf(out, ", ");
+    if (len == 1) fprintf(out, ",");
     fprintf(out, ")");
     // Unmark this tuple: restore its length
     *(addr) = len; // length is encoded
@@ -247,10 +247,10 @@ void error(uint64_t code, SNAKEVAL val) {
     fprintf(stderr, "Error: index too large to get, got %ld\n", (uint64_t)val);
     break;
   case ERR_GET_NOT_NUM:
-    fprintf(stderr, "Error: get expected numeric index, got "); printHelp(stderr, val);
+    fprintf(stderr, "Error: index expected a number, got "); printHelp(stderr, val);
     break;
   case ERR_NIL_DEREF:
-    fprintf(stderr, "Error: tried to access component of nil\n");
+    fprintf(stderr, "Error: nil dereference\n");
     break;
   case ERR_OUT_OF_MEMORY:
     fprintf(stderr, "Error: out of memory\n");
