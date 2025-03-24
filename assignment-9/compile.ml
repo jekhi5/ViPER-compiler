@@ -4,11 +4,16 @@ open Phases
 open Exprs
 open Assembly
 open Errors
+
+(* Documentation can be found at https://v2.ocaml.org/api/Set.S.html *)
 module StringSet = Set.Make (String)
 
-type 'a name_envt = (string * 'a) list
+(* Documentation can be found at https://v2.ocaml.org/api/Map.S.html *)
+module StringMap = Map.Make (String)
 
-type 'a tag_envt = (tag * 'a) list
+type 'a name_envt = 'a StringMap.t
+
+(* type 'a tag_envt = (tag * 'a) list *)
 
 let print_env env how =
   debug_printf "Env is\n";
@@ -78,13 +83,21 @@ let heap_reg = R15
 let scratch_reg = R11
 
 (* you can add any functions or data defined by the runtime here for future use *)
-let initial_val_env = []
 
-let prim_bindings = []
+let assoc_to_map (assoc : (string * 'a) list) : 'a StringMap.t =
+  List.fold_left (fun map (key, value) -> StringMap.add key value map) StringMap.empty assoc
+;;
 
-let native_fun_bindings = []
+(* Merges two StringMap environments *)
+let merge_envs env1 env2 = StringMap.union (fun _ first _ -> Some first) env1 env2
 
-let initial_fun_env = prim_bindings @ native_fun_bindings
+let initial_val_env = assoc_to_map []
+
+let prim_bindings = assoc_to_map []
+
+let native_fun_bindings = assoc_to_map []
+
+let initial_fun_env = merge_envs prim_bindings native_fun_bindings
 
 (* You may find some of these helpers useful *)
 
@@ -148,18 +161,7 @@ let rec find_dup (l : 'a list) : 'a option =
         find_dup xs
 ;;
 
-let rec find_opt (env : 'a name_envt) (elt : string) : 'a option =
-  match env with
-  | [] -> None
-  | (x, v) :: rst ->
-      if x = elt then
-        Some v
-      else
-        find_opt rst elt
-;;
-
-(* Prepends a list-like env onto an name_envt *)
-let merge_envs list_env1 list_env2 = list_env1 @ list_env2
+let rec find_opt (env : 'a name_envt) (elt : string) : 'a option = StringMap.find_opt elt env
 
 (* Combines two name_envts into one, preferring the first one *)
 let prepend env1 env2 =
@@ -176,7 +178,7 @@ let prepend env1 env2 =
   help env1 env2
 ;;
 
-let env_keys e = List.map fst e
+let env_keys (e : 'a StringMap.t) : string list = fst @@ List.split @@ StringMap.bindings e
 
 (* Scope_info stores the location where something was defined,
    and if it was a function declaration, then its type arity and argument arity *)
@@ -198,7 +200,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         else
           []
     | EId (x, loc) ->
-        if find_one (List.map fst env) x then
+        if find_one (env_keys env) x then
           []
         else
           [UnboundId (x, loc)]
@@ -240,7 +242,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                   | None -> []
                   | Some (existing, _, _) -> [ShadowId (x, xloc, existing)]
               in
-              let new_env = (x, (xloc, None, None)) :: env in
+              let new_env = StringMap.add x (xloc, None, None) env in
               let newer_env, errs = process_binds rest new_env in
               (newer_env, shadow @ errs)
         in
@@ -317,7 +319,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                       else
                         [ShadowId (x, xloc, existing)]
               in
-              let new_env = (x, (xloc, None, None)) :: env in
+              let new_env = StringMap.add x (xloc, None, None) env in
               let newer_env, errs = process_binds rest new_env in
               (newer_env, shadow @ errs)
         in
@@ -360,7 +362,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           | BName (x, _, xloc) -> [(x, (xloc, None, None))]
           | BTuple (args, _) -> List.concat (List.map flatten_bind args)
         in
-        process_args binds @ wf_E body (merge_envs (List.concat (List.map flatten_bind binds)) env)
+        process_args binds
+        @ wf_E body (merge_envs (assoc_to_map (List.concat (List.map flatten_bind binds))) env)
   and wf_D d (env : scope_info name_envt) =
     match d with
     | DFun (_, args, body, _) ->
@@ -386,7 +389,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           match args with
           | [] -> env
           | BBlank _ :: rest -> arg_env rest env
-          | BName (name, _, loc) :: rest -> (name, (loc, None, None)) :: arg_env rest env
+          | BName (name, _, loc) :: rest -> StringMap.add name (loc, None, None) (arg_env rest env)
           | BTuple (binds, _) :: rest -> arg_env (binds @ rest) env
         in
         process_args args @ wf_E body (arg_env args env)
@@ -394,7 +397,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     let add_funbind (env : scope_info name_envt) d =
       match d with
       | DFun (name, args, _, loc) ->
-          (name, (loc, Some (List.length args), Some (List.length args))) :: env
+          StringMap.add name (loc, Some (List.length args), Some (List.length args)) env
     in
     let env = List.fold_left add_funbind env g in
     let errs = List.concat (List.map (fun d -> wf_D d env) g) in
@@ -404,10 +407,10 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   | Program (decls, body, _) -> (
       let initial_env = initial_val_env in
       let initial_env =
-        List.fold_left
-          (fun env (name, (_, arg_count)) ->
-            (name, (dummy_span, Some arg_count, Some arg_count)) :: env )
-          initial_fun_env initial_env
+        merge_envs initial_fun_env
+          (StringMap.map
+             (fun (_, arg_count) -> (dummy_span, Some arg_count, Some arg_count))
+             initial_env )
       in
       let rec find name (decls : 'a decl list) =
         match decls with
@@ -427,7 +430,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       let all_decls = List.flatten decls in
       let help_G (env, exns) g =
         let g_exns, funbinds = wf_G g env in
-        (List.fold_left (fun xs x -> x :: xs) env funbinds, exns @ g_exns)
+        (merge_envs env funbinds, exns @ g_exns)
       in
       let env, exns = List.fold_left help_G (initial_env, dupe_funbinds all_decls) decls in
       debug_printf "In wf_P: %s\n" (ExtString.String.join ", " (env_keys env));
@@ -676,17 +679,14 @@ let anf (p : tag program) : unit aprogram =
         let new_binds, new_setup = List.split new_binds_setup in
         let body_ans, body_setup = helpC body in
         (body_ans, BLetRec (List.combine names new_binds) :: body_setup)
-    | ELambda (args, body, _) ->
-        let processBind bind =
-          match bind with
-          | BName (name, _, _) -> name
-          | _ ->
-              raise
-                (InternalCompilerError
-                   (sprintf "Encountered a non-simple binding in ANFing a lambda: %s"
-                      (string_of_bind bind) ) )
-        in
-        (CLambda (List.map processBind args, helpA body, ()), [])
+    | ELambda _ ->
+        (* This used to be identical to the helpI case, with the small change of
+         * helpI returning an EId with the required setup and this function returning
+         * the processed CLambda. In order for `naive_stack_allocation` to expect a binding
+         * for _every_ lambda, this layer of indirection is required here
+         *)
+        let imm_lambda, lambda_setup = helpI e in
+        (CImmExpr imm_lambda, lambda_setup)
     | ELet ((BTuple _, _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
     | EApp (func, args, native, _) ->
