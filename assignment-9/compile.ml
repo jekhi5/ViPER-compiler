@@ -819,9 +819,48 @@ let free_vars (e : 'a aexpr) : string list =
   raise (NotYetImplemented "Implement free_vars for expressions")
 ;;
 
+let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
+
 (* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
-let naive_stack_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
-  raise (NotYetImplemented "Implement stack allocation for garter")
+let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) : tag aprogram * arg name_envt (*name_envt*) =
+  let rec helpC (cexp : tag cexpr) (env : arg name_envt) (si : int) : arg name_envt =
+    match cexp with
+    | CIf (_, thn, els, _) -> merge_envs (helpA thn env (si + 1)) (helpA els env (si + 1))
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
+    | CLambda (ids, body, _) ->
+        let body_env = helpA body env (si + 1) in
+        (* TODO: revisit adding 2 instead of 1 (we add 2 because before the ids 
+         *       we put RBP and the return address (?)) 
+
+         * Actually, we add 3, to account for the implicit 'self' argument.
+         *)
+        let args_env = List.mapi (fun index id -> (id, RegOffset (index + 3, RBP))) ids in
+        merge_envs (assoc_to_map args_env) body_env
+  and helpA (aexp : tag aexpr) (env : arg name_envt) (si : int) : arg name_envt =
+    match aexp with
+    (* |
+        let offset = si_to_arg si in
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        StringMap.add id offset (merge_envs bound_offset body_offset) *)
+    | ACExpr cexp -> helpC cexp env si
+    | ASeq (first, next, _) -> merge_envs (helpC first env si) (helpA next env (si + 1))
+    | ALetRec ([], body, _) -> helpA body env (si + 1)
+    | ALet (id, bound, body, _)
+    | ALetRec ((id, bound) :: [], body, _) ->
+        let offset = si_to_arg si in
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        StringMap.add id offset (merge_envs bound_offset body_offset)
+    | ALetRec ((id, bound) :: rest, body, tag) ->
+        let offset = si_to_arg si in
+        let bound_offset = helpC bound env si in
+        let body_offset = helpA body env (si + 1) in
+        let rest_env = helpA (ALetRec (rest, body, tag)) env (si + 1) in
+        StringMap.add id offset (merge_envs (merge_envs bound_offset body_offset) rest_env)
+  in
+  let body_env = helpA body StringMap.empty 1 in
+  (prog, body_env)
 ;;
 
 let count_vars e =
