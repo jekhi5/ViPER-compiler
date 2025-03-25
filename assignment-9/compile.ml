@@ -815,14 +815,55 @@ let anf (p : tag program) : unit aprogram =
   helpP p
 ;;
 
-let free_vars (e : 'a aexpr) : string list =
-  raise (NotYetImplemented "Implement free_vars for expressions")
+(* For convenience. 
+ * In general, I like the infix syntax `|> u` for union.
+ *)
+let u = StringSet.union
+
+let free_vars (e : 'a aexpr) : StringSet.t =
+  let rec helpI (e : 'a immexpr) (bound_ids : StringSet.t) : StringSet.t =
+    match e with
+    | ImmId (id, _) when StringSet.mem id bound_ids -> StringSet.singleton id
+    | _ -> StringSet.empty
+  and helpC (e : 'a cexpr) (bound_ids : StringSet.t) : StringSet.t =
+    match e with
+    | CIf (cond, thn, els, _) ->
+        helpI cond bound_ids |> u (helpA thn bound_ids) |> u (helpA els bound_ids)
+    | CPrim1 (_, expr, _) -> helpI expr bound_ids
+    | CPrim2 (_, left, right, _) -> helpI left bound_ids |> u (helpI right bound_ids)
+    | CApp (func, args, _, _) ->
+        helpI func bound_ids
+        |> u (List.fold_left (fun set arg -> helpI arg bound_ids |> u set) StringSet.empty args)
+    | CImmExpr expr -> helpI expr bound_ids
+    | CTuple (args, _) ->
+        List.fold_left (fun set arg -> helpI arg bound_ids |> u set) StringSet.empty args
+    | CGetItem (tup, idx, _) -> helpI tup bound_ids |> u (helpI idx bound_ids)
+    | CSetItem (tup, idx, new_elem, _) ->
+        helpI tup bound_ids |> u (helpI idx bound_ids) |> u (helpI new_elem bound_ids)
+    | CLambda (ids, body, _) -> helpA body (StringSet.of_list ids |> u bound_ids)
+  and helpA (e : 'a aexpr) (bound_ids : StringSet.t) : StringSet.t =
+    match e with
+    | ASeq (first, next, _) -> helpC first bound_ids |> u (helpA next bound_ids)
+    | ALet (name, bound, body, _) ->
+        helpC bound bound_ids |> u (helpA body (StringSet.add name bound_ids))
+    | ALetRec (binds, body, _) ->
+        let declared, free =
+          List.fold_left
+            (fun (declared, free) (name, cexpr) ->
+              (StringSet.add name declared, helpC cexpr (StringSet.add name declared) |> u free) )
+            (bound_ids, StringSet.empty) binds
+        in
+        helpA body declared |> u free
+    | ACExpr cexpr -> helpC cexpr bound_ids
+  in
+  helpA e StringSet.empty
 ;;
 
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
 
 (* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
-let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) : tag aprogram * arg name_envt (*name_envt*) =
+let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
+    tag aprogram * arg name_envt name_envt =
   let rec helpC (cexp : tag cexpr) (env : arg name_envt) (si : int) : arg name_envt =
     match cexp with
     | CIf (_, thn, els, _) -> merge_envs (helpA thn env (si + 1)) (helpA els env (si + 1))
@@ -846,8 +887,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) : tag apr
     | ACExpr cexp -> helpC cexp env si
     | ASeq (first, next, _) -> merge_envs (helpC first env si) (helpA next env (si + 1))
     | ALetRec ([], body, _) -> helpA body env (si + 1)
-    | ALet (id, bound, body, _)
-    | ALetRec ((id, bound) :: [], body, _) ->
+    | ALet (id, bound, body, _) | ALetRec ((id, bound) :: [], body, _) ->
         let offset = si_to_arg si in
         let bound_offset = helpC bound env si in
         let body_offset = helpA body env (si + 1) in
