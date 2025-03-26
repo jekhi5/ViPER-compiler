@@ -46,7 +46,6 @@ void smarter_print_heap(uint64_t* from_start, uint64_t* from_end, uint64_t* to_s
   // printf("In naive_print_heap from %p to %p\n", from_start, from_end);
   // for(uint64_t i = 0; i < (uint64_t)(from_end - from_start); i += 1) {
   //   printf("  %ld/%p: %p (%ld)\n", i, (from_start + i), (uint64_t*)(*(from_start + i)), *(from_start + i));
-  }
 }
 
 // If a value is primitive, it isn't stored on the heap.
@@ -56,6 +55,23 @@ int is_primitive(SNAKEVAL val) {
 
 int is_heap_allocated(SNAKEVAL val) {
   return !is_primitive(val);
+}
+
+uint64_t* untag(SNAKEVAL val) {
+  if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG) {
+    return (uint64_t*) (val - CLOSURE_TAG);
+  } else if ((val & TUPLE_TAG_MASK) == TUPLE_TAG) {
+    return (uint64_t*) (val - TUPLE_TAG);
+  } else if ((val & FWD_PTR_MASK) == FWD_PTR_TAG) {
+    return (uint64_t*) (val - FWD_PTR_TAG);
+  } else {
+    fprintf (stderr, "Error: Tried to untag a non-pointer SNAKEVAL (i.e. not a tuple nor closure nor fwd-ptr): %l", val);
+    exit(2);
+  }
+}
+
+uint64_t get_tag(SNAKEVAL val) {
+  uint64_t tag = val & 7;
 }
 
 /*
@@ -75,33 +91,48 @@ int is_heap_allocated(SNAKEVAL val) {
     If the data needed to be copied, then this replaces the value at its old location 
     with a forwarding pointer to its new location
  */
-uint64_t* copy_if_needed(uint64_t* garter_val_addr, uint64_t* heap_top) {
-  if (is_heap_allocated(*garter_val_addr)) {
+uint64_t* copy_if_needed(SNAKEVAL* garter_val_addr, uint64_t* heap_top) {
+
+  uint64_t* untagged_garter_val_addr = untag(garter_val_addr);
+
+  if ((*untagged_garter_val_addr & FWD_PTR_MASK) == FWD_PTR_TAG) {
+    SNAKEVAL tagged_fwd_ptr = *(untag(garter_val_addr));
+    uint64_t new_heap_top = copy_if_needed(tagged_fwd_ptr, heap_top);
+    uint64_t tag_to_add = get_tag(garter_val_addr);
+    SNAKEVAL new_fwd_ptr = untag(tagged_fwd_ptr) + tag_to_add;
+
+    *untagged_garter_val_addr = new_fwd_ptr + tag_to_add;
+    return heap_top;
+  }
+  
+  if (is_heap_allocated(*untagged_garter_val_addr)) {
     // 1. Get the size of the garter val.
     //    - If it is a tuple,    this is 1 + the first slot.
     //    - If it is a function, this is 3 + the value in the third slot.
     //    - In both cases, account for padding.
     uint64_t words;
-    if ((*garter_val_addr & CLOSURE_TAG_MASK) == CLOSURE_TAG) {
-      words = ((uint64_t*) (*garter_val_addr - CLOSURE_TAG))[2] + 3;
+    uint64_t* heap_thing_addr = *untagged_garter_val_addr;
+
+    if ((*untagged_garter_val_addr & CLOSURE_TAG_MASK) == CLOSURE_TAG) {
+      words = heap_thing_addr[2] + 3;
     } else {
-      words = ((uint64_t*) (*garter_val_addr - TUPLE_TAG))[0] + 1;
+      words = heap_thing_addr[0] + 1;
     }
     // Padding :)
     if (words % 2 > 0) {
       words += 1;
     }
 
-    size_t garter_val_size = words * sizeof(uint64_t);
+    size_t heap_thing_size = words * sizeof(uint64_t);
 
     // 2. Copy the value to heap_top.
-    memcpy(heap_top, garter_val_addr, garter_val_size);
+    memcpy(heap_top, heap_thing_addr, heap_thing_size);
 
     // 3. Replace garter_val_addr with a pointer to heap_top.
-    *garter_val_addr = heap_top;
+    *untagged_garter_val_addr = *heap_top + FWD_PTR_TAG;
 
     // 4. Increase heap_top by the necessary amount.
-    heap_top = heap_top + garter_val_size;
+    *heap_top = *heap_top + heap_thing_size;
 
     return heap_top;
   } else {
