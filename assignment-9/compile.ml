@@ -11,8 +11,6 @@ module StringSet = Set.Make (String)
 (* Documentation can be found at https://v2.ocaml.org/api/Map.S.html *)
 module StringMap = Map.Make (String)
 
-type 'a name_envt = 'a StringMap.t
-
 (* type 'a tag_envt = (tag * 'a) list *)
 
 let print_env env how =
@@ -81,6 +79,8 @@ let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 let heap_reg = R15
 
 let scratch_reg = R11
+
+let ocsh_name = "ocsh_0"
 
 (* you can add any functions or data defined by the runtime here for future use *)
 
@@ -257,7 +257,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         in
         let env2, errs = process_bindings bindings env in
         dupeIds @ errs @ wf_E body env2
-    | EApp (func, args, native, loc) ->
+    | EApp (func, args, _, loc) ->
         let rec_errors = List.concat (List.map (fun e -> wf_E e env) (func :: args)) in
         ( match func with
         | EId (funname, _) -> (
@@ -597,7 +597,7 @@ let rename_and_tag (p : tag program) : tag program =
     | EBool _ -> e
     | ENil _ -> e
     | EId (name, tag) -> ( try EId (find env name, tag) with InternalCompilerError _ -> e )
-    | EApp (func, args, native, tag) ->
+    | EApp (func, args, _, tag) ->
         let func = helpE env func in
         let call_type =
           (* TODO: If you want, try to determine whether func is a known function name, and if so,
@@ -676,7 +676,7 @@ let anf (p : tag program) : unit aprogram =
                       (string_of_bind bind) ) )
         in
         let names, new_binds_setup = List.split (List.map processBind binds) in
-        let new_binds, new_setup = List.split new_binds_setup in
+        let new_binds, _ = List.split new_binds_setup in
         let body_ans, body_setup = helpC body in
         (body_ans, BLetRec (List.combine names new_binds) :: body_setup)
     | ELambda _ ->
@@ -719,7 +719,7 @@ let anf (p : tag program) : unit aprogram =
     | EId (name, _) -> (ImmId (name, ()), [])
     | ENil _ -> (ImmNil (), [])
     | ESeq (e1, e2, _) ->
-        let e1_imm, e1_setup = helpI e1 in
+        let _, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
     | ETuple (args, tag) ->
@@ -820,6 +820,7 @@ let anf (p : tag program) : unit aprogram =
  *)
 let u = StringSet.union
 
+(* Is it more convenient to return a StringSet, or just to slap a to_list at the end? *)
 let free_vars (e : 'a aexpr) : StringSet.t =
   let rec helpI (e : 'a immexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
@@ -859,47 +860,84 @@ let free_vars (e : 'a aexpr) : StringSet.t =
   helpA e StringSet.empty
 ;;
 
+(* Extend the inner mapping with `(inner_key, value)` *)
+let update_envt_envt
+    (outer_key : string)
+    (inner_key : string)
+    (value : 'a)
+    (m : 'a name_envt name_envt) : 'a name_envt name_envt =
+  StringMap.update outer_key
+    (fun x ->
+      match x with
+      | None -> Some (StringMap.singleton inner_key value)
+      | Some inner -> Some (StringMap.add inner_key value inner) )
+    m
+;;
+
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
 
 (* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
 let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
     tag aprogram * arg name_envt name_envt =
-  let rec helpC (cexp : tag cexpr) (env : arg name_envt) (si : int) : arg name_envt =
+  let rec helpC (cexp : tag cexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
+      arg name_envt name_envt =
     match cexp with
-    | CIf (_, thn, els, _) -> merge_envs (helpA thn env (si + 1)) (helpA els env (si + 1))
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
+    | CIf (_, thn, els, _) ->
+        let thn_env = helpA thn env (si + 1) env_name in
+        helpA els thn_env (si + 1) env_name
     | CLambda (ids, body, _) ->
-        let body_env = helpA body env (si + 1) in
         (* TODO: revisit adding 2 instead of 1 (we add 2 because before the ids 
          *       we put RBP and the return address (?)) 
 
          * Actually, we add 3, to account for the implicit 'self' argument.
          *)
-        let args_env = List.mapi (fun index id -> (id, RegOffset (index + 3, RBP))) ids in
-        merge_envs (assoc_to_map args_env) body_env
-  and helpA (aexp : tag aexpr) (env : arg name_envt) (si : int) : arg name_envt =
+        let si = 1 in
+        let args_locs = List.mapi (fun index id -> (id, RegOffset (index + 3, RBP))) ids in
+        let args_env =
+          List.fold_left
+            (fun envt_envt (id, location) -> update_envt_envt env_name id location envt_envt)
+            env args_locs
+        in
+        helpA body args_env (si + 1) env_name
+  and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
+      arg name_envt name_envt =
     match aexp with
-    (* |
+    | ACExpr cexp -> helpC cexp env si env_name
+    | ASeq (first, next, _) ->
+        merge_envs (helpC first env si env_name) (helpA next env (si + 1) env_name)
+    | ALetRec ([], body, _) -> helpA body env (si + 1) env_name
+    | ALet (id, (CLambda _ as lambda), body, _) ->
         let offset = si_to_arg si in
-        let bound_offset = helpC bound env si in
-        let body_offset = helpA body env (si + 1) in
-        StringMap.add id offset (merge_envs bound_offset body_offset) *)
-    | ACExpr cexp -> helpC cexp env si
-    | ASeq (first, next, _) -> merge_envs (helpC first env si) (helpA next env (si + 1))
-    | ALetRec ([], body, _) -> helpA body env (si + 1)
+        let body_offset = helpA body env (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_offset in
+        let lambda_offset = helpC lambda cur_envt si id in
+        lambda_offset
     | ALet (id, bound, body, _) | ALetRec ((id, bound) :: [], body, _) ->
         let offset = si_to_arg si in
-        let bound_offset = helpC bound env si in
-        let body_offset = helpA body env (si + 1) in
-        StringMap.add id offset (merge_envs bound_offset body_offset)
+        let body_env = helpA body env (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_env in
+        let bound_env = helpC bound cur_envt si env_name in
+        bound_env
+    | ALetRec ((id, (CLambda _ as lambda)) :: rest, body, tag) ->
+        let offset = si_to_arg si in
+        let body_offset = helpA body env (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_offset in
+        let lambda_offset = helpC lambda cur_envt si id in
+        (* TODO: Think about this a little more. Is there too much indirection? *)
+        let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
+        let rest_env = helpA (ALetRec (rest, body, tag)) with_self_reference (si + 1) env_name in
+        rest_env
     | ALetRec ((id, bound) :: rest, body, tag) ->
         let offset = si_to_arg si in
-        let bound_offset = helpC bound env si in
-        let body_offset = helpA body env (si + 1) in
-        let rest_env = helpA (ALetRec (rest, body, tag)) env (si + 1) in
-        StringMap.add id offset (merge_envs (merge_envs bound_offset body_offset) rest_env)
+        let body_env = helpA body env (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_env in
+        let bound_env = helpC bound cur_envt si env_name in
+        let rest_env = helpA (ALetRec (rest, body, tag)) bound_env (si + 1) env_name in
+        rest_env
   in
-  let body_env = helpA body StringMap.empty 1 in
+  (* TODO: Change the name of the OCSH environment? *)
+  let body_env = helpA body StringMap.empty 1 ocsh_name in
   (prog, body_env)
 ;;
 
@@ -1034,7 +1072,8 @@ let add_native_lambdas (p : sourcespan program) =
       Program
         ( List.fold_left
             (fun declss (name, (_, arity)) -> wrap_native name arity :: declss)
-            declss native_fun_bindings,
+            declss
+            (StringMap.bindings native_fun_bindings),
           body,
           tag )
 ;;

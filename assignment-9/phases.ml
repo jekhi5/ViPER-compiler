@@ -4,7 +4,12 @@ open Errors
 open Pretty
 open Assembly
 
-type 'a name_envt = (string * 'a) list
+(* Documentation can be found at https://v2.ocaml.org/api/Map.S.html *)
+module StringMap = Map.Make (String)
+
+type 'a name_envt = 'a StringMap.t
+
+(* type 'a name_envt = (string * 'a) list *)
 
 type 'a tag_envt = (tag * 'a) list
 
@@ -112,6 +117,16 @@ let add_phase (log : 'b -> phase) (next : 'a -> 'b) (cur_pipeline : 'a pipeline)
 
 let no_op_phase (cur_pipeline : 'a pipeline) = cur_pipeline
 
+let string_of_name_envt_envt e =
+  ExtString.String.join "\n"
+            (List.map
+               (fun (name, env) ->
+                 name
+                 ^ ":\n\t"
+                 ^ ExtString.String.join "\n\t"
+                     (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env)) )
+               (StringMap.bindings e)) ^ "\n" 
+
 (* Stringifies a list of phases, for debug printing purposes *)
 let print_trace (trace : phase list) : string list =
   let phase_name p =
@@ -139,14 +154,7 @@ let print_trace (trace : phase list) : string list =
     | Located (p, e) ->
         string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
         ^ "\nEnvs:\n"
-        ^ ExtString.String.join "\n"
-            (List.map
-               (fun (name, env) ->
-                 name
-                 ^ ":\n\t"
-                 ^ ExtString.String.join "\n\t"
-                     (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) env) )
-               e )
+        ^ (string_of_name_envt_envt e)
     | Result s -> s
   in
   List.mapi

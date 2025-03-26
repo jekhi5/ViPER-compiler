@@ -4,6 +4,7 @@ open OUnit2
 open Pretty
 open Exprs
 open Errors
+open Phases
 
 let t name program input expected =
   name >:: test_run ~args:[] ~std_input:input program name expected
@@ -43,7 +44,23 @@ let tparse name program expected =
   assert_equal (untagP expected) (untagP (parse_string name program)) ~printer:string_of_program
 ;;
 
-let teq name actual expected = name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> s)
+let teq name actual expected =
+  name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> "\n\n" ^ s)
+;;
+
+let envt_envt_of_list (e : (string * (string * 'a) list) list) : 'a name_envt name_envt =
+  assoc_to_map (List.map (fun (key, inner) -> (key, assoc_to_map inner)) e)
+;;
+
+let tnsa name program expected =
+  let _, locations = naive_stack_allocation (atag (anf (tag (parse_string name program)))) in
+  name
+  >:: fun _ ->
+  assert_equal
+    (string_of_name_envt_envt (envt_envt_of_list expected))
+    (string_of_name_envt_envt locations)
+    ~printer:(fun s -> s)
+;;
 
 (* let tfvs name program expected = name>:: *)
 (*   (fun _ -> *)
@@ -66,19 +83,22 @@ let pair_tests =
       \            begin\n\
       \              t[0] := 7;\n\
       \              t\n\
-      \            end" "" "(7, (5, 6))";
+      \            end"
+      "" "(7, (5, 6))";
     t "tup2"
       "let t = (4, (5, nil)) in\n\
       \            begin\n\
       \              t[1] := nil;\n\
       \              t\n\
-      \            end" "" "(4, nil)";
+      \            end"
+      "" "(4, nil)";
     t "tup3"
       "let t = (4, (5, nil)) in\n\
       \            begin\n\
       \              t[1] := t;\n\
       \              t\n\
-      \            end" "" "(4, <cyclic tuple 1>)";
+      \            end"
+      "" "(4, <cyclic tuple 1>)";
     t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))" ]
 ;;
 
@@ -98,11 +118,51 @@ let gc =
       \         f();\n\
       \         f();\n\
       \         f()\n\
-      \       end" "" "(1, 2)" ]
+      \       end"
+      "" "(1, 2)" ]
 ;;
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: pair_tests @ oom @ gc @ input
+let nsa =
+  [ tnsa "simple_nsa1" "let x = 1 in x + 5" [("ocsh_0", [("x", RegOffset (~-1, RBP))])];
+    tnsa "simple_nsa2" "let x = 1, y = 3, z = 4 in 5"
+      [ ( "ocsh_0",
+          [("x", RegOffset (~-1, RBP)); ("y", RegOffset (~-2, RBP)); ("z", RegOffset (~-3, RBP))] )
+      ];
+    tnsa "simple_lambda" "let a = 1 in (lambda(x): x)(5)"
+      [ ("ocsh_0", [("a", RegOffset (~-1, RBP)); ("lam_8", RegOffset (~-2, RBP))]);
+        ("lam_8", [("x", RegOffset (3, RBP))]) ];
+    (* Remember that all lambdas are indirected... *)
+    (* Environments with no bindings will be ignored. *)
+    tnsa "non_nested_lambdas"
+      "let a=1, foo = (lambda(x): x), bar = (lambda(y, x): y + x), baz = (lambda: a) in 1"
+      [ ( "ocsh_0",
+          [ ("a", RegOffset (~-1, RBP));
+            ("lam_8", RegOffset (~-2, RBP));
+            ("foo", RegOffset (~-3, RBP));
+            ("lam_13", RegOffset (~-4, RBP));
+            ("bar", RegOffset (~-5, RBP));
+            ("lam_21", RegOffset (~-6, RBP));
+            ("baz", RegOffset (~-7, RBP)) ] );
+        ("lam_8", [("x", RegOffset (3, RBP))]);
+        ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]) ];
+    tnsa "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
+      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_6", RegOffset (~-1, RBP))]);
+        ("lam_6", [("y", RegOffset (3, RBP));]) ]; 
+        
+        tnsa "letrec1" "let rec foo = (lambda(x): x) in 1"
+        [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
+          ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]);];  
+        ]
+;;
+
+let suite =
+  "unit_tests"
+  >:::
+  (* pair_tests @ oom @ gc @ input *)
+  nsa
+;;
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
