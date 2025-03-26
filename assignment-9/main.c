@@ -296,13 +296,18 @@ void error(uint64_t code, SNAKEVAL val) {
     Also updates HEAP and HEAP_END to point to the new location of the heap
 */
 uint64_t* try_gc(uint64_t* alloc_ptr, uint64_t bytes_needed, uint64_t* cur_frame, uint64_t* cur_stack_top) {
+  // Allocate a new heap
   uint64_t* new_heap = (uint64_t*)calloc(HEAP_SIZE + 15, sizeof(uint64_t));
+
+  // Store the current heap
   uint64_t* old_heap = HEAP;
   uint64_t* old_heap_end = HEAP_END;
 
+  // Get the start and end of the new heap
   uint64_t* new_r15 = (uint64_t*)(((uint64_t)new_heap + 15) & ~0xF);
   uint64_t* new_heap_end = new_r15 + HEAP_SIZE;
 
+  
   FROM_S = (uint64_t*)(((uint64_t)HEAP + 15) & ~0xF);
   FROM_E = HEAP_END;
   TO_S = new_r15;
