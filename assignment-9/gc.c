@@ -248,7 +248,8 @@ uint64_t *gc(uint64_t *bottom_frame, uint64_t *top_frame, uint64_t *top_stack, u
   do
   {
     // CAREFULLY CONSIDER: do you need `top_stack + 1`?
-    for (SNAKEVAL *cur_word = top_stack; cur_word < top_frame; cur_word++)
+    // Yes.
+    for (SNAKEVAL *cur_word = top_stack + 1; cur_word < top_frame; cur_word++)
     {
       to_start = copy_if_needed(cur_word, to_start);
     }

@@ -1316,7 +1316,7 @@ and reserve size tag =
 (* Additionally, you are provided an initial environment of values that you may want to
    assume should take up the first few stack slots.  See the compiliation of Programs
    below for one way to use this ability... *)
-and compile_fun name args body (env_env : arg name_envt name_envt) :
+and compile_fun name args body (env_env : arg name_envt name_envt) tag:
     instruction list * instruction list * instruction list =
   let env = safe_find_opt name env_env in
   let fun_label = name in
@@ -1384,6 +1384,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) :
         4 + arity + 1 )
     * word_size
   in
+  let gc = reserve heap_padding tag in
   let stack_size = Int64.of_int (word_size * (2 + stack_padding)) in
   let prelude =
     [IJmp (Label after_label); ILabel fun_label; IPush (Reg RBP); IMov (Reg RBP, Reg RSP)]
@@ -1419,108 +1420,8 @@ and compile_fun name args body (env_env : arg name_envt name_envt) :
     @ [ ISub (Reg RSP, Const stack_size);
         IMov (RegOffset (0, RSP), Reg RDI);
         ILineComment "=== Function call ===" ]
-    @ compiled_body @ stack_cleanup @ [ILabel after_label] @ load_closure_setup @ load_closure,
+    @ compiled_body @ stack_cleanup @ [ILabel after_label] @ gc @ load_closure_setup @ load_closure,
     bump_heap )
-
-and compile_lambda (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name
-    =
-  let env = safe_find_opt env_name env_env in
-  match e with
-  | CLambda (args, body, tag) ->
-      let fun_label = sprintf "func#%d" tag in
-      let after_label = sprintf "func_end#%d" tag in
-      let acexp = ACExpr e in
-      let vars = deepest_stack acexp env in
-      let arity = List.length args in
-      let free_vars = StringSet.elements (free_vars (ACExpr e)) in
-      let free_var_regs = List.map (fun v -> safe_find_opt v env) free_vars in
-      let num_free = List.length free_vars in
-      let load_closure =
-        List.concat
-          (List.mapi
-             (fun i (arg : arg) ->
-               match arg with
-               | Reg heap_reg ->
-                   [ IMov (Reg RAX, arg);
-                     IAdd (Reg RAX, Const closure_tag);
-                     IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ]
-               | _ ->
-                   [ IMov (Sized (QWORD_PTR, Reg RAX), arg);
-                     IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ] )
-             free_var_regs )
-      in
-      let stack_padding =
-        if vars mod 2 = 1 then
-          vars + 1
-        else
-          vars
-      in
-      let _, _, unpack_closure_instrs, new_env =
-        (* This fold needs two counters, so it can't just be a mapi.
-         * i: The index in the closure
-         * j: The offset from RBP, where we will move the variable.
-         *)
-        List.fold_left
-          (fun (i, j, acc_instrs, old_env) id ->
-            let offset = RegOffset (j, RBP) in
-            ( (* Advance to the next word in the closure *)
-              i + 1,
-              (* Move up to the next slot above RBP *)
-              j - 1,
-              (* At this point in time, the closure pointer
-               * should be stored in the scratch register. *)
-              IMov (Reg RAX, RegOffset (i, scratch_reg)) (* Grab the closure ptr*)
-              :: IMov (offset, Reg RAX) (* Put it where it belongs*)
-              :: acc_instrs,
-              update_envt_envt env_name id offset old_env ) )
-          (* Start the index at 3 to skip the metadata words. *)
-          (3, ~-1, [], env_env)
-          free_vars
-      in
-      let heap_padding =
-        ( if (4 + arity) mod 2 == 0 then
-            4 + arity
-          else
-            4 + arity + 1 )
-        * word_size
-      in
-      let stack_size = Int64.of_int (word_size * (2 + stack_padding)) in
-      let prelude =
-        [IJmp (Label after_label); ILabel fun_label; IPush (Reg RBP); IMov (Reg RBP, Reg RSP)]
-      in
-      let load_closure_setup =
-        [ ILineComment "=== Load closure values ===";
-          IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int arity));
-          ILea (Reg scratch_reg, RelLabel fun_label);
-          IMov (Sized (QWORD_PTR, RegOffset (1, heap_reg)), Reg scratch_reg);
-          IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int num_free)) ]
-      in
-      let compiled_body = compile_aexpr body si new_env (List.length args) is_tail env_name in
-      let stack_cleanup =
-        [ILineComment "=== Stack clean-up ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
-      in
-      let bump_heap =
-        [ ILineComment "===========================";
-          IMov (Reg RAX, Reg heap_reg);
-          IAdd (Reg RAX, Const closure_tag);
-          IAdd (Reg heap_reg, Const (Int64.of_int heap_padding)) ]
-      in
-      prelude
-      @ [ ILineComment "=== Unpacking closure ===";
-          (* Boost RSP to make room for closed vars *)
-          ISub (Reg RSP, Const (Int64.of_int (num_free * word_size)));
-          (* The scratch reg is going to hold the tuple pointer.
-           * (i.e. the implicit first argument)
-           *)
-          IMov (Reg scratch_reg, RegOffset (2, RBP));
-          ISub (Reg scratch_reg, Const 5L) ]
-      @ unpack_closure_instrs
-      @ [ ISub (Reg RSP, Const stack_size);
-          IMov (RegOffset (0, RSP), Reg RDI);
-          ILineComment "=== Function call ===" ]
-      @ compiled_body @ stack_cleanup @ [ILabel after_label] @ load_closure_setup @ load_closure
-      @ bump_heap
-  | _ -> raise (InternalCompilerError "Expected CLambda in compile_lambda")
 
 and compile_call (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name =
   let env = safe_find_opt env_name env_env in
@@ -1578,11 +1479,11 @@ and compile_aexpr
     (env_name : string) : instruction list =
   let env = safe_find_opt env_name env_env in
   match e with
-  | ALet (id, CLambda (args, fun_body, _), let_body, _) ->
+  | ALet (id, CLambda (args, fun_body, tag), let_body, _) ->
       let cur_env = safe_find_opt env_name env_env in
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-        let a, b, c = compile_fun id args fun_body env_env in
+        let a, b, c = compile_fun id args fun_body env_env tag in
         a @ b @ c
       in
       let body = compile_aexpr let_body si env_env num_args is_tail env_name in
@@ -1604,8 +1505,8 @@ and compile_aexpr
             let compiled_bound =
               match bound with
               (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-              | CLambda (args, fun_body, _) ->
-                  let a, b, c = compile_fun binder args fun_body env_env in
+              | CLambda (args, fun_body, tag) ->
+                  let a, b, c = compile_fun binder args fun_body env_env tag in
                   a @ b @ c
               | _ -> compile_cexpr bound si rec_env num_args is_tail env_name
             in
@@ -1947,11 +1848,11 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
   in
   let suffix = error_suffix in
   match anfed with
-  | AProgram (body, _) ->
+  | AProgram (body, tag) ->
       (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
       let prologue, comp_main, epilogue =
         (* compile_lambda (CLambda (["$heap"; "$size"] body, 0), [0; 0], Snake, 0) 0 env 2 false ocsh_name *)
-        compile_fun ocsh_name ["$heap"; "$size"] body env
+        compile_fun ocsh_name ["$heap"; "$size"] body env tag
       in
       let heap_start =
         [ ILineComment "heap start";

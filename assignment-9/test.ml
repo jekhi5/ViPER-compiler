@@ -162,7 +162,7 @@ let suite =
   "unit_tests"
   >:::
   (* pair_tests @ oom @ gc @ input *)
-  nsa
+  nsa @ gc
 ;;
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
