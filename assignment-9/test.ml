@@ -158,7 +158,7 @@ let nsa =
         [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
           ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]);];  
         
-    tnsa "number" "1" [];
+    tnsa "number" "1" [("ocsh_0", [])];
           ]
 ;;
 

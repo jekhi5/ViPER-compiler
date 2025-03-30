@@ -1887,12 +1887,6 @@ let error_suffix =
       (nil_deref_label, to_asm (native_call (Label "?error") [Const err_NIL_DEREF; Reg scratch_reg]));
       ( err_out_of_memory_label,
         to_asm (native_call (Label "?error") [Const err_OUT_OF_MEMORY; Reg scratch_reg]) );
-      ( not_a_tuple_access_label,
-        to_asm (native_call (Label "?error") [Const err_SET_NOT_TUPLE; Reg scratch_reg]) );
-      ( index_low_label,
-        to_asm (native_call (Label "?error") [Const err_SET_LOW_INDEX; Reg scratch_reg]) );
-      ( index_high_label,
-        to_asm (native_call (Label "?error") [Const err_SET_HIGH_INDEX; Reg scratch_reg]) );
       ( not_a_closure_label,
         to_asm (native_call (Label "?error") [Const err_CALL_NOT_CLOSURE; Reg scratch_reg]) );
       ( err_arity_mismatch_label,
@@ -1936,7 +1930,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
               "by adding no more than 15 to it" ) ]
       in
       let set_stack_bottom =
-        [ILabel ocsh_name; IMov (Reg R12, Reg RDI)]
+        [IMov (Reg R12, Reg RDI)]
         @ native_call (Label "?set_stack_bottom") [Reg RBP]
         @ [IMov (Reg RDI, Reg R12)]
       in
