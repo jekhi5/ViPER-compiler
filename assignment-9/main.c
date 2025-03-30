@@ -6,7 +6,7 @@
 
 typedef uint64_t SNAKEVAL;
 
-extern SNAKEVAL our_code_starts_here(uint64_t* HEAP, uint64_t size) asm("?our_code_starts_here");
+extern SNAKEVAL our_code_starts_here(uint64_t* HEAP, uint64_t size) asm("ocsh_0");
 extern void error() asm("?error");
 extern SNAKEVAL set_stack_bottom(uint64_t* stack_bottom) asm("?set_stack_bottom");
 extern SNAKEVAL print(SNAKEVAL val) asm("?print");

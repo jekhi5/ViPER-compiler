@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include "gc.h"
 
 typedef uint64_t SNAKEVAL;
@@ -9,7 +10,7 @@ void printHelp(FILE *out, SNAKEVAL val);
 extern uint64_t NUM_TAG_MASK;
 extern uint64_t CLOSURE_TAG_MASK;
 extern uint64_t TUPLE_TAG_MASK;
-extern uint64_t FWD_PTR_MASK;
+extern uint64_t FWD_PTR_TAG_MASK;
 extern uint64_t CLOSURE_TAG;
 extern uint64_t TUPLE_TAG;
 extern uint64_t FWD_PTR_TAG;
@@ -58,7 +59,7 @@ void smarter_print_heap(uint64_t *from_start, uint64_t *from_end, uint64_t *to_s
 // If a value is primitive, it isn't stored on the heap.
 int is_primitive(SNAKEVAL val)
 {
-  return ((val & NUM_TAG_MASK == 0) || (val == NIL) || (val == BOOL_TRUE) || (val == BOOL_FALSE));
+  return (((val & NUM_TAG_MASK) == 0) || (val == NIL) || (val == BOOL_TRUE) || (val == BOOL_FALSE));
 }
 
 uint64_t *untag(SNAKEVAL val)
@@ -71,20 +72,20 @@ uint64_t *untag(SNAKEVAL val)
   {
     return (uint64_t *)(val - TUPLE_TAG);
   }
-  else if ((val & FWD_PTR_MASK) == FWD_PTR_TAG)
+  else if ((val & FWD_PTR_TAG_MASK) == FWD_PTR_TAG)
   {
     return (uint64_t *)(val - FWD_PTR_TAG);
   }
   else
   {
-    fprintf(stderr, "Error: Tried to untag a non-pointer SNAKEVAL (i.e. not a tuple nor closure nor fwd-ptr): %l", val);
+    fprintf(stderr, "Error: Tried to untag a non-pointer SNAKEVAL (i.e. not a tuple nor closure nor fwd-ptr): %ld", val);
     exit(2);
   }
 }
 
 uint64_t get_tag(SNAKEVAL val)
 {
-  uint64_t tag = val & 7;
+  return val & 7;
 }
 
 /**
@@ -99,7 +100,7 @@ uint64_t get_tag(SNAKEVAL val)
  */
 uint64_t *follow_pointer(SNAKEVAL *ptr)
 {
-  if ((*ptr & FWD_PTR_MASK) != FWD_PTR_TAG)
+  if ((*ptr & FWD_PTR_TAG_MASK) != FWD_PTR_TAG)
   {
     return ptr;
   }
@@ -149,7 +150,7 @@ uint64_t *copy_if_needed(SNAKEVAL *garter_val_addr, uint64_t *heap_top)
 
     uint64_t heap_thing = *(untag(garter_val));
 
-    if ((heap_thing & FWD_PTR_MASK) == FWD_PTR_TAG)
+    if ((heap_thing & FWD_PTR_TAG_MASK) == FWD_PTR_TAG)
     {
       // `heap_thing` is a SNAKEVAL, not just a basic uint64_t
 
@@ -158,7 +159,7 @@ uint64_t *copy_if_needed(SNAKEVAL *garter_val_addr, uint64_t *heap_top)
 
       // The box that GVA points to, now is a correctly tagged pointer
       // to the actual heap_thing in its new location
-      *garter_val_addr = heap_thing_addr + tag_to_add;
+      *garter_val_addr = (SNAKEVAL) (heap_thing_addr + tag_to_add);
 
       return heap_top;
     }
@@ -196,10 +197,10 @@ uint64_t *copy_if_needed(SNAKEVAL *garter_val_addr, uint64_t *heap_top)
       memcpy(heap_top, heap_thing_addr, heap_thing_size);
 
       // 3. Replace garter_val_addr with a forwarding pointer to heap_top.
-      *garter_val_addr = heap_top + FWD_PTR_TAG;
+      *garter_val_addr = (SNAKEVAL) (heap_top + FWD_PTR_TAG);
 
       // 4. Increase heap_top by the necessary amount.
-      *heap_top = *heap_top + heap_thing_size;
+      *heap_top = (uint64_t) (*heap_top + heap_thing_size);
 
       uint64_t *new_heap_top = heap_top;
 
@@ -214,7 +215,7 @@ uint64_t *copy_if_needed(SNAKEVAL *garter_val_addr, uint64_t *heap_top)
       }
       else
       {
-        int num_tuple_vals = heap_thing_addr;
+        uint64_t num_tuple_vals = *heap_thing_addr;
         for (int i = 1; i < num_tuple_vals + 1; i += 1)
         {
           SNAKEVAL *cur_val_addr = heap_thing_addr + (i * sizeof(uint64_t));
