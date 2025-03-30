@@ -926,10 +926,20 @@ let get_nested outer_key inner_key envt_envt =
       | Some thing -> thing )
 ;;
 
+string_of_name_envt_envt
+
+let string_of_name_envt env =
+  ExtString.String.join "\n"
+    (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env))
+;;
+
 let safe_find_opt key map =
   let maybe_thing = StringMap.find_opt key map in
   match maybe_thing with
-  | None -> raise (InternalCompilerError (sprintf "Unable to find thing: %s" key))
+  | None ->
+      raise
+        (InternalCompilerError
+           (sprintf "Unable to find thing: %s in env: %s" key (string_of_name_envt map)) )
   | Some thing -> thing
 ;;
 
