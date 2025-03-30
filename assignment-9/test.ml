@@ -148,9 +148,7 @@ let nsa =
         ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
         ("lam_21", []) ];
     tnsa "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
-      [ ( "ocsh_0",
-          [ ("lam_5", RegOffset (~-1, RBP));
-            ("foo", RegOffset (~-2, RBP)) ] );
+      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
         ("lam_5", [("x", RegOffset (3, RBP)); ("lam_6", RegOffset (~-1, RBP))]);
         ("lam_6", [("y", RegOffset (3, RBP))]) ];
     (* Commented this test because we know LetRec is broken... *)

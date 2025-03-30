@@ -1,5 +1,4 @@
-The identifier x, redefined at <do_err/duped_args, 1:11-1:12>, duplicates one at <do_err/duped_args, 1:8-1:9>
-The identifier y, redefined at <do_err/duped_args, 2:14-2:15>, duplicates one at <do_err/duped_args, 2:8-2:9>
 The identifier y, redefined at <do_err/duped_args, 2:11-2:12>, duplicates one at <do_err/duped_args, 2:8-2:9>
+The identifier y, redefined at <do_err/duped_args, 2:14-2:15>, duplicates one at <do_err/duped_args, 2:11-2:12>
 The identifier a, redefined at <do_err/duped_args, 3:20-3:21>, duplicates one at <do_err/duped_args, 3:11-3:12>
 The identifier c, redefined at <do_err/duped_args, 3:17-3:18>, duplicates one at <do_err/duped_args, 3:14-3:15>
