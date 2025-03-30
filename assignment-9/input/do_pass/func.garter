@@ -1,4 +1,1 @@
-def foo(x):
-    x + 1
-
-foo(1)
+let rec sum = (lambda(a, b): a + b) in sum(1, 2)

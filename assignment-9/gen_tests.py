@@ -45,15 +45,16 @@ def walk_dir(delimiter=r"@", dirname: str = ".", filetype=".garter", verbose=0) 
                 print(f"{str(testfile):.<50}", end="")
             with open(testfile, "r+") as tf:
                 contents = tf.read()
-                test, result = contents.split(delimiter, maxsplit=1)
-                tf.seek(0)
-                tf.write(test)
-                tf.truncate()
+                if delimiter in contents:
+                    test, result = contents.split(delimiter, maxsplit=1)
+                    tf.seek(0)
+                    tf.write(test)
+                    tf.truncate()
 
-            with open(resultfile, "w") as rf:
-                rf.write(result)
-            if verbose > 0:
-                print(f"{str(resultfile)} generated!")
+                with open(resultfile, "w") as rf:
+                    rf.write(result)
+                if verbose > 0:
+                    print(f"{str(resultfile)} generated!")
 
 
 def main(args):

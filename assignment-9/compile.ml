@@ -967,8 +967,9 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         merge_envs (helpC first env si env_name) (helpA next env (si + 1) env_name)
     | ALetRec ([], body, _) -> helpA body env (si + 1) env_name
     | ALet (id, (CLambda _ as lambda), body, _) ->
+        let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
         let offset = si_to_arg si in
-        let body_offset = helpA body env (si + 1) env_name in
+        let body_offset = helpA body add_base_env_for_lambda (si + 1) env_name in
         let cur_envt = update_envt_envt env_name id offset body_offset in
         let lambda_offset = helpC lambda cur_envt si id in
         lambda_offset
@@ -979,8 +980,9 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let bound_env = helpC bound cur_envt si env_name in
         bound_env
     | ALetRec ((id, (CLambda _ as lambda)) :: rest, body, tag) ->
+        let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
         let offset = si_to_arg si in
-        let body_offset = helpA body env (si + 1) env_name in
+        let body_offset = helpA body add_base_env_for_lambda (si + 1) env_name in
         let cur_envt = update_envt_envt env_name id offset body_offset in
         let lambda_offset = helpC lambda cur_envt si id in
         (* TODO: Think about this a little more. Is there too much indirection? *)
