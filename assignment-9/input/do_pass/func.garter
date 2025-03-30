@@ -1,1 +1,4 @@
-let rec sum = (lambda(a, b): a + b) in sum(1, 2)
+let foo = (lambda(x): x + 1),
+    bar = (lambda(a, b): (b - a))
+in
+bar(foo(4), 3)

@@ -818,8 +818,9 @@ let anf (p : tag program) : unit aprogram =
         let body_ans, body_setup = helpC body in
         ( ImmId (tmp, ()),
           List.concat new_setup
-          @ [BLetRec (List.combine names new_binds)]
           @ body_setup
+          @ [BLetRec (List.combine names new_binds)]
+          
           @ [BLet (tmp, body_ans)] )
     | ELambda (args, body, tag) ->
         let tmp = sprintf "lam_%d" tag in
@@ -958,15 +959,14 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
 
          * Actually, we add 3, to account for the implicit 'self' argument.
          *)
-        let si = 1 in
         let args_locs = List.mapi (fun index id -> (id, RegOffset (index + 3, RBP))) ids in
         let args_env =
           List.fold_left
             (fun envt_envt (id, location) -> update_envt_envt env_name id location envt_envt)
             env args_locs
         in
-        helpA body args_env (si + 1) env_name
-  and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
+        helpA body args_env 1 env_name
+  and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string):
       arg name_envt name_envt =
     match aexp with
     | ACExpr cexp -> helpC cexp env si env_name
@@ -980,7 +980,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let cur_envt = update_envt_envt env_name id offset body_offset in
         let lambda_offset = helpC lambda cur_envt si id in
         lambda_offset
-    | ALet (id, bound, body, _) | ALetRec ((id, bound) :: [], body, _) ->
+    | ALet (id, bound, body, _) ->
         let offset = si_to_arg si in
         let body_env = helpA body env (si + 1) env_name in
         let cur_envt = update_envt_envt env_name id offset body_env in
@@ -994,6 +994,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let lambda_offset = helpC lambda cur_envt si id in
         (* TODO: Think about this a little more. Is there too much indirection? *)
         let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
+        (* This is where we could put our mutual recursion code -- If we had any! *)
         let rest_env = helpA (ALetRec (rest, body, tag)) with_self_reference (si + 1) env_name in
         rest_env
     | ALetRec ((id, bound) :: rest, body, tag) ->
@@ -1003,6 +1004,25 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let bound_env = helpC bound cur_envt si env_name in
         let rest_env = helpA (ALetRec (rest, body, tag)) bound_env (si + 1) env_name in
         rest_env
+    (* | ALetRec ((id, bound) :: _, _, _) -> *)
+    (* let binders, _ = List.split binds in
+        let located_binders = List.mapi (fun i binder -> (binder, si_to_arg (i + si))) binders in
+        (* let binder_buffer = si + List.length located_binders in *)
+        let binds_env = List.fold_left
+          (fun (acc_env : arg name_envt name_envt) ((id : string), (bound : tag cexpr)) ->
+            match bound with
+            | CLambda _ ->
+                let add_base_env_for_lambda = StringMap.add id (assoc_to_map located_binders) acc_env in
+                let bound_offset = helpC bound add_base_env_for_lambda si id in
+                bound_offset
+            | _ ->
+                raise
+                  (InternalCompilerError
+                     (sprintf "Tried to allocate a non-lambda value in LetRec!: %s => %s" id
+                        (string_of_cexpr bound) ) ) )
+          env binds in
+          let body_offset = helpA body binds_env (si + 1) env_name in
+          body_offset *)
   in
   (* TODO: Change the name of the OCSH environment? *)
   let body_env = helpA body (assoc_to_map [(ocsh_name, StringMap.empty)]) 1 ocsh_name in
