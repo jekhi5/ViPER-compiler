@@ -23,6 +23,11 @@ extern uint64_t *TO_E;
 extern uint64_t BOOL_TRUE;
 extern uint64_t BOOL_FALSE;
 
+// A value to represent allocated, but un-filled slots on the stack.
+// By default, these could be arbitrary values.
+// We don't want to interpret these as SNAKEVALs.
+uint64_t BLANK_STACK_VAL = 0xFECE5;
+
 void naive_print_heap(uint64_t *heap, uint64_t *heap_end)
 {
   printf("In naive_print_heap from %p to %p\n", heap, heap_end);
@@ -126,7 +131,11 @@ uint64_t *copy_if_needed(SNAKEVAL *garter_val_addr, uint64_t *heap_top)
 
   SNAKEVAL garter_val = *garter_val_addr;
 
-  if (is_primitive(garter_val))
+  if (garter_val == BLANK_STACK_VAL) {
+    // Ignore allocated, but unfilled, stack values.
+    return heap_top;
+
+  } else if (is_primitive(garter_val))
   {
     return heap_top;
   }
