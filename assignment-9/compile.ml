@@ -715,7 +715,7 @@ let anf (p : tag program) : unit aprogram =
         let names, new_binds_setup = List.split (List.map processBind binds) in
         let new_binds, setup_setup = List.split new_binds_setup in
         let body_ans, body_setup = helpC body in
-        (body_ans, BLetRec (List.combine names new_binds) :: ((List.concat setup_setup) @ body_setup))
+        (body_ans, BLetRec (List.combine names new_binds) :: (List.concat setup_setup @ body_setup))
     | ELambda _ ->
         (* This used to be identical to the helpI case, with the small change of
          * helpI returning an EId with the required setup and this function returning
@@ -861,7 +861,7 @@ let u = StringSet.union
 let free_vars (e : 'a aexpr) : StringSet.t =
   let rec helpI (e : 'a immexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
-    | ImmId (id, _) when StringSet.mem id bound_ids -> StringSet.singleton id
+    | ImmId (id, _) when not (StringSet.mem id bound_ids) -> StringSet.singleton id
     | _ -> StringSet.empty
   and helpC (e : 'a cexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
@@ -928,18 +928,15 @@ let get_nested outer_key inner_key envt_envt =
 
 string_of_name_envt_envt
 
-let string_of_name_envt env =
+(* let string_of_name_envt env =
   ExtString.String.join "\n"
     (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env))
-;;
+;; *)
 
-let safe_find_opt key map =
+let safe_find_opt ?callee_tag:(addn = "") key map =
   let maybe_thing = StringMap.find_opt key map in
   match maybe_thing with
-  | None ->
-      raise
-        (InternalCompilerError
-           (sprintf "Unable to find thing: %s in env: %s" key (string_of_name_envt map)) )
+  | None -> raise (InternalCompilerError (sprintf "Unable to find thing: %s. %s" key addn))
   | Some thing -> thing
 ;;
 
@@ -1295,7 +1292,15 @@ and compile_fun name args body (env_env : arg name_envt name_envt) :
   let vars = deepest_stack acexp env in
   let arity = List.length args in
   let free_vars = StringSet.elements (free_vars acexp) in
-  let free_var_regs = List.map (fun v -> safe_find_opt v env) free_vars in
+  let free_var_regs =
+    List.map
+      (fun v ->
+        safe_find_opt v env
+          ~callee_tag:
+            (sprintf "COMPILE_FUN: env_name: %s, free_vars: %s" name
+               (List.fold_left (fun acc var -> acc ^ ", " ^ var) "" free_vars) ) )
+      free_vars
+  in
   let num_free = List.length free_vars in
   let load_closure =
     List.concat
