@@ -944,6 +944,19 @@ let safe_find_opt ?callee_tag:(addn = "") key map =
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
 
 (* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
+
+(* We chose to use `arg name_envt name_envt` as the type here.
+ * This allows us to be more flippant with tags, since they lose their
+ * semantic value after we are done with them.
+ * Instead, we used names. Specifically, we used the name to which a lambda is bound.
+ * (Using a name based on the tag is cheating.)
+ * Most lambdas are bound, but some are not, e.g. `(lambda(x): x)(5)`.
+ * To handle this, we changed ANF to wrap all lambdas in another binding, in rough terms:
+ * `let foo = <lambda>` => `let lam_tmp = <lambda>, foo = lam_tmp`.
+ * or: `<lambda>(5)` => `let lam_tmp = <lambda> in lam_tmp(5)`.
+ * This way, the sub-environment name is structural, instead of being metadata-driven.
+ *)
+
 let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
     tag aprogram * arg name_envt name_envt =
   let rec helpC (cexp : tag cexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
