@@ -996,7 +996,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         rest_env
   in
   (* TODO: Change the name of the OCSH environment? *)
-  let body_env = helpA body StringMap.empty 1 ocsh_name in
+  let body_env = helpA body (assoc_to_map [(ocsh_name, StringMap.empty)]) 1 ocsh_name in
   (prog, body_env)
 ;;
 
