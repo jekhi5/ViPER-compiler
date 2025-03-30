@@ -932,12 +932,10 @@ let get_nested outer_key inner_key envt_envt =
       | Some thing -> thing )
 ;;
 
-string_of_name_envt_envt
-
-(* let string_of_name_envt env =
+let string_of_name_envt env =
   ExtString.String.join "\n"
     (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env))
-;; *)
+;;
 
 let safe_find_opt ?callee_tag:(addn = "") key map =
   let maybe_thing = StringMap.find_opt key map in
@@ -1098,7 +1096,10 @@ let rec deepest_stack e (env : arg StringMap.t) =
     | ImmBool _ -> 0
     | ImmId (name, _) -> name_to_offset name
   and name_to_offset name =
-    match safe_find_opt name env ~callee_tag:(sprintf "DEEPEST_STACK! id: %s" name (string_of_name_envt_envt)) with
+    match
+      safe_find_opt name env
+        ~callee_tag:(sprintf "DEEPEST_STACK! id: %s, env: %s" name (string_of_name_envt env))
+    with
     | RegOffset (words, RBP) -> words / -1 (* negative because stack direction *)
     | _ -> 0
   in
@@ -1501,7 +1502,8 @@ and compile_aexpr
   match e with
   | ALet (id, CLambda (args, fun_body, tag), let_body, _) ->
       let cur_env =
-        safe_find_opt env_name env_env ~callee_tag:(sprintf "COMPILE_AEXPR! ALet1. env_name: %s" env_name)
+        safe_find_opt env_name env_env
+          ~callee_tag:(sprintf "COMPILE_AEXPR! ALet1. env_name: %s" env_name)
       in
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
@@ -1515,10 +1517,16 @@ and compile_aexpr
       in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALet (id, bound, body, _) ->
-      let cur_env = safe_find_opt env_name env_env ~callee_tag:(sprintf "COMPILE_AEXPR! ALet2 env_name: %s" env_name) in
+      let cur_env =
+        safe_find_opt env_name env_env
+          ~callee_tag:(sprintf "COMPILE_AEXPR! ALet2 env_name: %s" env_name)
+      in
       let prelude = compile_cexpr bound si env_env num_args false env_name in
       let body = compile_aexpr body si env_env num_args is_tail env_name in
-      let offset = safe_find_opt id cur_env ~callee_tag:(sprintf "COMPILE_AEXPR! ALet2 env_name: %s, id: %s" env_name id) in
+      let offset =
+        safe_find_opt id cur_env
+          ~callee_tag:(sprintf "COMPILE_AEXPR! ALet2 env_name: %s, id: %s" env_name id)
+      in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALetRec (bindings, let_body, _) ->
       let new_env, compiled_bindings =
@@ -1692,7 +1700,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
         else
           (0L, 0)
       in
-      let gc = reserve heap_bump_amt_int tag in
       let gc = [] in
       let loading_instrs =
         List.concat
@@ -1765,7 +1772,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           ILineComment "===== End set-item =====" ] *)
   | CSetItem (tuple, index, _, tag) | CGetItem (tuple, index, tag) ->
       let i_too_small_label, i_too_big_label, expected_tuple_label =
-      (index_low_label, index_high_label, not_a_tuple_access_label)
+        (index_low_label, index_high_label, not_a_tuple_access_label)
       in
       let compile_tuple = compile_imm tuple env_env env_name in
       let compile_index = compile_imm index env_env env_name in
@@ -1790,8 +1797,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             IJe (Label not_a_number_index_label);
             ILineComment "checking if index is too small" ]
         @ compile_cexpr
-            (CPrim2 (Less, index, ImmNum (0L, tag), tag)) si
-            env_env num_args is_tail env_name
+            (CPrim2 (Less, index, ImmNum (0L, tag), tag))
+            si env_env num_args is_tail env_name
           (* TODO: CHANGE Error handling so that SetItem and GetItem call different error *)
         @ [ IMov (Reg R11, const_true);
             IMov (Reg RSI, compile_index);

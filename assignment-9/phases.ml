@@ -125,7 +125,7 @@ let string_of_name_envt_envt e =
                  ^ ":\n\t"
                  ^ ExtString.String.join "\n\t"
                      (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env)) )
-               (StringMap.bindings e)) ^ "\n" 
+               (StringMap.bindings e)) ^ "\n"
 
 (* Stringifies a list of phases, for debug printing purposes *)
 let print_trace (trace : phase list) : string list =
