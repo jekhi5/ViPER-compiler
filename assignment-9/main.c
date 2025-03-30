@@ -46,6 +46,7 @@ const uint64_t ERR_SET_LOW_INDEX    = 12;
 const uint64_t ERR_SET_HIGH_INDEX   = 13;
 const uint64_t ERR_CALL_NOT_CLOSURE = 14;
 const uint64_t ERR_CALL_ARITY_ERR   = 15;
+const uint64_t ERR_INDEX_NOT_NUM    = 16;
 
 size_t HEAP_SIZE;
 uint64_t* STACK_BOTTOM;
@@ -256,6 +257,9 @@ void error(uint64_t code, SNAKEVAL val) {
     break;
   case ERR_CALL_ARITY_ERR:
     fprintf(stderr, "Error: arity mismatch in call\n");
+    break;
+  case ERR_INDEX_NOT_NUM:
+    fprintf(stderr, "Error: Index expected a number, got: \n"); printHelp(stderr, val);
     break;
   default:
     fprintf(stderr, "Error: Unknown error code: %ld, val: ", code); printHelp(stderr, val);

@@ -5,6 +5,8 @@ open Exprs
 open Assembly
 open Errors
 
+(* NOTE: We had to add `-no-pie` and `-gdwarf-4` to the clang args in the Makefile. *)
+
 (* Documentation can be found at https://v2.ocaml.org/api/Set.S.html *)
 module StringSet = Set.Make (String)
 
@@ -19,6 +21,8 @@ let print_env env how =
 ;;
 
 let blank_stack_val = 0xFECE5L
+
+let heap_end_label = "?HEAP_END"
 
 let const_true = HexConst 0xFFFFFFFFFFFFFFFFL
 
@@ -73,6 +77,8 @@ let err_SET_HIGH_INDEX = 13L
 let err_CALL_NOT_CLOSURE = 14L
 
 let err_CALL_ARITY_ERR = 15L
+
+let err_INDEX_NOT_NUM = 16L
 
 let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 
@@ -148,7 +154,7 @@ let rec find ls x =
         find rest x
 ;;
 
-let count_vars e =
+(* let count_vars e =
   let rec helpA e =
     match e with
     | ASeq (e1, e2, _) -> max (helpC e1) (helpA e2)
@@ -163,7 +169,7 @@ let count_vars e =
     | _ -> 0
   in
   helpA e
-;;
+;; *)
 
 let rec replicate x i =
   if i = 0 then
@@ -820,7 +826,6 @@ let anf (p : tag program) : unit aprogram =
           List.concat new_setup
           @ body_setup
           @ [BLetRec (List.combine names new_binds)]
-          
           @ [BLet (tmp, body_ans)] )
     | ELambda (args, body, tag) ->
         let tmp = sprintf "lam_%d" tag in
@@ -979,7 +984,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
             env args_locs
         in
         helpA body args_env 1 env_name
-  and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string):
+  and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
       arg name_envt name_envt =
     match aexp with
     | ACExpr cexp -> helpC cexp env si env_name
@@ -1164,6 +1169,14 @@ let check_arity (arity : int) =
     IJne (Label err_arity_mismatch_label) ]
 ;;
 
+let check_memory size =
+  [ IMov (Reg scratch_reg, Const size);
+    IAdd (Reg scratch_reg, Reg heap_reg);
+    IMov (Reg scratch_reg2, RelLabel heap_end_label);
+    ICmp (Reg scratch_reg, Reg scratch_reg2);
+    IJge (Label err_out_of_memory_label) ]
+;;
+
 (* Helper for numeric comparisons *)
 let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
   (* Move the first arg into RAX so we can type-check it. *)
@@ -1286,13 +1299,13 @@ let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
       ILineComment (sprintf "END or#%d   -------------" t) ]
 ;;
 
-let rec replicate x i =
+(* let rec replicate x i =
   if i = 0 then
     []
   else
-    x :: replicate x (i - 1)
+    x :: replicate x (i - 1) *)
 
-and reserve size tag =
+let rec reserve size tag =
   let ok = sprintf "$memcheck_%d" tag in
   [ IInstrComment
       (IMov (Reg RAX, LabelContents "?HEAP_END"), sprintf "Reserving %d words" (size / word_size));
@@ -1316,7 +1329,7 @@ and reserve size tag =
 (* Additionally, you are provided an initial environment of values that you may want to
    assume should take up the first few stack slots.  See the compiliation of Programs
    below for one way to use this ability... *)
-and compile_fun name args body (env_env : arg name_envt name_envt) tag:
+and compile_fun name args body (env_env : arg name_envt name_envt) tag :
     instruction list * instruction list * instruction list =
   let env = safe_find_opt name env_env in
   let fun_label = name in
@@ -1384,7 +1397,8 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag:
         4 + arity + 1 )
     * word_size
   in
-  let gc = reserve heap_padding tag in
+  let gc = [] in
+  (* reserve heap_padding tag in *)
   let stack_size = Int64.of_int (word_size * (2 + stack_padding)) in
   let prelude =
     [IJmp (Label after_label); ILabel fun_label; IPush (Reg RBP); IMov (Reg RBP, Reg RSP)]
@@ -1420,13 +1434,18 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag:
     @ [ ISub (Reg RSP, Const stack_size);
         IMov (RegOffset (0, RSP), Reg RDI);
         ILineComment "=== Function call ===" ]
-    @ compiled_body @ stack_cleanup @ [ILabel after_label] @ gc @ load_closure_setup @ load_closure,
+    @ compiled_body
+    @ stack_cleanup
+    @ [ILabel after_label]
+    @ check_memory (Int64.of_int heap_padding)
+    @ gc
+    @ load_closure_setup
+    @ load_closure,
     bump_heap )
 
-and compile_call (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name =
-  let env = safe_find_opt env_name env_env in
+and compile_call (e : tag cexpr) _ (env_env : arg name_envt name_envt) _ _ env_name =
   match e with
-  | CApp (func, args, call_type, tag) ->
+  | CApp (func, args, _, _) ->
       let func_reg = compile_imm func env_env env_name in
       let arity = List.length args in
       let compiled_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
@@ -1438,8 +1457,8 @@ and compile_call (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args
       in
       (* Account for the padding arg *)
       let adjusted_offsets =
-        List.mapi
-          (fun i arg ->
+        List.map
+          (fun arg ->
             match arg with
             | RegOffset (n, RSP) -> RegOffset (n + dummy_len, RSP)
             | _ -> arg )
@@ -1477,7 +1496,6 @@ and compile_aexpr
     (num_args : int)
     (is_tail : bool)
     (env_name : string) : instruction list =
-  let env = safe_find_opt env_name env_env in
   match e with
   | ALet (id, CLambda (args, fun_body, tag), let_body, _) ->
       let cur_env = safe_find_opt env_name env_env in
@@ -1632,16 +1650,26 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             IJne (Label err_unpack_err_label) ] )
   (* | CLambda _ -> compile_lambda e si env_env num_args is_tail env_name *)
   | CLambda _ -> raise (InternalCompilerError "Encountered an un-bound CLambda!")
-  | CApp (func, args, Snake, tag) -> compile_call e si env_env num_args is_tail env_name
+  | CApp (_, _, Snake, _) -> compile_call e si env_env num_args is_tail env_name
   | CApp _ -> raise (NotYetImplemented "CApp for native")
-  | CTuple (items, _) ->
+  | CTuple (items, tag) ->
       let n = List.length items in
-      let heap_bump_amt =
+      (* expected: (1, 2, 3, 5)
+       * but got: forwarding to 0x4
+       * Pain.
+       * To avoid this, we make tuples and closures hold snakevals for their metadata.
+       *)
+      let n_snake = Int64.of_int (2 * n) in
+      let heap_size = Int64.of_int (word_size * (n + 1)) in
+      (* This is a gross way to do this and I'm sorry. *)
+      let heap_bump_amt, heap_bump_amt_int =
         if n mod 2 == 0 then
-          Int64.of_int word_size
+          (Int64.of_int word_size, word_size)
         else
-          0L
+          (0L, 0)
       in
+      let gc = reserve heap_bump_amt_int tag in
+      let gc = [] in
       let loading_instrs =
         List.concat
         @@ List.mapi
@@ -1650,14 +1678,16 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
              items
       in
       ILineComment "=== Begin tuple initialization ==="
-      :: move_with_scratch (RegOffset (0, R15)) (HexConst (Int64.of_int n))
+      :: move_with_scratch (RegOffset (0, R15)) (HexConst n_snake)
       @ loading_instrs
+      @ gc
+      @ check_memory heap_size
       @ [ IMov (Reg RAX, Reg R15);
           IAdd (Reg RAX, Const 1L);
-          IAdd (Reg R15, Const (Int64.of_int (word_size * (n + 1))));
+          IAdd (Reg R15, Const heap_size);
           IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "8 if even items, 0 if odd") ]
       @ [ILineComment "==== End tuple initialization ===="]
-  | CGetItem (tup, idx, _) ->
+  (* | CGetItem (tup, idx, _) ->
       let tup_reg = compile_imm tup env_env env_name in
       let idx_reg = compile_imm idx env_env env_name in
       [ILineComment "==== Begin get-item ===="; IMov (Reg RAX, tup_reg)]
@@ -1668,6 +1698,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ check_num not_a_number_index_label
       @ [ IMov (Reg RAX, tup_reg);
           (* Because we mangled RAX in check_tuple.*)
+          IShr (Reg RAX, Const 1L);
           ISub (Reg RAX, Const 1L);
           IMov (Reg R11, idx_reg);
           IShr (Reg R11, Const 1L);
@@ -1692,6 +1723,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ [IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
       @ [ IMov (Reg RAX, tup_reg);
+          IShr (Reg RAX, Const 1L);
           ISub (Reg RAX, Const 1L);
           IMov (Reg R11, idx_reg);
           IShr (Reg R11, Const 1L);
@@ -1706,7 +1738,76 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             ( IMov (tuple_slot_offset, Reg scratch_reg2),
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
-          ILineComment "===== End set-item =====" ]
+          ILineComment "===== End set-item =====" ] *)
+  | CSetItem (tuple, index, _, tag) | CGetItem (tuple, index, tag) ->
+      let i_too_small_label, i_too_big_label, expected_tuple_label =
+      (index_low_label, index_high_label, not_a_tuple_access_label)
+      in
+      let compile_tuple = compile_imm tuple env_env env_name in
+      let compile_index = compile_imm index env_env env_name in
+      let tuple_validation_instr =
+        [IMov (Reg RSI, compile_tuple); ILineComment "checking if tuple"]
+        @ compile_cexpr (CPrim1 (IsTuple, tuple, tag)) si env_env num_args is_tail env_name
+        @ [ IMov (Reg R11, const_false);
+            ICmp (Reg RAX, Reg R11);
+            IJe (Label expected_tuple_label);
+            ILineComment "checking if tuple is nil";
+            IMov (Reg RAX, compile_tuple);
+            ISub (Reg RAX, Const tuple_tag);
+            IMov (Reg R11, HexConst 0L);
+            ICmp (Reg RAX, Reg R11);
+            IJe (Label nil_deref_label);
+            IMov (Reg RSI, compile_index);
+            ILineComment "checking if index is number";
+            IMov (Reg RSI, compile_index) ]
+        @ compile_cexpr (CPrim1 (IsNum, index, tag)) si env_env num_args is_tail env_name
+        @ [ IMov (Reg R11, const_false);
+            ICmp (Reg RAX, Reg R11);
+            IJe (Label not_a_number_index_label);
+            ILineComment "checking if index is too small" ]
+        @ compile_cexpr
+            (CPrim2 (Less, index, ImmNum (0L, tag), tag)) si
+            env_env num_args is_tail env_name
+          (* TODO: CHANGE Error handling so that SetItem and GetItem call different error *)
+        @ [ IMov (Reg R11, const_true);
+            IMov (Reg RSI, compile_index);
+            ICmp (Reg RAX, Reg R11);
+            IJe (Label i_too_small_label);
+            ILineComment "checking if index too big";
+            ILineComment "getting list size";
+            IMov (Reg RAX, compile_tuple);
+            ISub (Reg RAX, Const tuple_tag);
+            (* SIZE is now SNAKE_VAL (so twice the actual size) *)
+            IMov (Reg RAX, Sized (QWORD_PTR, RegOffset (0, RAX)));
+            IShr (Reg RAX, Const 1L);
+            IMov (Reg R11, compile_index);
+            IShr (Reg R11, Const 1L);
+            ICmp (Reg RAX, Reg R11);
+            IJle (Label i_too_big_label) ]
+      in
+      let tuple_access_instr =
+        match e with
+        | CGetItem _ ->
+            [ ILineComment "accessing tuple at index";
+              IMov (Reg RAX, compile_tuple);
+              ISub (Reg RAX, Const tuple_tag);
+              IMov (Reg R11, compile_index);
+              IShr (Reg R11, Const 1L);
+              IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, R11, word_size, word_size))) ]
+        | CSetItem (_, _, new_val, _) ->
+            let compile_new_val = compile_imm new_val env_env env_name in
+            [ ILineComment "mutating tuple at index";
+              IMov (Reg RAX, compile_tuple);
+              IMov (Reg RDX, compile_new_val);
+              ISub (Reg RAX, Const tuple_tag);
+              IMov (Reg R11, compile_index);
+              IShr (Reg R11, Const 1L);
+              IMov (RegOffsetReg (RAX, R11, word_size, word_size), Reg RDX);
+              IAdd (Reg RAX, Const tuple_tag);
+              IMov (Reg RAX, Reg RDX) ]
+        | _ -> raise (InternalCompilerError "Can only have CGetItem or CSetItem here")
+      in
+      tuple_validation_instr @ tuple_access_instr
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with
@@ -1819,6 +1920,8 @@ let error_suffix =
       (overflow_label, to_asm (native_call (Label "?error") [Const err_OVERFLOW; Reg RAX]));
       ( not_a_tuple_access_label,
         to_asm (native_call (Label "?error") [Const err_GET_NOT_TUPLE; Reg scratch_reg]) );
+      ( not_a_number_index_label,
+        to_asm (native_call (Label "?error") [Const err_INDEX_NOT_NUM; Reg scratch_reg]) );
       ( index_low_label,
         to_asm (native_call (Label "?error") [Const err_GET_LOW_INDEX; Reg scratch_reg]) );
       (index_high_label, to_asm (native_call (Label "?error") [Const err_GET_HIGH_INDEX]));

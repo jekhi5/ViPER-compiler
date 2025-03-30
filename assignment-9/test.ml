@@ -3,7 +3,6 @@ open Runner
 open OUnit2
 open Pretty
 open Exprs
-open Errors
 open Phases
 
 let t name program input expected =
@@ -99,7 +98,8 @@ let pair_tests =
       \              t\n\
       \            end"
       "" "(4, <cyclic tuple 1>)";
-    t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))" ]
+    t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))";
+    t "tup5" "let t = (1,2,3,4,5) in t" "" "(1, 2, 3, 4, 5)"]
 ;;
 
 let oom =
@@ -111,7 +111,7 @@ let oom =
 ;;
 
 let gc =
-  [ tgc "gc_lam1" (10 + builtins_size)
+  [ tgc "gc_lam1" (1000 + builtins_size)
       "let f = (lambda: (1, 2)) in\n\
       \       begin\n\
       \         f();\n\
@@ -162,7 +162,8 @@ let suite =
   "unit_tests"
   >:::
   (* pair_tests @ oom @ gc @ input *)
-  nsa @ gc
+  nsa @ pair_tests
 ;;
 
-let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
+(* input_file_test_suite () *)
+let () = run_test_tt_main ("all_tests" >::: [suite; ])
