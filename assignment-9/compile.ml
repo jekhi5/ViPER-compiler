@@ -80,6 +80,41 @@ let heap_reg = R15
 
 let scratch_reg = R11
 
+let scratch_reg2 = R10
+
+let not_a_number_comp_label = "error_not_number_comp"
+
+let not_a_number_arith_label = "error_not_number_arith"
+
+let not_a_bool_logic_label = "error_not_bool_logic"
+
+let not_a_bool_if_label = "error_not_bool_if"
+
+let overflow_label = "error_overflow"
+
+(* Errors for tuples *)
+let not_a_tuple_access_label = "error_not_tuple_access"
+
+let not_a_number_index_label = "error_not_number_index"
+
+let index_high_label = "error_get_high_index"
+
+let index_low_label = "error_get_low_index"
+
+let nil_deref_label = "error_nil_deref"
+
+let err_call_not_closure_label = "err_not_closure"
+
+let err_arity_mismatch_label = "err_arity_mismatch"
+
+let err_unpack_err_label = "err_unpack_err"
+
+let err_out_of_memory_label = "err_out_of_memory"
+
+let unpack_err_label = "err_unpack_err"
+
+let not_a_closure_label = "err_not_closure"
+
 let ocsh_name = "ocsh_0"
 
 (* you can add any functions or data defined by the runtime here for future use *)
@@ -874,6 +909,8 @@ let update_envt_envt
     m
 ;;
 
+let get_nested outer_key inner_key envt_envt = StringMap.find inner_key (StringMap.find outer_key envt_envt) 
+
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
 
 (* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
@@ -958,6 +995,233 @@ let count_vars e =
   helpA e
 ;;
 
+(* Returns the stack-index (in words) of the deepest stack index used for any
+   of the variables in this expression *)
+let rec deepest_stack e (env : arg StringMap.t) =
+  let rec helpA e =
+    match e with
+    | ALet (name, bind, body, _) ->
+        List.fold_left max 0 [name_to_offset name; helpC bind; helpA body]
+    | ALetRec (binds, body, _) ->
+        List.fold_left max (helpA body) (List.map (fun (name, _) -> name_to_offset name) binds)
+    | ASeq (first, rest, _) -> max (helpC first) (helpA rest)
+    | ACExpr e -> helpC e
+  and helpC e =
+    match e with
+    | CIf (c, t, f, _) -> List.fold_left max 0 [helpI c; helpA t; helpA f]
+    | CPrim1 (_, i, _) -> helpI i
+    | CPrim2 (_, i1, i2, _) -> max (helpI i1) (helpI i2)
+    | CApp (func, args, _, _) -> max (helpI func) (List.fold_left max 0 (List.map helpI args))
+    | CTuple (vals, _) -> List.fold_left max 0 (List.map helpI vals)
+    | CGetItem (t, _, _) -> helpI t
+    | CSetItem (t, _, v, _) -> max (helpI t) (helpI v)
+    | CLambda (args, body, _) ->
+        let new_mappings = assoc_to_map (List.mapi (fun i a -> (a, RegOffset (i + 3, RBP))) args) in
+        let new_env = merge_envs new_mappings env in
+        deepest_stack body new_env
+    | CImmExpr i -> helpI i
+  and helpI i =
+    match i with
+    | ImmNil _ -> 0
+    | ImmNum _ -> 0
+    | ImmBool _ -> 0
+    | ImmId (name, _) -> name_to_offset name
+  and name_to_offset name =
+    match StringMap.find name env with
+    | RegOffset (words, RBP) -> words / -1 (* negative because stack direction *)
+    | _ -> 0
+  in
+  max (helpA e) 0 (* if only parameters are used, helpA might return a negative value *)
+;;
+
+let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
+
+(* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
+(* We could check a parameterized register, but that creates complexity in reporting the error. *)
+(* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
+let check_bool (goto : string) : instruction list =
+  [ IMov (Reg scratch_reg2, Reg RAX);
+    IMov (Reg scratch_reg, HexConst bool_tag_mask);
+    IAnd (Reg scratch_reg2, Reg scratch_reg);
+    ICmp (Reg scratch_reg2, HexConst bool_tag);
+    IJnz (Label goto) ]
+;;
+
+(* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
+let check_num (goto : string) : instruction list =
+  [ IMov (Reg scratch_reg, HexConst num_tag_mask);
+    ITest (Reg RAX, Reg scratch_reg);
+    IJnz (Label goto) ]
+;;
+
+(* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
+let check_tuple (goto : string) : instruction list =
+  (* This mangles RAX, btw.
+     We must either reset rax after this,
+     or use a temp register here.
+  *)
+  [ IMov (Reg scratch_reg2, Reg RAX);
+    IAnd (Reg scratch_reg2, HexConst tuple_tag_mask);
+    IMov (Reg scratch_reg, HexConst tuple_tag);
+    ICmp (Reg scratch_reg2, Reg scratch_reg);
+    IJnz (Label goto) ]
+;;
+
+(* Enforces that the value in RAX is not nil. Goes to the specified label if it is. *)
+let check_not_nil (goto : string) : instruction list =
+  [IMov (Reg scratch_reg, HexConst tuple_tag); ICmp (Reg RAX, Reg scratch_reg); IJz (Label goto)]
+;;
+
+let check_overflow = IJo (Label overflow_label)
+
+(* Checks that the value in the given location ends in 0x5 (the closure tag).
+ * With this and `check_arity`, we make sure not to edit the original register.
+ * We need to preserve the tag!
+ *)
+let check_function (reg : arg) =
+  [ IMov (Reg scratch_reg, reg);
+    IAnd (Reg scratch_reg, Const closure_tag_mask);
+    IMov (Reg RAX, reg);
+    (* put the checked value into RAX before potentially jumping.*)
+    ICmp (Reg scratch_reg, Const closure_tag);
+    IJne (Label err_call_not_closure_label) ]
+;;
+
+(* Assumes that the given argument is a function! *)
+let check_arity (arity : int) =
+  let arity_const = Const (Int64.of_int arity) in
+  [ (* Remove the tag *)
+    ISub (Reg RAX, HexConst closure_tag);
+    (* The function arity is the first value stored.
+     * It is stored as a regular number, not as a SNAKEVAL.
+     *)
+    ICmp (Sized (QWORD_PTR, RegOffset (0, RAX)), arity_const);
+    IMov (Reg RSI, arity_const);
+    IJne (Label err_arity_mismatch_label) ]
+;;
+
+(* Helper for numeric comparisons *)
+let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
+  let string_op = "comparison_label" in
+  let comp_label = sprintf "%s#%d" string_op t in
+  let jump =
+    match op with
+    | Greater -> IJg (Label comp_label)
+    | GreaterEq -> IJge (Label comp_label)
+    | Less -> IJl (Label comp_label)
+    | LessEq -> IJle (Label comp_label)
+    | _ -> raise (InternalCompilerError "Expected comparison operator.")
+  in
+  let comp_done_label = sprintf "%s_done#%d" string_op t in
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_comp_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_comp_label
+  @ [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
+      IMov (Reg RAX, e1);
+      (* cmp is weird and breaks if we don't use a temp register... *)
+      IMov (Reg scratch_reg, e2);
+      ICmp (Reg RAX, Reg scratch_reg);
+      jump;
+      IMov (Reg RAX, const_false);
+      IJmp (Label comp_done_label);
+      ILabel comp_label;
+      IMov (Reg RAX, const_true);
+      ILabel comp_done_label;
+      ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
+;;
+
+(* Helper for arithmetic operations *)
+let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
+  (* Move the first arg into RAX so we can type-check it. *)
+  [IMov (Reg RAX, e1)]
+  @ check_num not_a_number_arith_label
+  @ [IMov (Reg RAX, e2)]
+  @ check_num not_a_number_arith_label
+  @
+  match op with
+  (* Arithmetic operators *)
+  | Plus -> [IMov (Reg scratch_reg, e1); IAdd (Reg RAX, Reg scratch_reg); check_overflow]
+  (* Make sure to check for overflow BEFORE shifting on multiplication! *)
+  | Times ->
+      [ IMov (Reg scratch_reg, e1);
+        IMul (Reg RAX, Reg scratch_reg);
+        check_overflow;
+        ISar (Reg RAX, Const 1L) ]
+  (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
+   * while also preserving the order in which our arguments will fail a typecheck.
+   * So, `false - true` will fail on `false` every time.
+   *)
+  | Minus ->
+      [ IMov (Reg scratch_reg, e2);
+        IMov (Reg RAX, e1);
+        ISub (Reg RAX, Reg scratch_reg);
+        check_overflow ]
+  (* Comparison operators *)
+  | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
+;;
+
+(* Helper for boolean and *)
+let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  let true_label = sprintf "true#%d" t in
+  let false_label = sprintf "false#%d" t in
+  let logic_done_label = sprintf "and_done#%d" t in
+  [ ILineComment (sprintf "BEGIN and#%d -------------" t);
+    (* Move the first arg into RAX so we can type-check it. *)
+    IMov (Reg RAX, e1) ]
+  @ check_bool not_a_bool_logic_label
+    (* In order to handle short-circuiting, we don't look at the second arg until later.
+     * This means that `false and 5` will NOT raise a type error.
+     *)
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label false_label);
+      IMov (Reg RAX, e2) ]
+  @ check_bool not_a_bool_logic_label
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label false_label);
+      ILabel true_label;
+      IMov (Reg RAX, const_true);
+      IJmp (Label logic_done_label);
+      ILabel false_label;
+      IMov (Reg RAX, const_false);
+      ILabel logic_done_label;
+      ILineComment (sprintf "END and#%d   -------------" t) ]
+;;
+
+(* Helper for boolean or *)
+let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+  let true_label = sprintf "true#%d" t in
+  let false_label = sprintf "false#%d" t in
+  let logic_done_label = sprintf "or_done#%d" t in
+  [ ILineComment (sprintf "BEGIN and#%d -------------" t);
+    (* Move the first arg into RAX so we can type-check it. *)
+    IMov (Reg RAX, e1) ]
+  @ check_bool not_a_bool_logic_label
+    (* In order to handle short-circuiting, we don't look at the second arg until later.
+     * This means that `true or 5` will NOT raise a type error.
+     *)
+  @ [ IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJnz (Label true_label);
+      IMov (Reg RAX, e2) ]
+  @ check_bool not_a_bool_logic_label
+  @ [ (* Need to re-set scratch_reg since it gets changed in check_bool.*)
+      IMov (Reg scratch_reg, bool_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJnz (Label true_label);
+      ILabel false_label;
+      IMov (Reg RAX, const_false);
+      IJmp (Label logic_done_label);
+      ILabel true_label;
+      IMov (Reg RAX, const_true);
+      ILabel logic_done_label;
+      ILineComment (sprintf "END or#%d   -------------" t) ]
+;;
+
 let rec replicate x i =
   if i = 0 then
     []
@@ -988,7 +1252,395 @@ and reserve size tag =
 (* Additionally, you are provided an initial environment of values that you may want to
    assume should take up the first few stack slots.  See the compiliation of Programs
    below for one way to use this ability... *)
-and compile_fun name args body initial_env = raise (NotYetImplemented "NYI: compile_fun")
+and compile_fun name args body (initial_env : arg name_envt) =
+  raise (NotYetImplemented "NYI: compile_fun")
+
+and compile_lambda (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name
+    =
+  let env = StringMap.find env_name env_env in
+  match e with
+  | CLambda (args, body, tag) ->
+      let fun_label = sprintf "func#%d" tag in
+      let after_label = sprintf "func_end#%d" tag in
+      let acexp = ACExpr e in
+      let vars = deepest_stack acexp env in
+      let arity = List.length args in
+      let free_vars = StringSet.elements (free_vars (ACExpr e)) in
+      let free_var_regs = List.map (fun v -> StringMap.find v env) free_vars in
+      let num_free = List.length free_vars in
+      let load_closure =
+        List.concat
+          (List.mapi
+             (fun i (arg : arg) ->
+               match arg with
+               | Reg heap_reg ->
+                   [ IMov (Reg RAX, arg);
+                     IAdd (Reg RAX, Const closure_tag);
+                     IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ]
+               | _ ->
+                   [ IMov (Sized (QWORD_PTR, Reg RAX), arg);
+                     IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ] )
+             free_var_regs )
+      in
+      let stack_padding =
+        if vars mod 2 = 1 then
+          vars + 1
+        else
+          vars
+      in
+      let _, _, unpack_closure_instrs, new_env =
+        (* This fold needs two counters, so it can't just be a mapi.
+         * i: The index in the closure
+         * j: The offset from RBP, where we will move the variable.
+         *)
+        List.fold_left
+          (fun (i, j, acc_instrs, old_env) id ->
+            let offset = RegOffset (j, RBP) in
+            ( (* Advance to the next word in the closure *)
+              i + 1,
+              (* Move up to the next slot above RBP *)
+              j - 1,
+              (* At this point in time, the closure pointer
+               * should be stored in the scratch register. *)
+              IMov (Reg RAX, RegOffset (i, scratch_reg)) (* Grab the closure ptr*)
+              :: IMov (offset, Reg RAX) (* Put it where it belongs*)
+              :: acc_instrs,
+              update_envt_envt env_name id offset old_env ) )
+          (* Start the index at 3 to skip the metadata words. *)
+          (3, ~-1, [], env_env)
+          free_vars
+      in
+      let heap_padding =
+        ( if (4 + arity) mod 2 == 0 then
+            4 + arity
+          else
+            4 + arity + 1 )
+        * word_size
+      in
+      let stack_size = Int64.of_int (word_size * (2 + stack_padding)) in
+      let prelude =
+        [IJmp (Label after_label); ILabel fun_label; IPush (Reg RBP); IMov (Reg RBP, Reg RSP)]
+      in
+      let load_closure_setup =
+        [ ILineComment "=== Load closure values ===";
+          IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int arity));
+          ILea (Reg scratch_reg, RelLabel fun_label);
+          IMov (Sized (QWORD_PTR, RegOffset (1, heap_reg)), Reg scratch_reg);
+          IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int num_free)) ]
+      in
+      let compiled_body = compile_aexpr body si new_env (List.length args) is_tail env_name in
+      let stack_cleanup =
+        [ILineComment "=== Stack clean-up ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
+      in
+      let bump_heap =
+        [ ILineComment "===========================";
+          IMov (Reg RAX, Reg heap_reg);
+          IAdd (Reg RAX, Const closure_tag);
+          IAdd (Reg heap_reg, Const (Int64.of_int heap_padding)) ]
+      in
+      prelude
+      @ [ ILineComment "=== Unpacking closure ===";
+          (* Boost RSP to make room for closed vars *)
+          ISub (Reg RSP, Const (Int64.of_int (num_free * word_size)));
+          (* The scratch reg is going to hold the tuple pointer.
+           * (i.e. the implicit first argument)
+           *)
+          IMov (Reg scratch_reg, RegOffset (2, RBP));
+          ISub (Reg scratch_reg, Const 5L) ]
+      @ unpack_closure_instrs
+      @ [ ISub (Reg RSP, Const stack_size);
+          IMov (RegOffset (0, RSP), Reg RDI);
+          ILineComment "=== Function call ===" ]
+      @ compiled_body @ stack_cleanup @ [ILabel after_label] @ load_closure_setup @ load_closure
+      @ bump_heap
+  | _ -> raise (InternalCompilerError "Expected CLambda in compile_lambda")
+
+and compile_call (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name =
+  let env = StringMap.find env_name env_env in
+  match e with
+  | CApp (func, args, call_type, tag) ->
+      let func_reg = compile_imm func env_env env_name in
+      let arity = List.length args in
+      let compiled_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
+      let dummy_arg, dummy_len =
+        if List.length compiled_args mod 2 = 0 then
+          ([IMov (Reg scratch_reg, Const 0L); IPush (Reg scratch_reg)], 1)
+        else
+          ([], 0)
+      in
+      (* Account for the padding arg *)
+      let adjusted_offsets =
+        List.mapi
+          (fun i arg ->
+            match arg with
+            | RegOffset (n, RSP) -> RegOffset (n + dummy_len, RSP)
+            | _ -> arg )
+          compiled_args
+      in
+      let arg_offset = List.length adjusted_offsets + dummy_len + 1 in
+      let push_args =
+        (* I wish there was a List.concat_rev_map :,) *)
+        dummy_arg
+        @ List.concat
+            (List.rev
+               (List.map
+                  (fun arg -> [IMov (Reg scratch_reg, arg); IPush (Reg scratch_reg)])
+                  adjusted_offsets ) )
+      in
+      (* The amount by which to lower RSP *)
+      let stack_pull = word_size * (List.length compiled_args + dummy_len + 1) in
+      let offset_RSP =
+        match func_reg with
+        | RegOffset (n, RSP) -> RegOffset (n + arg_offset, RSP)
+        | _ -> func_reg
+      in
+      let stack_cleanup = [IAdd (Reg RSP, Const (Int64.of_int stack_pull))] in
+      check_function func_reg
+      @ check_arity arity
+      @ push_args
+      @ [IMov (Reg scratch_reg, offset_RSP); IPush (Reg scratch_reg); ICall (RegOffset (1, RAX))]
+      @ stack_cleanup
+  | _ -> raise (InternalCompilerError "Expected CApp in compile_call")
+
+and compile_aexpr
+    (e : tag aexpr)
+    (si : int)
+    (env_env : arg name_envt name_envt)
+    (num_args : int)
+    (is_tail : bool)
+    (env_name : string) : instruction list =
+  let env = StringMap.find env_name env_env in
+  match e with
+  | ALet (id, (CLambda _ as lambda), body, _) ->
+    let cur_env = StringMap.find env_name env_env in
+    let prelude =
+      (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
+      compile_cexpr lambda si env_env num_args false id
+    in
+    let body = compile_aexpr body si env_env num_args is_tail env_name in
+    let offset = StringMap.find id cur_env in
+    prelude @ [IMov (offset, Reg RAX)] @ body
+  | ALet (id, bound, body, _) ->
+      let cur_env = StringMap.find env_name env_env in
+      let prelude =
+        compile_cexpr bound si env_env num_args false env_name
+      in
+      let body = compile_aexpr body si env_env num_args is_tail env_name in
+      let offset = StringMap.find id cur_env in
+      prelude @ [IMov (offset, Reg RAX)] @ body
+  | ALetRec (bindings, body, _) ->
+      let new_env, compiled_bindings =
+        List.fold_left
+          (fun (acc_env, acc_instrs) (binder, bound) ->
+            (* We know that new functions are always at the top of the heap, right before we compile. *)
+            let rec_env = update_envt_envt env_name binder (Reg heap_reg) acc_env in
+            let offset = get_nested env_name binder env_env in
+            let compiled_bound = match bound with
+            (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
+            | CLambda _ -> compile_cexpr bound si rec_env num_args is_tail binder
+            | _ -> compile_cexpr bound si rec_env num_args is_tail env_name in
+            (* TODO: Before or after? *)
+            (* TODO: rec_env or env_env? *)
+            (rec_env, acc_instrs @ compiled_bound @ [IMov (offset, Reg RAX)]) )
+          (env_env, [ (* compiled code *) ]) bindings
+      in
+      let compiled_body = compile_aexpr body si new_env num_args is_tail env_name in
+      compiled_bindings @ compiled_body
+  | ASeq (first, next, _) ->
+      let compiled_first = compile_cexpr first si env_env num_args is_tail env_name in
+      let compiled_next = compile_aexpr next si env_env num_args is_tail env_name in
+      compiled_first @ compiled_next
+  | ACExpr cexp -> compile_cexpr cexp si env_env num_args is_tail env_name
+
+and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name =
+  match e with
+  | CImmExpr immexp ->
+      [IMov (Reg scratch_reg, compile_imm immexp env_env env_name); IMov (Reg RAX, Reg scratch_reg)]
+  | CIf (cond, thn, els, t) ->
+      let else_label = sprintf "if_else#%d" t in
+      let done_label = sprintf "if_done#%d" t in
+      (let cond_reg = compile_imm cond env_env env_name in
+       [ILineComment (sprintf "BEGIN conditional#%d   -------------" t); IMov (Reg RAX, cond_reg)]
+       @ check_bool not_a_bool_if_label
+       @ [ IMov (Reg scratch_reg, bool_mask);
+           ITest (Reg RAX, Reg scratch_reg);
+           IJz (Label else_label);
+           ILineComment "  Then case:" ]
+       @ compile_aexpr thn si env_env num_args is_tail env_name
+       @ [IJmp (Label done_label); ILineComment "  Else case:"; ILabel else_label]
+       @ compile_aexpr els si env_env num_args is_tail env_name)
+      @ [ILabel done_label; ILineComment (sprintf "END conditional#%d     -------------" t)]
+  | CPrim1 (op, e, t) -> (
+      let e_reg = compile_imm e env_env env_name in
+      match op with
+      | Add1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const 2L); check_overflow]
+      | Sub1 ->
+          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          @ [IAdd (Reg RAX, Const (-2L)); check_overflow]
+      (* `xor` can't take a 64-bit literal, *)
+      | Not ->
+          (IMov (Reg RAX, e_reg) :: check_bool not_a_bool_logic_label)
+          @ [IMov (Reg scratch_reg, bool_mask); IXor (Reg RAX, Reg scratch_reg)]
+      | IsBool ->
+          let false_label = sprintf "is_bool_false#%d" t in
+          let done_label = sprintf "is_bool_done#%d" t in
+          [ILineComment (sprintf "BEGIN is_bool%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_bool false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp (Label done_label);
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_bool%d   -------------" t) ]
+      | IsNum ->
+          let false_label = sprintf "is_num_false#%d" t in
+          let done_label = sprintf "is_num_done#%d" t in
+          [ILineComment (sprintf "BEGIN is_num%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_num false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp (Label done_label);
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_num%d   -------------" t) ]
+      | Print ->
+          [ (* Print both passes its value to the external function, and returns it. *)
+            IMov (Reg RDI, e_reg);
+            (* TODO: Is this right?? *)
+            ICall (Label "print") (* The answer goes in RAX :) *) ]
+      | IsTuple ->
+          let false_label = sprintf "is_tuple_false#%d" t in
+          let done_label = sprintf "is_tuple_done#%d" t in
+          [ILineComment (sprintf "BEGIN is_tuple%d -------------" t); IMov (Reg RAX, e_reg)]
+          @ check_tuple false_label
+          @ check_not_nil false_label
+          @ [ IMov (Reg RAX, const_true);
+              IJmp (Label done_label);
+              ILabel false_label;
+              IMov (Reg RAX, const_false);
+              ILabel done_label;
+              ILineComment (sprintf "END is_tuple%d   -------------" t) ]
+      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here") )
+  | CPrim2 (op, e1, e2, t) -> (
+      let e1_reg = compile_imm e1 env_env env_name in
+      let e2_reg = compile_imm e2 env_env env_name in
+      match op with
+      | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg
+      | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1_reg e2_reg t
+      | And -> and_prim2 e1_reg e2_reg t
+      | Or -> or_prim2 e1_reg e2_reg t
+      | Eq ->
+          let true_label = sprintf "equal#%d" t in
+          let done_label = sprintf "equal_done#%d" t in
+          (* No typechecking for Eq. We can just see if the two values are equivalent. *)
+          [ IMov (Reg RAX, e1_reg);
+            IMov (Reg scratch_reg, e2_reg);
+            ICmp (Reg RAX, Reg scratch_reg);
+            IJe (Label true_label);
+            IMov (Reg RAX, const_false);
+            IJmp (Label done_label);
+            ILabel true_label;
+            IMov (Reg RAX, const_true);
+            ILabel done_label ]
+      | CheckSize ->
+          (* Check that the tuple `e1` has size `e2`.
+           * We don't have to type-check these since:
+           * - By the time we evaluate a CheckSize, we have already guaranteed that e1 is a tuple
+           * - We create CheckSize during desugaring, and we only ever make `e2` an ENumber.
+           *)
+          [ IMov (Reg RAX, e1_reg);
+            IMov (Reg scratch_reg, RegOffset (0, RAX));
+            IMov (Reg RAX, e2_reg);
+            ISar (Reg RAX, Const 1L);
+            ICmp (Reg scratch_reg, Reg RAX);
+            IMul (Reg RAX, Const 2L);
+            (* Note that RAX stores the expected arity. *)
+            IJne (Label err_unpack_err_label) ] )
+  | CLambda _ -> compile_lambda e si env_env num_args is_tail env_name
+  | CApp (func, args, Snake, tag) -> compile_call e si env_env num_args is_tail env_name
+  | CApp _ -> raise (NotYetImplemented "CApp for native") 
+  | CTuple (items, _) ->
+      let n = List.length items in
+      let heap_bump_amt =
+        if n mod 2 == 0 then
+          Int64.of_int word_size
+        else
+          0L
+      in
+      let loading_instrs =
+        List.concat
+        @@ List.mapi
+             (fun i item -> move_with_scratch (RegOffset (i + 1, R15)) (compile_imm item env_env env_name))
+             items
+      in
+      ILineComment "=== Begin tuple initialization ==="
+      :: move_with_scratch (RegOffset (0, R15)) (HexConst (Int64.of_int n))
+      @ loading_instrs
+      @ [ IMov (Reg RAX, Reg R15);
+          IAdd (Reg RAX, Const 1L);
+          IAdd (Reg R15, Const (Int64.of_int (word_size * (n + 1))));
+          IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "8 if even items, 0 if odd") ]
+      @ [ILineComment "==== End tuple initialization ===="]
+  | CGetItem (tup, idx, _) ->
+      let tup_reg = compile_imm tup env_env env_name in
+      let idx_reg = compile_imm idx env_env env_name in
+      [ILineComment "==== Begin get-item ===="; IMov (Reg RAX, tup_reg)]
+      @ check_tuple not_a_tuple_access_label
+      @ [IMov (Reg RAX, tup_reg)]
+      @ check_not_nil nil_deref_label
+      @ [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [ IMov (Reg RAX, tup_reg);
+          (* Because we mangled RAX in check_tuple.*)
+          ISub (Reg RAX, Const 1L);
+          IMov (Reg R11, idx_reg);
+          IShr (Reg R11, Const 1L);
+          ICmp (Reg R11, Const 0L);
+          IJl (Label index_low_label);
+          ICmp (Reg R11, Reg RAX);
+          IJge (Label index_high_label);
+          (* IInstrComment
+             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
+          ILineComment "Multiply the value in R11 by 8 with no further offset" ]
+      @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, word_size, word_size))
+      @ [ILineComment "===== End get-item ====="]
+  | CSetItem (tup, idx, value, _) ->
+      let tup_reg = compile_imm tup env_env env_name in
+      let idx_reg = compile_imm idx env_env env_name in
+      let val_reg = compile_imm value env_env env_name in
+      let tuple_slot_offset = RegOffsetReg (RAX, R11, word_size, word_size) in
+      [ILineComment "==== Begin set-item ===="; IMov (Reg RAX, tup_reg)]
+      @ check_tuple not_a_tuple_access_label
+      @ [IMov (Reg RAX, tup_reg)]
+      @ check_not_nil nil_deref_label
+      @ [IMov (Reg RAX, idx_reg)]
+      @ check_num not_a_number_index_label
+      @ [ IMov (Reg RAX, tup_reg);
+          ISub (Reg RAX, Const 1L);
+          IMov (Reg R11, idx_reg);
+          IShr (Reg R11, Const 1L);
+          ICmp (Reg R11, Const 0L);
+          IJl (Label index_low_label);
+          ICmp (Reg R11, Reg RAX);
+          IJge (Label index_high_label);
+          (* IInstrComment
+             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
+          IMov (Reg scratch_reg2, val_reg);
+          IInstrComment
+            ( IMov (tuple_slot_offset, Reg scratch_reg2),
+              "Store the location of the relevant value in RAX" );
+          IMov (Reg RAX, Reg scratch_reg2);
+          ILineComment "===== End set-item =====" ]
+
+and compile_imm e (env_env : arg name_envt name_envt) env_name =
+  match e with
+  | ImmNum (n, _) -> Const (Int64.shift_left n 1)
+  | ImmBool (true, _) -> const_true
+  | ImmBool (false, _) -> const_false
+  | ImmId (x, _) -> StringMap.find x (StringMap.find env_name env_env)
+  | ImmNil _ -> Const tuple_tag
 
 and args_help args regs =
   match (args, regs) with
@@ -1078,6 +1730,39 @@ let add_native_lambdas (p : sourcespan program) =
           tag )
 ;;
 
+let error_suffix =
+  List.fold_left
+    (fun asm (label, instrs) -> asm ^ sprintf "?%s:%s\n" label instrs)
+    "\n"
+    [ ( not_a_number_comp_label,
+        to_asm (native_call (Label "?error") [Const err_COMP_NOT_NUM; Reg scratch_reg]) );
+      ( not_a_number_arith_label,
+        to_asm (native_call (Label "?error") [Const err_ARITH_NOT_NUM; Reg scratch_reg]) );
+      ( not_a_bool_logic_label,
+        to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg scratch_reg]) );
+      ( not_a_bool_if_label,
+        to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg scratch_reg]) );
+      (overflow_label, to_asm (native_call (Label "?error") [Const err_OVERFLOW; Reg RAX]));
+      ( not_a_tuple_access_label,
+        to_asm (native_call (Label "?error") [Const err_GET_NOT_TUPLE; Reg scratch_reg]) );
+      ( index_low_label,
+        to_asm (native_call (Label "?error") [Const err_GET_LOW_INDEX; Reg scratch_reg]) );
+      (index_high_label, to_asm (native_call (Label "?error") [Const err_GET_HIGH_INDEX]));
+      (nil_deref_label, to_asm (native_call (Label "?error") [Const err_NIL_DEREF; Reg scratch_reg]));
+      ( err_out_of_memory_label,
+        to_asm (native_call (Label "?error") [Const err_OUT_OF_MEMORY; Reg scratch_reg]) );
+      ( not_a_tuple_access_label,
+        to_asm (native_call (Label "?error") [Const err_SET_NOT_TUPLE; Reg scratch_reg]) );
+      ( index_low_label,
+        to_asm (native_call (Label "?error") [Const err_SET_LOW_INDEX; Reg scratch_reg]) );
+      ( index_high_label,
+        to_asm (native_call (Label "?error") [Const err_SET_HIGH_INDEX; Reg scratch_reg]) );
+      ( not_a_closure_label,
+        to_asm (native_call (Label "?error") [Const err_CALL_NOT_CLOSURE; Reg scratch_reg]) );
+      ( err_arity_mismatch_label,
+        to_asm (native_call (Label "?error") [Const err_CALL_ARITY_ERR; Reg scratch_reg]) ) ]
+;;
+
 let compile_prog (anfed, (env : arg name_envt name_envt)) =
   let prelude =
     "section .text\n\
@@ -1091,47 +1776,15 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
      extern ?HEAP\n\
      extern ?HEAP_END\n\
      extern ?set_stack_bottom\n\
-     global ?our_code_starts_here"
+     global " ^ ocsh_name
   in
-  let suffix =
-    sprintf
-      "\n\
-       ?err_comp_not_num:%s\n\
-       ?err_arith_not_num:%s\n\
-       ?err_logic_not_bool:%s\n\
-       ?err_if_not_bool:%s\n\
-       ?err_overflow:%s\n\
-       ?err_get_not_tuple:%s\n\
-       ?err_get_low_index:%s\n\
-       ?err_get_high_index:%s\n\
-       ?err_nil_deref:%s\n\
-       ?err_out_of_memory:%s\n\
-       ?err_set_not_tuple:%s\n\
-       ?err_set_low_index:%s\n\
-       ?err_set_high_index:%s\n\
-       ?err_call_not_closure:%s\n\
-       ?err_call_arity_err:%s\n"
-      (to_asm (native_call (Label "?error") [Const err_COMP_NOT_NUM; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_ARITH_NOT_NUM; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_OVERFLOW; Reg RAX]))
-      (to_asm (native_call (Label "?error") [Const err_GET_NOT_TUPLE; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_GET_LOW_INDEX; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_GET_HIGH_INDEX]))
-      (to_asm (native_call (Label "?error") [Const err_NIL_DEREF; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_OUT_OF_MEMORY; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_SET_NOT_TUPLE; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_SET_LOW_INDEX; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_SET_HIGH_INDEX; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_CALL_NOT_CLOSURE; Reg scratch_reg]))
-      (to_asm (native_call (Label "?error") [Const err_CALL_ARITY_ERR; Reg scratch_reg]))
-  in
+  let suffix = error_suffix in
   match anfed with
   | AProgram (body, _) ->
       (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
       let prologue, comp_main, epilogue =
-        compile_fun "?our_code_starts_here" ["$heap"; "$size"] body env
+        compile_lambda (CLambda (["$heap"; "$size"] body, 0), [0; 0], Snake, 0) 0 env 2 false ocsh_name
+        (* compile_fun "?our_code_starts_here" ["$heap"; "$size"] body env *)
       in
       let heap_start =
         [ ILineComment "heap start";
@@ -1147,7 +1800,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
               "by adding no more than 15 to it" ) ]
       in
       let set_stack_bottom =
-        [ILabel "?our_code_starts_here"; IMov (Reg R12, Reg RDI)]
+        [ILabel ocsh_name; IMov (Reg R12, Reg RDI)]
         @ native_call (Label "?set_stack_bottom") [Reg RBP]
         @ [IMov (Reg RDI, Reg R12)]
       in
