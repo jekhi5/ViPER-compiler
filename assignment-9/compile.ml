@@ -912,7 +912,25 @@ let update_envt_envt
 ;;
 
 let get_nested outer_key inner_key envt_envt =
-  StringMap.find inner_key (StringMap.find outer_key envt_envt)
+  let maybe_inner_envt = StringMap.find_opt outer_key envt_envt in
+  match maybe_inner_envt with
+  | None ->
+      raise (InternalCompilerError (sprintf "Unable to find inner env with the name: %s" outer_key))
+  | Some inner_envt -> (
+      let maybe_thing = StringMap.find_opt inner_key inner_envt in
+      match maybe_thing with
+      | None ->
+          raise
+            (InternalCompilerError
+               (sprintf "Unable to find id: %s within inner_envt named: %s" inner_key outer_key) )
+      | Some thing -> thing )
+;;
+
+let safe_find_opt key map =
+  let maybe_thing = StringMap.find_opt key map in
+  match maybe_thing with
+  | None -> raise (InternalCompilerError (sprintf "Unable to find thing: %s" key))
+  | Some thing -> thing
 ;;
 
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
@@ -1031,7 +1049,7 @@ let rec deepest_stack e (env : arg StringMap.t) =
     | ImmBool _ -> 0
     | ImmId (name, _) -> name_to_offset name
   and name_to_offset name =
-    match StringMap.find name env with
+    match safe_find_opt name env with
     | RegOffset (words, RBP) -> words / -1 (* negative because stack direction *)
     | _ -> 0
   in
@@ -1258,14 +1276,14 @@ and reserve size tag =
    below for one way to use this ability... *)
 and compile_fun name args body (env_env : arg name_envt name_envt) :
     instruction list * instruction list * instruction list =
-  let env = StringMap.find name env_env in
+  let env = safe_find_opt name env_env in
   let fun_label = name in
   let after_label = name ^ "_end" in
   let acexp = ACExpr (CLambda (args, body, 0)) in
   let vars = deepest_stack acexp env in
   let arity = List.length args in
   let free_vars = StringSet.elements (free_vars acexp) in
-  let free_var_regs = List.map (fun v -> StringMap.find v env) free_vars in
+  let free_var_regs = List.map (fun v -> safe_find_opt v env) free_vars in
   let num_free = List.length free_vars in
   let load_closure =
     List.concat
@@ -1338,8 +1356,8 @@ and compile_fun name args body (env_env : arg name_envt name_envt) :
       IAdd (Reg RAX, Const closure_tag);
       IAdd (Reg heap_reg, Const (Int64.of_int heap_padding)) ]
   in
-  prelude,
-  [ ILineComment "=== Unpacking closure ===";
+  ( prelude,
+    [ ILineComment "=== Unpacking closure ===";
       (* Boost RSP to make room for closed vars *)
       ISub (Reg RSP, Const (Int64.of_int (num_free * word_size)));
       (* The scratch reg is going to hold the tuple pointer.
@@ -1347,15 +1365,16 @@ and compile_fun name args body (env_env : arg name_envt name_envt) :
        *)
       IMov (Reg scratch_reg, RegOffset (2, RBP));
       ISub (Reg scratch_reg, Const 5L) ]
-  @ unpack_closure_instrs
-  @ [ ISub (Reg RSP, Const stack_size);
-      IMov (RegOffset (0, RSP), Reg RDI);
-      ILineComment "=== Function call ===" ] @
-  compiled_body @ stack_cleanup @ [ILabel after_label] @ load_closure_setup @ load_closure, bump_heap
+    @ unpack_closure_instrs
+    @ [ ISub (Reg RSP, Const stack_size);
+        IMov (RegOffset (0, RSP), Reg RDI);
+        ILineComment "=== Function call ===" ]
+    @ compiled_body @ stack_cleanup @ [ILabel after_label] @ load_closure_setup @ load_closure,
+    bump_heap )
 
 and compile_lambda (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name
     =
-  let env = StringMap.find env_name env_env in
+  let env = safe_find_opt env_name env_env in
   match e with
   | CLambda (args, body, tag) ->
       let fun_label = sprintf "func#%d" tag in
@@ -1364,7 +1383,7 @@ and compile_lambda (e : tag cexpr) si (env_env : arg name_envt name_envt) num_ar
       let vars = deepest_stack acexp env in
       let arity = List.length args in
       let free_vars = StringSet.elements (free_vars (ACExpr e)) in
-      let free_var_regs = List.map (fun v -> StringMap.find v env) free_vars in
+      let free_var_regs = List.map (fun v -> safe_find_opt v env) free_vars in
       let num_free = List.length free_vars in
       let load_closure =
         List.concat
@@ -1454,7 +1473,7 @@ and compile_lambda (e : tag cexpr) si (env_env : arg name_envt name_envt) num_ar
   | _ -> raise (InternalCompilerError "Expected CLambda in compile_lambda")
 
 and compile_call (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name =
-  let env = StringMap.find env_name env_env in
+  let env = safe_find_opt env_name env_env in
   match e with
   | CApp (func, args, call_type, tag) ->
       let func_reg = compile_imm func env_env env_name in
@@ -1507,22 +1526,23 @@ and compile_aexpr
     (num_args : int)
     (is_tail : bool)
     (env_name : string) : instruction list =
-  let env = StringMap.find env_name env_env in
+  let env = safe_find_opt env_name env_env in
   match e with
   | ALet (id, CLambda (args, fun_body, _), let_body, _) ->
-      let cur_env = StringMap.find env_name env_env in
+      let cur_env = safe_find_opt env_name env_env in
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-        let a, b, c = compile_fun id args fun_body env_env in a @ b @ c
+        let a, b, c = compile_fun id args fun_body env_env in
+        a @ b @ c
       in
       let body = compile_aexpr let_body si env_env num_args is_tail env_name in
-      let offset = StringMap.find id cur_env in
+      let offset = safe_find_opt id cur_env in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALet (id, bound, body, _) ->
-      let cur_env = StringMap.find env_name env_env in
+      let cur_env = safe_find_opt env_name env_env in
       let prelude = compile_cexpr bound si env_env num_args false env_name in
       let body = compile_aexpr body si env_env num_args is_tail env_name in
-      let offset = StringMap.find id cur_env in
+      let offset = safe_find_opt id cur_env in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALetRec (bindings, let_body, _) ->
       let new_env, compiled_bindings =
@@ -1534,7 +1554,9 @@ and compile_aexpr
             let compiled_bound =
               match bound with
               (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-              | CLambda (args, fun_body, _) -> let a, b, c = compile_fun binder args fun_body env_env in a @ b @ c
+              | CLambda (args, fun_body, _) ->
+                  let a, b, c = compile_fun binder args fun_body env_env in
+                  a @ b @ c
               | _ -> compile_cexpr bound si rec_env num_args is_tail env_name
             in
             (* TODO: Before or after? *)
@@ -1740,7 +1762,20 @@ and compile_imm e (env_env : arg name_envt name_envt) env_name =
   | ImmNum (n, _) -> Const (Int64.shift_left n 1)
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
-  | ImmId (x, _) -> StringMap.find x (StringMap.find env_name env_env)
+  | ImmId (x, _) -> (
+      let maybe_inner_envt = StringMap.find_opt env_name env_env in
+      match maybe_inner_envt with
+      | None ->
+          raise
+            (InternalCompilerError (sprintf "Unable to find inner env with the name: %s" env_name))
+      | Some inner_envt -> (
+          let maybe_thing = StringMap.find_opt x inner_envt in
+          match maybe_thing with
+          | None ->
+              raise
+                (InternalCompilerError
+                   (sprintf "Unable to find id: %s within inner_envt named: %s" x env_name) )
+          | Some thing -> thing ) )
   | ImmNil _ -> Const tuple_tag
 
 and args_help args regs =
@@ -1885,7 +1920,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
       (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
       let prologue, comp_main, epilogue =
         (* compile_lambda (CLambda (["$heap"; "$size"] body, 0), [0; 0], Snake, 0) 0 env 2 false ocsh_name *)
-        compile_fun "?our_code_starts_here" ["$heap"; "$size"] body env
+        compile_fun ocsh_name ["$heap"; "$size"] body env
       in
       let heap_start =
         [ ILineComment "heap start";
