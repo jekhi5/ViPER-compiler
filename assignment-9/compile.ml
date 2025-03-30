@@ -713,9 +713,9 @@ let anf (p : tag program) : unit aprogram =
                       (string_of_bind bind) ) )
         in
         let names, new_binds_setup = List.split (List.map processBind binds) in
-        let new_binds, _ = List.split new_binds_setup in
+        let new_binds, setup_setup = List.split new_binds_setup in
         let body_ans, body_setup = helpC body in
-        (body_ans, BLetRec (List.combine names new_binds) :: body_setup)
+        (body_ans, BLetRec (List.combine names new_binds) :: ((List.concat setup_setup) @ body_setup))
     | ELambda _ ->
         (* This used to be identical to the helpI case, with the small change of
          * helpI returning an EId with the required setup and this function returning
@@ -803,7 +803,7 @@ let anf (p : tag program) : unit aprogram =
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BSeq exp_ans] @ body_setup)
     | ELetRec (binds, body, tag) ->
-        let tmp = sprintf "lam_%d" tag in
+        let tmp = sprintf "letrec_%d" tag in
         let processBind (bind, rhs, _) =
           match bind with
           | BName (name, _, _) -> (name, helpC rhs)
@@ -1774,20 +1774,7 @@ and compile_imm e (env_env : arg name_envt name_envt) env_name =
   | ImmNum (n, _) -> Const (Int64.shift_left n 1)
   | ImmBool (true, _) -> const_true
   | ImmBool (false, _) -> const_false
-  | ImmId (x, _) -> (
-      let maybe_inner_envt = StringMap.find_opt env_name env_env in
-      match maybe_inner_envt with
-      | None ->
-          raise
-            (InternalCompilerError (sprintf "Unable to find inner env with the name: %s" env_name))
-      | Some inner_envt -> (
-          let maybe_thing = StringMap.find_opt x inner_envt in
-          match maybe_thing with
-          | None ->
-              raise
-                (InternalCompilerError
-                   (sprintf "Unable to find id: %s within inner_envt named: %s" x env_name) )
-          | Some thing -> thing ) )
+  | ImmId (x, _) -> get_nested env_name x env_env
   | ImmNil _ -> Const tuple_tag
 
 and args_help args regs =
