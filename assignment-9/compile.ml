@@ -84,38 +84,38 @@ let scratch_reg = R11
 
 let scratch_reg2 = R10
 
-let not_a_number_comp_label = "error_not_number_comp"
+let not_a_number_comp_label = "?error_not_number_comp"
 
-let not_a_number_arith_label = "error_not_number_arith"
+let not_a_number_arith_label = "?error_not_number_arith"
 
-let not_a_bool_logic_label = "error_not_bool_logic"
+let not_a_bool_logic_label = "?error_not_bool_logic"
 
-let not_a_bool_if_label = "error_not_bool_if"
+let not_a_bool_if_label = "?error_not_bool_if"
 
-let overflow_label = "error_overflow"
+let overflow_label = "?error_overflow"
 
 (* Errors for tuples *)
-let not_a_tuple_access_label = "error_not_tuple_access"
+let not_a_tuple_access_label = "?error_not_tuple_access"
 
-let not_a_number_index_label = "error_not_number_index"
+let not_a_number_index_label = "?error_not_number_index"
 
-let index_high_label = "error_get_high_index"
+let index_high_label = "?error_get_high_index"
 
-let index_low_label = "error_get_low_index"
+let index_low_label = "?error_get_low_index"
 
-let nil_deref_label = "error_nil_deref"
+let nil_deref_label = "?error_nil_deref"
 
-let err_call_not_closure_label = "err_not_closure"
+let err_call_not_closure_label = "?err_not_closure"
 
-let err_arity_mismatch_label = "err_arity_mismatch"
+let err_arity_mismatch_label = "?err_arity_mismatch"
 
-let err_unpack_err_label = "err_unpack_err"
+let err_unpack_err_label = "?err_unpack_err"
 
-let err_out_of_memory_label = "err_out_of_memory"
+let err_out_of_memory_label = "?err_out_of_memory"
 
-let unpack_err_label = "err_unpack_err"
+let unpack_err_label = "?err_unpack_err"
 
-let not_a_closure_label = "err_not_closure"
+let not_a_closure_label = "?err_not_closure"
 
 let ocsh_name = "ocsh_0"
 
@@ -1868,7 +1868,7 @@ let add_native_lambdas (p : sourcespan program) =
 
 let error_suffix =
   List.fold_left
-    (fun asm (label, instrs) -> asm ^ sprintf "?%s:%s\n" label instrs)
+    (fun asm (label, instrs) -> asm ^ sprintf "%s:%s\n" label instrs)
     "\n"
     [ ( not_a_number_comp_label,
         to_asm (native_call (Label "?error") [Const err_COMP_NOT_NUM; Reg scratch_reg]) );
