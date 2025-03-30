@@ -1698,7 +1698,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             IJne (Label err_unpack_err_label) ] )
   (* | CLambda _ -> compile_lambda e si env_env num_args is_tail env_name *)
   | CLambda _ -> raise (InternalCompilerError "Encountered an un-bound CLambda!")
-  (* | CApp (func, args, Snake, tag) -> compile_call e si env_env num_args is_tail env_name *)
+  | CApp (func, args, Snake, tag) -> compile_call e si env_env num_args is_tail env_name
   | CApp _ -> raise (NotYetImplemented "CApp for native")
   | CTuple (items, _) ->
       let n = List.length items in
