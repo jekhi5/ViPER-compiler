@@ -261,6 +261,7 @@ uint64_t *gc(uint64_t *bottom_frame, uint64_t *top_frame, uint64_t *top_stack, u
     top_stack = top_frame + 2;
     old_top_frame = top_frame;
     top_frame = (uint64_t *)(*top_frame);
+    smarter_print_heap(from_start, from_end, to_start, top_frame);
   } while (old_top_frame <= bottom_frame); // Use the old stack frame to decide if there's more GC'ing to do
   // CAREFULLY CONSIDER: Should this be `<=` or `<`?
 

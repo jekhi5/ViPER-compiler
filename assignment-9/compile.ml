@@ -5,7 +5,13 @@ open Exprs
 open Assembly
 open Errors
 
-(* NOTE: We had to add `-no-pie` and `-gdwarf-4` to the clang args in the Makefile. *)
+(* NOTES:
+ *  - We had to add `-no-pie` and `-gdwarf-4` to the clang args in the Makefile.
+ *  - LetRec is known to be broken.
+ *  -
+ *
+ *
+ *)
 
 (* Documentation can be found at https://v2.ocaml.org/api/Set.S.html *)
 module StringSet = Set.Make (String)
@@ -1684,7 +1690,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           (0L, 0)
       in
       let gc = reserve heap_bump_amt_int tag in
-      let gc = [] in
+      (* let gc = [] in *)
       let loading_instrs =
         List.concat
         @@ List.mapi
@@ -1702,7 +1708,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           IAdd (Reg R15, Const heap_size);
           IInstrComment (IAdd (Reg R15, Const heap_bump_amt), "8 if even items, 0 if odd") ]
       @ [ILineComment "==== End tuple initialization ===="]
-  (* | CGetItem (tup, idx, _) ->
+  | CGetItem (tup, idx, _) ->
       let tup_reg = compile_imm tup env_env env_name in
       let idx_reg = compile_imm idx env_env env_name in
       [ILineComment "==== Begin get-item ===="; IMov (Reg RAX, tup_reg)]
@@ -1712,15 +1718,14 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ [IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
       @ [ IMov (Reg RAX, tup_reg);
-          (* Because we mangled RAX in check_tuple.*)
-          IShr (Reg RAX, Const 1L);
-          ISub (Reg RAX, Const 1L);
+          ISub (Reg RAX, Const tuple_tag);
           IMov (Reg R11, idx_reg);
+          ICmp (Reg R11, Reg RAX);
+          IJge (Label index_high_label);
           IShr (Reg R11, Const 1L);
           ICmp (Reg R11, Const 0L);
           IJl (Label index_low_label);
-          ICmp (Reg R11, Reg RAX);
-          IJge (Label index_high_label);
+          IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, R11, word_size, word_size)));
           (* IInstrComment
              (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
           ILineComment "Multiply the value in R11 by 8 with no further offset" ]
@@ -1738,14 +1743,13 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ [IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
       @ [ IMov (Reg RAX, tup_reg);
-          IShr (Reg RAX, Const 1L);
-          ISub (Reg RAX, Const 1L);
+          ISub (Reg RAX, Const tuple_tag);
           IMov (Reg R11, idx_reg);
+          ICmp (Reg R11, Reg RAX);
+          IJge (Label index_high_label);
           IShr (Reg R11, Const 1L);
           ICmp (Reg R11, Const 0L);
           IJl (Label index_low_label);
-          ICmp (Reg R11, Reg RAX);
-          IJge (Label index_high_label);
           (* IInstrComment
              (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
           IMov (Reg scratch_reg2, val_reg);
@@ -1753,76 +1757,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             ( IMov (tuple_slot_offset, Reg scratch_reg2),
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
-          ILineComment "===== End set-item =====" ] *)
-  | CSetItem (tuple, index, _, tag) | CGetItem (tuple, index, tag) ->
-      let i_too_small_label, i_too_big_label, expected_tuple_label =
-        (index_low_label, index_high_label, not_a_tuple_access_label)
-      in
-      let compile_tuple = compile_imm tuple env_env env_name in
-      let compile_index = compile_imm index env_env env_name in
-      let tuple_validation_instr =
-        [IMov (Reg RSI, compile_tuple); ILineComment "checking if tuple"]
-        @ compile_cexpr (CPrim1 (IsTuple, tuple, tag)) si env_env num_args is_tail env_name
-        @ [ IMov (Reg R11, const_false);
-            ICmp (Reg RAX, Reg R11);
-            IJe (Label expected_tuple_label);
-            ILineComment "checking if tuple is nil";
-            IMov (Reg RAX, compile_tuple);
-            ISub (Reg RAX, Const tuple_tag);
-            IMov (Reg R11, HexConst 0L);
-            ICmp (Reg RAX, Reg R11);
-            IJe (Label nil_deref_label);
-            IMov (Reg RSI, compile_index);
-            ILineComment "checking if index is number";
-            IMov (Reg RSI, compile_index) ]
-        @ compile_cexpr (CPrim1 (IsNum, index, tag)) si env_env num_args is_tail env_name
-        @ [ IMov (Reg R11, const_false);
-            ICmp (Reg RAX, Reg R11);
-            IJe (Label not_a_number_index_label);
-            ILineComment "checking if index is too small" ]
-        @ compile_cexpr
-            (CPrim2 (Less, index, ImmNum (0L, tag), tag))
-            si env_env num_args is_tail env_name
-          (* TODO: CHANGE Error handling so that SetItem and GetItem call different error *)
-        @ [ IMov (Reg R11, const_true);
-            IMov (Reg RSI, compile_index);
-            ICmp (Reg RAX, Reg R11);
-            IJe (Label i_too_small_label);
-            ILineComment "checking if index too big";
-            ILineComment "getting list size";
-            IMov (Reg RAX, compile_tuple);
-            ISub (Reg RAX, Const tuple_tag);
-            (* SIZE is now SNAKE_VAL (so twice the actual size) *)
-            IMov (Reg RAX, Sized (QWORD_PTR, RegOffset (0, RAX)));
-            IShr (Reg RAX, Const 1L);
-            IMov (Reg R11, compile_index);
-            IShr (Reg R11, Const 1L);
-            ICmp (Reg RAX, Reg R11);
-            IJle (Label i_too_big_label) ]
-      in
-      let tuple_access_instr =
-        match e with
-        | CGetItem _ ->
-            [ ILineComment "accessing tuple at index";
-              IMov (Reg RAX, compile_tuple);
-              ISub (Reg RAX, Const tuple_tag);
-              IMov (Reg R11, compile_index);
-              IShr (Reg R11, Const 1L);
-              IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, R11, word_size, word_size))) ]
-        | CSetItem (_, _, new_val, _) ->
-            let compile_new_val = compile_imm new_val env_env env_name in
-            [ ILineComment "mutating tuple at index";
-              IMov (Reg RAX, compile_tuple);
-              IMov (Reg RDX, compile_new_val);
-              ISub (Reg RAX, Const tuple_tag);
-              IMov (Reg R11, compile_index);
-              IShr (Reg R11, Const 1L);
-              IMov (RegOffsetReg (RAX, R11, word_size, word_size), Reg RDX);
-              IAdd (Reg RAX, Const tuple_tag);
-              IMov (Reg RAX, Reg RDX) ]
-        | _ -> raise (InternalCompilerError "Can only have CGetItem or CSetItem here")
-      in
-      tuple_validation_instr @ tuple_access_instr
+          ILineComment "===== End set-item =====" ]
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with

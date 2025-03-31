@@ -111,7 +111,7 @@ let oom =
 ;;
 
 let gc =
-  [ tgc "gc_lam1" (1000 + builtins_size)
+  [ tgc "gc_lam1" (20 + builtins_size)
       "let f = (lambda: (1, 2)) in\n\
       \       begin\n\
       \         f();\n\
@@ -119,7 +119,16 @@ let gc =
       \         f();\n\
       \         f()\n\
       \       end"
-      "" "(1, 2)" ]
+      "" "(1, 2)";
+    tgc "gc_tup2" (10 + builtins_size)
+    "(1,2,3,4,5);\n\
+  (1,2,3,4,5);\n\
+  (1,2,3,4,5);\n\
+  (1,2,3,4,5);\n\
+  (1,2,3,4,5)"
+  ""
+  "(1, 2, 3, 4, 5)"
+    ]
 ;;
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
@@ -162,7 +171,7 @@ let suite =
   "unit_tests"
   >:::
   (* pair_tests @ oom @ gc @ input *)
-  nsa @ pair_tests
+  nsa @ pair_tests @ gc
 ;;
 
 (* input_file_test_suite () *)
