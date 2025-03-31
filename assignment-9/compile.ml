@@ -932,12 +932,10 @@ let get_nested outer_key inner_key envt_envt =
       | Some thing -> thing )
 ;;
 
-string_of_name_envt_envt
-
-(* let string_of_name_envt env =
+let string_of_name_envt env =
   ExtString.String.join "\n"
     (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env))
-;; *)
+;;
 
 let safe_find_opt ?callee_tag:(addn = "") key map =
   let maybe_thing = StringMap.find_opt key map in
@@ -1096,7 +1094,10 @@ let rec deepest_stack e (env : arg StringMap.t) =
     | ImmBool _ -> 0
     | ImmId (name, _) -> name_to_offset name
   and name_to_offset name =
-    match safe_find_opt name env with
+    match
+      safe_find_opt name env
+        ~callee_tag:(sprintf "DEEPEST_STACK! id: %s, env: %s" name (string_of_name_envt env))
+    with
     | RegOffset (words, RBP) -> words / -1 (* negative because stack direction *)
     | _ -> 0
   in
@@ -1331,7 +1332,7 @@ let rec reserve size tag =
    below for one way to use this ability... *)
 and compile_fun name args body (env_env : arg name_envt name_envt) tag :
     instruction list * instruction list * instruction list =
-  let env = safe_find_opt name env_env in
+  let env = safe_find_opt name env_env ~callee_tag:(sprintf "COMPILE_FUN! id: %s" name) in
   let fun_label = name in
   let after_label = name ^ "_end" in
   let acexp = ACExpr (CLambda (args, body, 0)) in
@@ -1498,20 +1499,34 @@ and compile_aexpr
     (env_name : string) : instruction list =
   match e with
   | ALet (id, CLambda (args, fun_body, tag), let_body, _) ->
-      let cur_env = safe_find_opt env_name env_env in
+      let cur_env =
+        safe_find_opt env_name env_env
+          ~callee_tag:(sprintf "COMPILE_AEXPR! ALet1. env_name: %s" env_name)
+      in
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
         let a, b, c = compile_fun id args fun_body env_env tag in
         a @ b @ c
       in
       let body = compile_aexpr let_body si env_env num_args is_tail env_name in
-      let offset = safe_find_opt id cur_env in
+      let offset =
+        safe_find_opt id cur_env
+          ~callee_tag:
+            (sprintf "COMPILE_AEXPR! Alet1. id: %s, env: %s" id (string_of_name_envt cur_env))
+      in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALet (id, bound, body, _) ->
-      let cur_env = safe_find_opt env_name env_env in
+      let cur_env =
+        safe_find_opt env_name env_env
+          ~callee_tag:(sprintf "COMPILE_AEXPR! Alet2. env_name: %s" env_name)
+      in
       let prelude = compile_cexpr bound si env_env num_args false env_name in
       let body = compile_aexpr body si env_env num_args is_tail env_name in
-      let offset = safe_find_opt id cur_env in
+      let offset =
+        safe_find_opt id cur_env
+          ~callee_tag:
+            (sprintf "COMPILE_AEXPR! Alet2. id: %s, env: %s" id (string_of_name_envt cur_env))
+      in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALetRec (bindings, let_body, _) ->
       let new_env, compiled_bindings =
@@ -1741,7 +1756,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           ILineComment "===== End set-item =====" ] *)
   | CSetItem (tuple, index, _, tag) | CGetItem (tuple, index, tag) ->
       let i_too_small_label, i_too_big_label, expected_tuple_label =
-      (index_low_label, index_high_label, not_a_tuple_access_label)
+        (index_low_label, index_high_label, not_a_tuple_access_label)
       in
       let compile_tuple = compile_imm tuple env_env env_name in
       let compile_index = compile_imm index env_env env_name in
@@ -1766,8 +1781,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             IJe (Label not_a_number_index_label);
             ILineComment "checking if index is too small" ]
         @ compile_cexpr
-            (CPrim2 (Less, index, ImmNum (0L, tag), tag)) si
-            env_env num_args is_tail env_name
+            (CPrim2 (Less, index, ImmNum (0L, tag), tag))
+            si env_env num_args is_tail env_name
           (* TODO: CHANGE Error handling so that SetItem and GetItem call different error *)
         @ [ IMov (Reg R11, const_true);
             IMov (Reg RSI, compile_index);
