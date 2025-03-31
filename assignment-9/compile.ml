@@ -8,9 +8,26 @@ open Errors
 (* NOTES:
  *  - We had to add `-no-pie` and `-gdwarf-4` to the clang args in the Makefile.
  *  - LetRec is known to be broken.
- *  -
- *
- *
+ *  - Native functions may work partially, and may crash.
+      This is the error in deepest_stack, where identifiers are not found in the environment.
+      Unfortunately, most of our legacy tests used native functions like print, so this causes problems...
+
+ *  - Garbage collection does not work, unfortunately. We spent a lot of time working through our C code,
+      but difficulties with our OCaml prevented us from testing it for a while.
+      By the time we got regular compilation (i.e., recovery from FDL) working, we ran out of time to test GC.
+
+ *  - We thought FDL was embarassing, but this is even worse.
+      Our main issue is timing... Jacob is insanely busy all the time,
+      and it is very difficult for us to find time to work as the semester ends.
+      We feel that we understand the theory of the class material,
+      but have difficulties implementing it.
+      
+      This is all exacerbated by a non-zero amount of senioritis.
+
+      It feels really bad to "choke at the finish line", but it is what it is.
+      Hopefully we will do well on the second written assignment 
+      (which is more theoretical in nature), and on the final project (which is more open-ended).
+
  *)
 
 (* Documentation can be found at https://v2.ocaml.org/api/Set.S.html *)
@@ -26,7 +43,7 @@ let print_env env how =
   List.iter (fun (id, bind) -> debug_printf "  %s -> %s\n" id (how bind)) env
 ;;
 
-let blank_stack_val = 0xFECE5L
+let blank_stack_val = 0xDEFACED
 
 let heap_end_label = "?HEAP_END"
 

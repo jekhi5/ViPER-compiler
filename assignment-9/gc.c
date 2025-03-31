@@ -27,7 +27,7 @@ extern uint64_t BOOL_FALSE;
 // A value to represent allocated, but un-filled slots on the stack.
 // By default, these could be arbitrary values.
 // We don't want to interpret these as SNAKEVALs.
-uint64_t BLANK_STACK_VAL = 0xFECE5;
+uint64_t BLANK_STACK_VAL = 0xDEFACED;
 
 void naive_print_heap(uint64_t *heap, uint64_t *heap_end)
 {
@@ -177,12 +177,13 @@ uint64_t *copy_if_needed(SNAKEVAL *garter_val_addr, uint64_t *heap_top)
 
       if ((garter_val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
       {
-        words = heap_thing_addr[2] + 3;
+        // Divide by 2 because we decided that these are storing SNAKEVALs, to avoid misinterpretation.
+        words = (heap_thing_addr[2] + 3) / 2;
       }
       // garter_val is a function:
       else
       {
-        words = heap_thing_addr[0] + 1;
+        words = (heap_thing_addr[0] + 1) / 2;
         is_func = 1;
       }
       // Padding :)
@@ -204,6 +205,7 @@ uint64_t *copy_if_needed(SNAKEVAL *garter_val_addr, uint64_t *heap_top)
 
       uint64_t *new_heap_top = heap_top;
 
+      // Closures and tuples may contain 
       if (is_func)
       {
         int num_closed_vals = heap_thing_addr[2];
