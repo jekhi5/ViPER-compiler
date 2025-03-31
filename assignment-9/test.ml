@@ -99,7 +99,7 @@ let pair_tests =
       \            end"
       "" "(4, <cyclic tuple 1>)";
     t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))";
-    t "tup5" "let t = (1,2,3,4,5) in t" "" "(1, 2, 3, 4, 5)"]
+    t "tup5" "let t = (1,2,3,4,5) in t" "" "(1, 2, 3, 4, 5)" ]
 ;;
 
 let oom =
@@ -166,4 +166,4 @@ let suite =
 ;;
 
 (* input_file_test_suite () *)
-let () = run_test_tt_main ("all_tests" >::: [suite; ])
+let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
