@@ -4,5 +4,3 @@ let rec
   add1WithSum = (lambda(x, y): 1 + sum(x, y))
 in
   add1WithSum(5, 6)
-@
-12
