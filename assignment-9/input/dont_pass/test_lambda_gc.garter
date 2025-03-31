@@ -1,0 +1,8 @@
+let rec
+  sum = (lambda(x, y): x + y),
+  banana = 4,
+  add1WithSum = (lambda(x, y): 1 + sum(x, y))
+in
+  add1WithSum(5, 6)
+@
+12
