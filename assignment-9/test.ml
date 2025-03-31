@@ -166,4 +166,4 @@ let suite =
 ;;
 
 (* input_file_test_suite () *)
-let () = run_test_tt_main ("all_tests" >::: [suite; ])
+let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
