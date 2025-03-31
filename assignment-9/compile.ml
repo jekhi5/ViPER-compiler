@@ -4,8 +4,7 @@ open Phases
 open Exprs
 open Assembly
 open Errors
-
-(* NOTE: We had to add `-no-pie` and `-gdwarf-4` to the clang args in the Makefile. *)
+open Str
 
 (* Documentation can be found at https://v2.ocaml.org/api/Set.S.html *)
 module StringSet = Set.Make (String)
@@ -80,7 +79,9 @@ let err_CALL_ARITY_ERR = 15L
 
 let err_INDEX_NOT_NUM = 16L
 
-let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
+let err_INDEX_NOT_NUM = 16L
+
+let dummy_span : sourcespan = (Lexing.dummy_pos, Lexing.dummy_pos)
 
 let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
 
@@ -138,7 +139,9 @@ let initial_val_env = assoc_to_map []
 
 let prim_bindings = assoc_to_map []
 
-let native_fun_bindings = assoc_to_map []
+let native_fun_bindings =
+  assoc_to_map [("equal", (dummy_span, Some 2)); ("input", (dummy_span, Some 0))]
+;;
 
 let initial_fun_env = merge_envs prim_bindings native_fun_bindings
 
@@ -225,7 +228,7 @@ let env_keys (e : 'a StringMap.t) : string list = fst @@ List.split @@ StringMap
 
 (* Scope_info stores the location where something was defined,
    and if it was a function declaration, then its type arity and argument arity *)
-type scope_info = sourcespan * int option * int option
+type scope_info = sourcespan * int option
 
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
   let rec wf_E e (env : scope_info name_envt) =
@@ -283,9 +286,9 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                 else
                   match find_opt env x with
                   | None -> []
-                  | Some (existing, _, _) -> [ShadowId (x, xloc, existing)]
+                  | Some (existing, _) -> [ShadowId (x, xloc, existing)]
               in
-              let new_env = StringMap.add x (xloc, None, None) env in
+              let new_env = StringMap.add x (xloc, None) env in
               let newer_env, errs = process_binds rest new_env in
               (newer_env, shadow @ errs)
         in
@@ -305,7 +308,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         ( match func with
         | EId (funname, _) -> (
           match find_opt env funname with
-          | Some (_, _, Some arg_arity) ->
+          | Some (_, Some arg_arity) ->
               let actual = List.length args in
               if actual != arg_arity then
                 [Arity (arg_arity, actual, loc)]
@@ -356,13 +359,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
                 else
                   match find_opt env x with
                   | None -> []
-                  | Some (existing, _, _) ->
+                  | Some (existing, _) ->
                       if xloc = existing then
                         []
                       else
                         [ShadowId (x, xloc, existing)]
               in
-              let new_env = StringMap.add x (xloc, None, None) env in
+              let new_env = StringMap.add x (xloc, None) env in
               let newer_env, errs = process_binds rest new_env in
               (newer_env, shadow @ errs)
         in
@@ -402,7 +405,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         let rec flatten_bind (bind : sourcespan bind) : (string * scope_info) list =
           match bind with
           | BBlank _ -> []
-          | BName (x, _, xloc) -> [(x, (xloc, None, None))]
+          | BName (x, _, xloc) -> [(x, (xloc, None))]
           | BTuple (args, _) -> List.concat (List.map flatten_bind args)
         in
         process_args binds
@@ -432,15 +435,14 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           match args with
           | [] -> env
           | BBlank _ :: rest -> arg_env rest env
-          | BName (name, _, loc) :: rest -> StringMap.add name (loc, None, None) (arg_env rest env)
+          | BName (name, _, loc) :: rest -> StringMap.add name (loc, None) (arg_env rest env)
           | BTuple (binds, _) :: rest -> arg_env (binds @ rest) env
         in
         process_args args @ wf_E body (arg_env args env)
   and wf_G (g : sourcespan decl list) (env : scope_info name_envt) =
     let add_funbind (env : scope_info name_envt) d =
       match d with
-      | DFun (name, args, _, loc) ->
-          StringMap.add name (loc, Some (List.length args), Some (List.length args)) env
+      | DFun (name, args, _, loc) -> StringMap.add name (loc, Some (List.length args)) env
     in
     let env = List.fold_left add_funbind env g in
     let errs = List.concat (List.map (fun d -> wf_D d env) g) in
@@ -451,9 +453,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       let initial_env = initial_val_env in
       let initial_env =
         merge_envs initial_fun_env
-          (StringMap.map
-             (fun (_, arg_count) -> (dummy_span, Some arg_count, Some arg_count))
-             initial_env )
+          (StringMap.map (fun (_, arg_count) -> (dummy_span, Some arg_count)) initial_env)
       in
       let rec find name (decls : 'a decl list) =
         match decls with
@@ -471,7 +471,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
             @ dupe_funbinds rest
       in
       let all_decls = List.flatten decls in
-      let help_G (env, exns) g =
+      let help_G ((env : scope_info name_envt), exns) g =
         let g_exns, funbinds = wf_G g env in
         (merge_envs env funbinds, exns @ g_exns)
       in
@@ -1080,6 +1080,8 @@ let rec deepest_stack e (env : arg StringMap.t) =
     | CIf (c, t, f, _) -> List.fold_left max 0 [helpI c; helpA t; helpA f]
     | CPrim1 (_, i, _) -> helpI i
     | CPrim2 (_, i1, i2, _) -> max (helpI i1) (helpI i2)
+    | CApp (_, args, Native, _) ->
+        List.fold_left (fun prev_max arg_num -> max prev_max arg_num) 0 (List.map helpI args)
     | CApp (func, args, _, _) -> max (helpI func) (List.fold_left max 0 (List.map helpI args))
     | CTuple (vals, _) -> List.fold_left max 0 (List.map helpI vals)
     | CGetItem (t, _, _) -> helpI t
@@ -1096,7 +1098,7 @@ let rec deepest_stack e (env : arg StringMap.t) =
     | ImmBool _ -> 0
     | ImmId (name, _) -> name_to_offset name
   and name_to_offset name =
-    match safe_find_opt name env with
+    match safe_find_opt name env ~callee_tag:(sprintf "DEEPEST_STACK! id: %s" name (string_of_name_envt_envt)) with
     | RegOffset (words, RBP) -> words / -1 (* negative because stack direction *)
     | _ -> 0
   in
@@ -1331,7 +1333,7 @@ let rec reserve size tag =
    below for one way to use this ability... *)
 and compile_fun name args body (env_env : arg name_envt name_envt) tag :
     instruction list * instruction list * instruction list =
-  let env = safe_find_opt name env_env in
+  let env = safe_find_opt name env_env ~callee_tag:(sprintf "COMPILE_FUN: env_name: %s" name) in
   let fun_label = name in
   let after_label = name ^ "_end" in
   let acexp = ACExpr (CLambda (args, body, 0)) in
@@ -1498,20 +1500,25 @@ and compile_aexpr
     (env_name : string) : instruction list =
   match e with
   | ALet (id, CLambda (args, fun_body, tag), let_body, _) ->
-      let cur_env = safe_find_opt env_name env_env in
+      let cur_env =
+        safe_find_opt env_name env_env ~callee_tag:(sprintf "COMPILE_AEXPR! ALet1. env_name: %s" env_name)
+      in
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
         let a, b, c = compile_fun id args fun_body env_env tag in
         a @ b @ c
       in
       let body = compile_aexpr let_body si env_env num_args is_tail env_name in
-      let offset = safe_find_opt id cur_env in
+      let offset =
+        safe_find_opt id cur_env
+          ~callee_tag:(sprintf "COMPILE_AEXPR! ALet1 env_name: %s, id: %s" env_name id)
+      in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALet (id, bound, body, _) ->
-      let cur_env = safe_find_opt env_name env_env in
+      let cur_env = safe_find_opt env_name env_env ~callee_tag:(sprintf "COMPILE_AEXPR! ALet2 env_name: %s" env_name) in
       let prelude = compile_cexpr bound si env_env num_args false env_name in
       let body = compile_aexpr body si env_env num_args is_tail env_name in
-      let offset = safe_find_opt id cur_env in
+      let offset = safe_find_opt id cur_env ~callee_tag:(sprintf "COMPILE_AEXPR! ALet2 env_name: %s, id: %s" env_name id) in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALetRec (bindings, let_body, _) ->
       let new_env, compiled_bindings =
@@ -1599,7 +1606,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           [ (* Print both passes its value to the external function, and returns it. *)
             IMov (Reg RDI, e_reg);
             (* TODO: Is this right?? *)
-            ICall (Label "print") (* The answer goes in RAX :) *) ]
+            ICall (Label "?print") (* The answer goes in RAX :) *) ]
       | IsTuple ->
           let false_label = sprintf "is_tuple_false#%d" t in
           let done_label = sprintf "is_tuple_done#%d" t in
@@ -1651,8 +1658,25 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
   (* | CLambda _ -> compile_lambda e si env_env num_args is_tail env_name *)
   | CLambda _ -> raise (InternalCompilerError "Encountered an un-bound CLambda!")
   | CApp (_, _, Snake, _) -> compile_call e si env_env num_args is_tail env_name
-  | CApp _ -> raise (NotYetImplemented "CApp for native")
-  | CTuple (items, tag) ->
+  | CApp (func, args, Native, _) -> (
+    match func with
+    | ImmId (name, _) ->
+        let is_input = Str.string_match (regexp "^input_[0-9]*$") name 0 in
+        let is_equal = Str.string_match (regexp "^equal_[0-9]*$") name 0 in
+        if is_input then
+          [ICall (Label "?input")]
+        else if is_equal then
+          let compiled_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
+          native_call (Label "?equal") compiled_args
+        else
+          raise
+            (InternalCompilerError (sprintf "Attempted to call unknown native function: %s" name))
+    | _ -> raise (InternalCompilerError "Attempted to call a native function with a non-ImmId") )
+  | CApp (_, _, _, _) ->
+      raise
+        (InternalCompilerError
+           (sprintf "Attempted to apply a function of an unknown type: %s" (string_of_cexpr e)) )
+  | CTuple (items, _) ->
       let n = List.length items in
       (* expected: (1, 2, 3, 5)
        * but got: forwarding to 0x4
@@ -1898,7 +1922,10 @@ let add_native_lambdas (p : sourcespan program) =
   | Program (declss, body, tag) ->
       Program
         ( List.fold_left
-            (fun declss (name, (_, arity)) -> wrap_native name arity :: declss)
+            (fun declss (name, (_, arity)) ->
+              match arity with
+              | Some a -> wrap_native name a :: declss
+              | None -> raise (InternalCompilerError "Attempted to compile a decl with no arity") )
             declss
             (StringMap.bindings native_fun_bindings),
           body,

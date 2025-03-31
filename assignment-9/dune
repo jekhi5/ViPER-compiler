@@ -1,7 +1,7 @@
 (library
  (name garter_impl)
  (modules assembly compile errors exprs phases pretty runner lexer parser)
- (libraries ounit2 extlib unix)
+ (libraries ounit2 extlib unix str)
  (wrapped false))
 
 (ocamllex
