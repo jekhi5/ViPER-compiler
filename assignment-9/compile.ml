@@ -17,8 +17,9 @@ open Errors
       By the time we got regular compilation (i.e., recovery from FDL) working, we ran out of time to test GC.
 
  *  - We thought FDL was embarassing, but this is even worse.
-      Our main issue is timing... Jacob is insanely busy all the time,
-      and it is very difficult for us to find time to work as the semester ends.
+      Our main issue is timing... We are both insanely busy all the time,
+      and it is very difficult for us to find time to work as the semester 
+      ends with extracurriculars and end-of-college-career stuff.
       We feel that we understand the theory of the class material,
       but have difficulties implementing it.
       
@@ -1090,6 +1091,11 @@ let count_vars e =
 let rec deepest_stack e (env : arg StringMap.t) =
   let rec helpA e =
     match e with
+    (* TODO: THIS IS THE CASE THAT SMELLS BAD *)
+    | ALet (name, (CLambda _ as lambda), body, _) ->
+        let new_env = StringMap.add name (RegOffset (1, RBP)) env in
+        List.fold_left max 0
+          [(*This number is a place holder ->*) 1; helpC lambda; deepest_stack body new_env]
     | ALet (name, bind, body, _) ->
         List.fold_left max 0 [name_to_offset name; helpC bind; helpA body]
     | ALetRec (binds, body, _) ->
