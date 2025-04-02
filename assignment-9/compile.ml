@@ -743,18 +743,24 @@ let anf (p : tag program) : unit aprogram =
                       (string_of_bind bind) ) )
         in
         let names, new_binds_setup = List.split (List.map processBind binds) in
-        let new_binds, setup_setup = List.split new_binds_setup in
+        let new_binds, new_setup = List.split new_binds_setup in
         let body_ans, body_setup = helpC body in
-        (body_ans, BLetRec (List.combine names new_binds) :: (List.concat setup_setup @ body_setup))
-    | ELambda _ ->
-        (* This used to be identical to the helpI case, with the small change of
-         * helpI returning an EId with the required setup and this function returning
-         * the processed CLambda. In order for `naive_stack_allocation` to expect a binding
-         * for _every_ lambda, this layer of indirection is required here
-         *)
-        let imm_lambda, lambda_setup = helpI e in
-        (CImmExpr imm_lambda, lambda_setup)
-    | ELet ((BTuple _, _, _) :: _, _, _) ->
+        (body_ans, List.concat new_setup @ (BLetRec (List.combine names new_binds) :: body_setup))
+    | ELambda (args, body, tag) ->
+        let processBind bind =
+          match bind with
+          | BName (name, _, _) -> name
+          | _ ->
+              raise
+                (InternalCompilerError
+                   (sprintf "Encountered a non-simple binding in ANFing a lambda: %s"
+                      (string_of_bind bind) ) )
+        in
+        let new_clambda = CLambda (List.map processBind args, helpA body, ()) in
+        let name = sprintf "lam_%d" tag in
+        let imm_id = ImmId (name, ()) in
+        (CImmExpr imm_id, [BLet (name, new_clambda)])
+    | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
     | EApp (func, args, native, _) ->
         let func_ans, func_setup = helpI func in
@@ -786,7 +792,7 @@ let anf (p : tag program) : unit aprogram =
     | EId (name, _) -> (ImmId (name, ()), [])
     | ENil _ -> (ImmNil (), [])
     | ESeq (e1, e2, _) ->
-        let _, e1_setup = helpI e1 in
+        let e1_imm, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
     | ETuple (args, tag) ->
@@ -833,7 +839,7 @@ let anf (p : tag program) : unit aprogram =
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BSeq exp_ans] @ body_setup)
     | ELetRec (binds, body, tag) ->
-        let tmp = sprintf "letrec_%d" tag in
+        let tmp = sprintf "lam_%d" tag in
         let processBind (bind, rhs, _) =
           match bind with
           | BName (name, _, _) -> (name, helpC rhs)
@@ -848,8 +854,8 @@ let anf (p : tag program) : unit aprogram =
         let body_ans, body_setup = helpC body in
         ( ImmId (tmp, ()),
           List.concat new_setup
-          @ body_setup
           @ [BLetRec (List.combine names new_binds)]
+          @ body_setup
           @ [BLet (tmp, body_ans)] )
     | ELambda (args, body, tag) ->
         let tmp = sprintf "lam_%d" tag in
@@ -867,7 +873,7 @@ let anf (p : tag program) : unit aprogram =
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
-    | ELet ((BTuple _, _, _) :: _, _, _) ->
+    | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
   and helpA e : unit aexpr =
     let ans, ans_setup = helpC e in
@@ -1088,14 +1094,14 @@ let count_vars e =
 
 (* Returns the stack-index (in words) of the deepest stack index used for any
    of the variables in this expression *)
-let rec deepest_stack e (env : arg StringMap.t) =
+let rec deepest_stack_old e (env : arg name_envt) =
   let rec helpA e =
     match e with
     (* TODO: THIS IS THE CASE THAT SMELLS BAD *)
-    | ALet (name, (CLambda _ as lambda), body, _) ->
+    (* | ALet (name, (CLambda _ as lambda), body, _) ->
         let new_env = StringMap.add name (RegOffset (1, RBP)) env in
         List.fold_left max 0
-          [(*This number is a place holder ->*) 1; helpC lambda; deepest_stack body new_env]
+          [(*This number is a place holder ->*) 1; helpC lambda; deepest_stack body new_env] *)
     | ALet (name, bind, body, _) ->
         List.fold_left max 0 [name_to_offset name; helpC bind; helpA body]
     | ALetRec (binds, body, _) ->
@@ -1114,7 +1120,7 @@ let rec deepest_stack e (env : arg StringMap.t) =
     | CLambda (args, body, _) ->
         let new_mappings = assoc_to_map (List.mapi (fun i a -> (a, RegOffset (i + 3, RBP))) args) in
         let new_env = merge_envs new_mappings env in
-        deepest_stack body new_env
+        deepest_stack_old body new_env
     | CImmExpr i -> helpI i
   and helpI i =
     match i with
@@ -1131,6 +1137,15 @@ let rec deepest_stack e (env : arg StringMap.t) =
     | _ -> 0
   in
   max (helpA e) 0 (* if only parameters are used, helpA might return a negative value *)
+;;
+
+let rec deepest_stack (env : arg name_envt) : int =
+  StringMap.fold
+    (fun _ value acc ->
+      match value with
+      | RegOffset (words, _) -> max (words / ~-1) acc
+      | _ -> raise (InternalCompilerError "Encountered non-RegOffset in deepest_stack2") )
+    env 0
 ;;
 
 let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
@@ -1365,18 +1380,14 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag :
   let fun_label = name in
   let after_label = name ^ "_end" in
   let acexp = ACExpr (CLambda (args, body, 0)) in
-  let vars = deepest_stack acexp env in
+  let vars = deepest_stack env in
   let arity = List.length args in
   let free_vars = StringSet.elements (free_vars acexp) in
-  let free_var_regs =
-    List.map
-      (fun v ->
-        safe_find_opt v env
-          ~callee_tag:
-            (sprintf "COMPILE_FUN: env_name: %s, free_vars: %s" name
-               (List.fold_left (fun acc var -> acc ^ ", " ^ var) "" free_vars) ) )
-      free_vars
-  in
+  (* TODO: Figure this out. Note, the `load_closure` code below has cases for either
+   *       it being a `Reg heap_reg` OR anything else. So we shouldn't hard code `free_var_regs`
+   *       to always be an offset 
+   *)
+  let free_var_regs = List.mapi (fun i _ -> RegOffset (i + 3, heap_reg)) free_vars in
   let num_free = List.length free_vars in
   let load_closure =
     List.concat
