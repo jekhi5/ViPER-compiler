@@ -1192,10 +1192,9 @@ let check_overflow = IJo (Label overflow_label)
  * With this and `check_arity`, we make sure not to edit the original register.
  * We need to preserve the tag!
  *)
-let check_function (reg : arg) =
-  [ IMov (Reg scratch_reg, reg);
+let check_function =
+  [ IMov (Reg scratch_reg, Reg RAX);
     IAnd (Reg scratch_reg, Const closure_tag_mask);
-    IMov (Reg RAX, reg);
     (* put the checked value into RAX before potentially jumping.*)
     ICmp (Reg scratch_reg, Const closure_tag);
     IJne (Label err_call_not_closure_label) ]
@@ -1203,11 +1202,11 @@ let check_function (reg : arg) =
 
 (* Assumes that the given argument is a function! *)
 let check_arity (arity : int) =
-  let arity_const = Const (Int64.of_int arity) in
+  let arity_const = Const (Int64.of_int (arity * 2)) in
   [ (* Remove the tag *)
     ISub (Reg RAX, HexConst closure_tag);
     (* The function arity is the first value stored.
-     * It is stored as a regular number, not as a SNAKEVAL.
+     * It is stored as a SNAKEVAL.
      *)
     ICmp (Sized (QWORD_PTR, RegOffset (0, RAX)), arity_const);
     IMov (Reg RSI, arity_const);
@@ -1446,10 +1445,11 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag :
   in
   let load_closure_setup =
     [ ILineComment "=== Load closure values ===";
-      IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int arity));
+      (* Convert the `arity` and the `num_free` to be SNALVALs *)
+      IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int (arity * 2)));
       ILea (Reg scratch_reg, RelLabel fun_label);
       IMov (Sized (QWORD_PTR, RegOffset (1, heap_reg)), Reg scratch_reg);
-      IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int num_free)) ]
+      IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int (num_free * 2))) ]
   in
   (* TODO: what should the value be for SI? *)
   let compiled_body = compile_aexpr body 1 new_env (List.length args) false name in
@@ -1523,8 +1523,10 @@ and compile_call (e : tag cexpr) _ (env_env : arg name_envt name_envt) _ _ env_n
         | _ -> func_reg
       in
       let stack_cleanup = [IAdd (Reg RSP, Const (Int64.of_int stack_pull))] in
-      check_function func_reg
+      [IMov (Reg RAX, func_reg)]
+      @ check_function
       @ check_arity arity
+      @ [IMov (Reg RAX, func_reg)]
       @ push_args
       @ [IMov (Reg scratch_reg, offset_RSP); IPush (Reg scratch_reg); ICall (RegOffset (1, RAX))]
       @ stack_cleanup
