@@ -1,1 +1,1 @@
-(lambda(a): a)(5)
+(lambda(a): a + 3)(5)

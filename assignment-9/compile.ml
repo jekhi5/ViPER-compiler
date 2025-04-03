@@ -1154,6 +1154,8 @@ let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg
 (* Sets the last four bits of the value in the given location to 0. *)
 let untag_snakeval arg = IAnd (arg, HexConst 0x1111111111111000L)
 
+let crash = [IJmp (Label index_high_label)]
+
 let check_tag value tag err_label =
   [ IMov (Reg scratch_reg, value);
     IAnd (Reg scratch_reg, Const 0x7L);
@@ -1388,7 +1390,6 @@ let rec reserve size tag =
 and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
     instruction list * instruction list * instruction list =
   (* Debug instruction that terminates the program *)
-  let crash = [IJmp (Label not_a_bool_logic_label)] in
   let env = safe_find_opt name env_env ~callee_tag:(sprintf "COMPILE_FUN! id: %s" name) in
   let fun_label = name in
   let after_label = name ^ "_end" in
@@ -1487,7 +1488,8 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
       IMov (Reg scratch_reg, RegOffset (2, RBP));
       ISub (Reg scratch_reg, Const 5L) ]
     @ unpack_closure_instrs
-    @ [ ISub (Reg RSP, Const stack_size);
+    @ [ ILineComment "=====================";
+        ISub (Reg RSP, Const stack_size);
         IMov (RegOffset (0, RSP), Reg RDI);
         ILineComment "=== Function call ===" ]
     @ compiled_body
@@ -1869,10 +1871,11 @@ and call (closure : arg) args =
   (* Step 2: Check the arity. *)
   let call_arity = List.length args in
   let arity_check =
-    (* Arity_check will result in an untagged heap ptr in RAX. *)
-    [ untag_snakeval (Reg RAX);
+    (* Arity_check will result in an untagged heap ptr in R11. *)
+    [ IMov (Reg scratch_reg, Reg RAX);
+      untag_snakeval (Reg scratch_reg);
       (* Note that we multiply the caller arity by two, since closures store a snakeval. *)
-      ICmp (Sized (QWORD_PTR, RegOffset (0, RAX)), Const (Int64.of_int (2 * call_arity)));
+      ICmp (Sized (QWORD_PTR, RegOffset (0, scratch_reg)), Const (Int64.of_int (2 * call_arity)));
       IJne (Label err_arity_mismatch_label) ]
   in
   let push_args =
@@ -1884,7 +1887,7 @@ and call (closure : arg) args =
       args
   in
   let push_closure = [IPush (Sized (QWORD_PTR, closure))] in
-  let make_the_call = [ICall (RegOffset (1, RAX))] in
+  let make_the_call = [untag_snakeval (Reg RAX); ICall (RegOffset (1, RAX))] in
   let teardown =
     if call_arity = 0 then
       []
@@ -1893,13 +1896,15 @@ and call (closure : arg) args =
           ( IAdd (Reg RSP, Const (Int64.of_int (word_size * (call_arity + 1)))),
             sprintf "Popping %d arguments" call_arity ) ]
   in
-  (ILineComment "=== Begin func call ===" :: closure_to_rax)
-  (* Move closure into RAX*) @ closure_check (* Don't change RAX *)
-  @ arity_check
-  (* Untags RAX *) @ push_args (* *)
-  @ push_closure (* Push thre original, TAGGED, sclodure val. *)
-  @ make_the_call (* Calls the code ptr at [RAX+8] *)
-  @ teardown (* Moves the stack top down by # args + 1, to account for the closure push *)
+  [ILineComment "=== Begin func call ==="] 
+  @ closure_to_rax (* Move closure into RAX*)
+  @ closure_check  (* Don't change RAX *)
+  @ arity_check    (* Untags RAX *) 
+  @ push_args      (* *)
+  @ push_closure   (* Push thre original, TAGGED, closure val. *)
+  @ make_the_call  (* Calls the code ptr at [RAX+8] *)
+  
+  @ teardown       (* Moves the stack top down by # args + 1, to account for the closure push *)
 ;;
 
 (* This function can be used to take the native functions and produce DFuns whose bodies
