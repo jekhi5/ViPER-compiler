@@ -1017,7 +1017,8 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
     match aexp with
     | ACExpr cexp -> helpC cexp env si env_name
     | ASeq (first, next, _) ->
-        merge_envs (helpC first env si env_name) (helpA next env (si + 1) env_name)
+        (* Order matters here? *)
+        merge_envs (helpA next env (si + 1) env_name) (helpC first env si env_name)
     | ALetRec ([], body, _) -> helpA body env (si + 1) env_name
     | ALet (id, (CLambda _ as lambda), body, _) ->
         let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
@@ -1149,6 +1150,17 @@ let rec deepest_stack (env : arg name_envt) : int =
 ;;
 
 let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
+
+(* Sets the last four bits of the value in the given location to 0. *)
+let untag_snakeval arg = IAnd (arg, HexConst 0x1111111111111000L)
+
+let check_tag value tag err_label =
+  [ IMov (Reg scratch_reg, value);
+    IAnd (Reg scratch_reg, Const 0x7L);
+    (* 0x7 = 0...01111, i.e. the tag bits.*)
+    ICmp (Reg scratch_reg, Const tag);
+    IJne (Label err_label) ]
+;;
 
 (* Enforces that the value in RAX is a bool. Goes to the specified label if not. *)
 (* We could check a parameterized register, but that creates complexity in reporting the error. *)
@@ -1373,8 +1385,10 @@ let rec reserve size tag =
 (* Additionally, you are provided an initial environment of values that you may want to
    assume should take up the first few stack slots.  See the compiliation of Programs
    below for one way to use this ability... *)
-and compile_fun name args body (env_env : arg name_envt name_envt) tag :
+and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
     instruction list * instruction list * instruction list =
+  (* Debug instruction that terminates the program *)
+  let crash = [IJmp (Label not_a_bool_logic_label)] in
   let env = safe_find_opt name env_env ~callee_tag:(sprintf "COMPILE_FUN! id: %s" name) in
   let fun_label = name in
   let after_label = name ^ "_end" in
@@ -1452,7 +1466,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag :
       IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int (num_free * 2))) ]
   in
   (* TODO: what should the value be for SI? *)
-  let compiled_body = compile_aexpr body 1 new_env (List.length args) false name in
+  let compiled_body = compile_aexpr body si new_env (List.length args) false name in
   let stack_cleanup =
     [ILineComment "=== Stack clean-up ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
   in
@@ -1468,6 +1482,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag :
       ISub (Reg RSP, Const (Int64.of_int (num_free * word_size)));
       (* The scratch reg is going to hold the tuple pointer.
        * (i.e. the implicit first argument)
+       * This means that we can't mangle it!
        *)
       IMov (Reg scratch_reg, RegOffset (2, RBP));
       ISub (Reg scratch_reg, Const 5L) ]
@@ -1479,7 +1494,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag :
     @ stack_cleanup
     @ [ILabel after_label]
     @ check_memory (Int64.of_int heap_padding)
-    @ gc
+    (* @ gc *)
     @ load_closure_setup
     @ load_closure,
     bump_heap )
@@ -1501,7 +1516,8 @@ and compile_call (e : tag cexpr) _ (env_env : arg name_envt name_envt) _ _ env_n
         List.map
           (fun arg ->
             match arg with
-            | RegOffset (n, RSP) -> RegOffset (n + dummy_len, RSP)
+            (* ; RegOffset (n + dummy_len, RSP) *)
+            | RegOffset (n, RSP) -> raise (InternalCompilerError "HII")
             | _ -> arg )
           compiled_args
       in
@@ -1547,7 +1563,7 @@ and compile_aexpr
       in
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-        let a, b, c = compile_fun id args fun_body env_env tag in
+        let a, b, c = compile_fun id args fun_body env_env tag si in
         a @ b @ c
       in
       let body = compile_aexpr let_body si env_env num_args is_tail env_name in
@@ -1581,7 +1597,7 @@ and compile_aexpr
               match bound with
               (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
               | CLambda (args, fun_body, tag) ->
-                  let a, b, c = compile_fun binder args fun_body env_env tag in
+                  let a, b, c = compile_fun binder args fun_body env_env tag si in
                   a @ b @ c
               | _ -> compile_cexpr bound si rec_env num_args is_tail env_name
             in
@@ -1707,7 +1723,12 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             IJne (Label err_unpack_err_label) ] )
   (* | CLambda _ -> compile_lambda e si env_env num_args is_tail env_name *)
   | CLambda _ -> raise (InternalCompilerError "Encountered an un-bound CLambda!")
-  | CApp (_, _, Snake, _) -> compile_call e si env_env num_args is_tail env_name
+  | CApp (callee, args, Snake, _) ->
+      (* let closure_name = (match callee with ImmId (id, _) -> id | _ -> raise (InternalCompilerError "Tried to call a literal")) in *)
+      let compiled_closure = compile_cexpr (CImmExpr callee) si env_env num_args is_tail env_name in
+      let compiled_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
+      (ILineComment "~~~~~~~~~~" :: compiled_closure) @ call (Reg RAX) compiled_args
+  (* | CApp (_, _, Snake, _) -> compile_call e si env_env num_args is_tail env_name *)
   | CApp _ -> raise (NotYetImplemented "CApp for native")
   | CTuple (items, tag) ->
       let n = List.length items in
@@ -1842,24 +1863,43 @@ and native_call label args =
 
 (* UPDATE THIS TO HANDLE FIRST-CLASS FUNCTIONS AS NEEDED -- THIS CODE WILL NOT WORK AS WRITTEN *)
 and call (closure : arg) args =
-  let setup =
+  let closure_to_rax = [IMov (Reg RAX, closure)] in
+  (* Step 1: Ensure that `closure` is actually a closure. *)
+  let closure_check = check_tag (Reg RAX) closure_tag not_a_closure_label in
+  (* Step 2: Check the arity. *)
+  let call_arity = List.length args in
+  let arity_check =
+    (* Arity_check will result in an untagged heap ptr in RAX. *)
+    [ untag_snakeval (Reg RAX);
+      (* Note that we multiply the caller arity by two, since closures store a snakeval. *)
+      ICmp (Sized (QWORD_PTR, RegOffset (0, RAX)), Const (Int64.of_int (2 * call_arity)));
+      IJne (Label err_arity_mismatch_label) ]
+  in
+  let push_args =
     List.rev_map
       (fun arg ->
         match arg with
         | Sized _ -> IPush arg
-        | _ -> IPush (Sized (DWORD_PTR, arg)) )
+        | _ -> IPush (Sized (QWORD_PTR, arg)) )
       args
   in
+  let push_closure = [IPush (Sized (QWORD_PTR, closure))] in
+  let make_the_call = [ICall (RegOffset (1, RAX))] in
   let teardown =
-    let len = List.length args in
-    if len = 0 then
+    if call_arity = 0 then
       []
     else
       [ IInstrComment
-          ( IAdd (Reg RSP, Const (Int64.of_int (word_size * len))),
-            sprintf "Popping %d arguments" len ) ]
+          ( IAdd (Reg RSP, Const (Int64.of_int (word_size * (call_arity + 1)))),
+            sprintf "Popping %d arguments" call_arity ) ]
   in
-  setup @ [ICall closure] @ teardown
+  (ILineComment "=== Begin func call ===" :: closure_to_rax)
+  (* Move closure into RAX*) @ closure_check (* Don't change RAX *)
+  @ arity_check
+  (* Untags RAX *) @ push_args (* *)
+  @ push_closure (* Push thre original, TAGGED, sclodure val. *)
+  @ make_the_call (* Calls the code ptr at [RAX+8] *)
+  @ teardown (* Moves the stack top down by # args + 1, to account for the closure push *)
 ;;
 
 (* This function can be used to take the native functions and produce DFuns whose bodies
@@ -1941,7 +1981,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
       (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
       let prologue, comp_main, epilogue =
         (* compile_lambda (CLambda (["$heap"; "$size"] body, 0), [0; 0], Snake, 0) 0 env 2 false ocsh_name *)
-        compile_fun ocsh_name ["$heap"; "$size"] body env tag
+        compile_fun ocsh_name ["$heap"; "$size"] body env tag 0
       in
       let heap_start =
         [ ILineComment "heap start";

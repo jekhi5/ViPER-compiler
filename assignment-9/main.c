@@ -97,7 +97,7 @@ void printHelp(FILE *out, SNAKEVAL val) {
   else if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG) {
     uint64_t* addr = (uint64_t*)(val - CLOSURE_TAG);
     fprintf(out, "[%p - 5] ==> <function arity %ld, closed %ld, fn-ptr %p>",
-            (uint64_t*)val, addr[0] / 2, addr[1] / 2, (uint64_t*)addr[2]);
+            (uint64_t*)val, addr[0] / 2, addr[2] / 2, (uint64_t*)addr[1]);
     // some of this commented-out code may be useful for debugging purposes
 
     /* fprintf(out, "\nClosed-over values:\n"); */
@@ -268,7 +268,7 @@ void error(uint64_t code, SNAKEVAL val) {
   printHelp(stderr, val);
   fprintf(stderr, "\n");
   fflush(stderr);
-  naive_print_heap(HEAP, HEAP_END);
+  naive_print_heap(stderr, HEAP, HEAP_END);
   fflush(stdout);
   free(HEAP);
   exit(code);
@@ -357,7 +357,8 @@ uint64_t* try_gc(uint64_t* alloc_ptr, uint64_t bytes_needed, uint64_t* cur_frame
 }
 
 int main(int argc, char** argv) {
-  HEAP_SIZE = 100000;
+  // HEAP_SIZE = 100000;
+  HEAP_SIZE = 20;
   if (argc > 1) { HEAP_SIZE = atoi(argv[1]); }
   if (HEAP_SIZE < 0 || HEAP_SIZE > 1000000) { HEAP_SIZE = 0; }
   HEAP = (uint64_t*)calloc(HEAP_SIZE + 15, sizeof(uint64_t));

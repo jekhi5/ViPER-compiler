@@ -29,12 +29,12 @@ extern uint64_t BOOL_FALSE;
 // We don't want to interpret these as SNAKEVALs.
 uint64_t BLANK_STACK_VAL = 0xDEFACED;
 
-void naive_print_heap(uint64_t *heap, uint64_t *heap_end)
+void naive_print_heap(FILE *__restrict__ __stream, uint64_t *heap, uint64_t *heap_end)
 {
   printf("In naive_print_heap from %p to %p\n", heap, heap_end);
   for (uint64_t i = 0; i < (uint64_t)(heap_end - heap); i += 1)
   {
-    printf("  %ld/%p: %p (%ld)\n", i, (heap + i), (uint64_t *)(*(heap + i)), *(heap + i));
+    fprintf(__stream, "  %ld/%p: %p (%ld)\n", i, (heap + i), (uint64_t *)(*(heap + i)), *(heap + i));
   }
 }
 
@@ -46,9 +46,9 @@ void smarter_print_heap(uint64_t *from_start, uint64_t *from_end, uint64_t *to_s
   // try to print values readably when possible
 
   // Attempt 1: naive print both semispaces:
-  naive_print_heap(from_start, from_end);
+  naive_print_heap(stdout, from_start, from_end);
   printf("\n======================\n");
-  naive_print_heap(to_start, to_end);
+  naive_print_heap(stdout, to_start, to_end);
 
   // // Attempt 2: try to print vlaues readably
   // printf("In naive_print_heap from %p to %p\n", from_start, from_end);
