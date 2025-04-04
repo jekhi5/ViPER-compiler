@@ -19,6 +19,7 @@ let string_of_op1 op =
   | IsNum -> "isnum"
   | IsBool -> "isbool"
   | IsTuple -> "istuple"
+  | Crash -> "crash"
 ;;
 
 let name_of_op1 op =
@@ -31,6 +32,7 @@ let name_of_op1 op =
   | IsNum -> "IsNum"
   | IsBool -> "IsBool"
   | IsTuple -> "IsTuple"
+  | Crash -> "Crash"
 ;;
 
 let string_of_op2 op =

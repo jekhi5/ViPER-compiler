@@ -104,6 +104,11 @@ let err_CALL_ARITY_ERR = 15L
 
 let err_INDEX_NOT_NUM = 16L
 
+(* We added a Prim1 that just crashes the program. *)
+let err_CRASH = 99L
+
+let crash_label = "?crash"
+
 let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 
 let first_six_args_registers = [RDI; RSI; RDX; RCX; R8; R9]
@@ -1688,7 +1693,9 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               IMov (Reg RAX, const_false);
               ILabel done_label;
               ILineComment (sprintf "END is_tuple%d   -------------" t) ]
-      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here") )
+      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
+      | Crash -> [IJmp (Label crash_label)]
+      )
   | CPrim2 (op, e1, e2, t) -> (
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
@@ -1965,7 +1972,9 @@ let error_suffix =
       ( not_a_closure_label,
         to_asm (native_call (Label "?error") [Const err_CALL_NOT_CLOSURE; Reg scratch_reg]) );
       ( err_arity_mismatch_label,
-        to_asm (native_call (Label "?error") [Const err_CALL_ARITY_ERR; Reg scratch_reg]) ) ]
+        to_asm (native_call (Label "?error") [Const err_CALL_ARITY_ERR; Reg scratch_reg]) );
+      ( crash_label,
+        to_asm (native_call (Label "?error") [Const err_CRASH]) ) ]
 ;;
 
 let compile_prog (anfed, (env : arg name_envt name_envt)) =

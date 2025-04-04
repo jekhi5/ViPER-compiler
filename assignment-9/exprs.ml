@@ -22,6 +22,7 @@ type prim1 =
   | IsTuple
   | Not
   | PrintStack
+  | Crash
 
 type prim2 =
   | Plus
