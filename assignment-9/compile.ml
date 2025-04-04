@@ -797,7 +797,7 @@ let anf (p : tag program) : unit aprogram =
     | EId (name, _) -> (ImmId (name, ()), [])
     | ENil _ -> (ImmNil (), [])
     | ESeq (e1, e2, _) ->
-        let e1_imm, e1_setup = helpI e1 in
+        let _, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
     | ETuple (args, tag) ->
@@ -1399,20 +1399,21 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
   let fun_label = name in
   let after_label = name ^ "_end" in
   let acexp = ACExpr (CLambda (args, body, 0)) in
+  (* let acexp = body in  *)
   let vars = deepest_stack env in
   let arity = List.length args in
   let free_vars = StringSet.elements (free_vars acexp) in
-  (* TODO: Figure this out. Note, the `load_closure` code below has cases for either
-   *       it being a `Reg heap_reg` OR anything else. So we shouldn't hard code `free_var_regs`
-   *       to always be an offset 
-   *)
-  let free_var_regs = List.mapi (fun i _ -> RegOffset (i + 3, heap_reg)) free_vars in
+  (* The order we get these out of the set is not the same as their order on the stack. *)
+  let free_var_regs = List.mapi (fun i _ -> RegOffset (i + 3, RBP)) free_vars in
   let num_free = List.length free_vars in
   let load_closure =
     List.concat
       (List.mapi
          (fun i (arg : arg) ->
            match arg with
+           (* Handles self-reference by tagging the heap pointer with the closure tag.
+            * This works because we know that this closure will be on the top of the heap at this given moment.
+            *)
            | Reg heap_reg ->
                [ IMov (Reg RAX, arg);
                  IAdd (Reg RAX, Const closure_tag);
@@ -1505,56 +1506,6 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
     @ load_closure_setup
     @ load_closure,
     bump_heap )
-
-and compile_call (e : tag cexpr) _ (env_env : arg name_envt name_envt) _ _ env_name =
-  match e with
-  | CApp (func, args, _, _) ->
-      let func_reg = compile_imm func env_env env_name in
-      let arity = List.length args in
-      let compiled_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
-      let dummy_arg, dummy_len =
-        if List.length compiled_args mod 2 = 0 then
-          ([IMov (Reg scratch_reg, Const 0L); IPush (Reg scratch_reg)], 1)
-        else
-          ([], 0)
-      in
-      (* Account for the padding arg *)
-      let adjusted_offsets =
-        List.map
-          (fun arg ->
-            match arg with
-            (* ; RegOffset (n + dummy_len, RSP) *)
-            | RegOffset (n, RSP) -> raise (InternalCompilerError "HII")
-            | _ -> arg )
-          compiled_args
-      in
-      let arg_offset = List.length adjusted_offsets + dummy_len + 1 in
-      let push_args =
-        (* I wish there was a List.concat_rev_map :,) *)
-        dummy_arg
-        @ List.concat
-            (List.rev
-               (List.map
-                  (fun arg -> [IMov (Reg scratch_reg, arg); IPush (Reg scratch_reg)])
-                  adjusted_offsets ) )
-      in
-      (* The amount by which to lower RSP *)
-      let stack_pull = word_size * (List.length compiled_args + dummy_len + 1) in
-      let offset_RSP =
-        match func_reg with
-        | RegOffset (n, RSP) -> RegOffset (n + arg_offset, RSP)
-        | _ -> func_reg
-      in
-      let stack_cleanup = [IAdd (Reg RSP, Const (Int64.of_int stack_pull))] in
-      [IMov (Reg RAX, func_reg)]
-      @ check_function
-      @ check_arity arity
-      @ [IMov (Reg RAX, func_reg)]
-      @ push_args
-      @ [IMov (Reg scratch_reg, offset_RSP); IPush (Reg scratch_reg); ICall (RegOffset (1, RAX))]
-      @ stack_cleanup
-      
-  | _ -> raise (InternalCompilerError "Expected CApp in compile_call")
 
 and compile_aexpr
     (e : tag aexpr)
@@ -1694,8 +1645,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               ILabel done_label;
               ILineComment (sprintf "END is_tuple%d   -------------" t) ]
       | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
-      | Crash -> [IJmp (Label crash_label)]
-      )
+      | Crash -> [IJmp (Label crash_label)] )
   | CPrim2 (op, e1, e2, t) -> (
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
@@ -1882,7 +1832,6 @@ and call (closure : arg) args =
     (* Arity_check will result in an untagged heap ptr in R11. *)
     [ IMov (Reg scratch_reg, Reg RAX);
       untag_snakeval (Reg scratch_reg);
-      
       (* Note that we multiply the caller arity by two, since closures store a snakeval. *)
       ICmp (Sized (QWORD_PTR, RegOffset (0, scratch_reg)), Const (Int64.of_int (2 * call_arity)));
       (* ] @ crash @ [ *)
@@ -1906,15 +1855,12 @@ and call (closure : arg) args =
           ( IAdd (Reg RSP, Const (Int64.of_int (word_size * (call_arity + 1)))),
             sprintf "Popping %d arguments" call_arity ) ]
   in
-  [ILineComment "=== Begin func call ==="] 
-  @ closure_to_rax (* Move closure into RAX*)
-  @ closure_check  (* Don't change RAX *)
-  @ arity_check    (* Untags RAX *) 
-  @ push_args      (* *)
-  @ push_closure   (* Push thre original, TAGGED, closure val. *)
-  @ make_the_call  (* Calls the code ptr at [RAX+8] *)
-  
-  @ teardown       (* Moves the stack top down by # args + 1, to account for the closure push *)
+  [ILineComment "=== Begin func call ==="]
+  @ closure_to_rax (* Move closure into RAX*) @ closure_check (* Don't change RAX *)
+  @ arity_check (* Untags RAX *) @ push_args (* *)
+  @ push_closure (* Push thre original, TAGGED, closure val. *)
+  @ make_the_call (* Calls the code ptr at [RAX+8] *)
+  @ teardown (* Moves the stack top down by # args + 1, to account for the closure push *)
 ;;
 
 (* This function can be used to take the native functions and produce DFuns whose bodies
@@ -1973,8 +1919,7 @@ let error_suffix =
         to_asm (native_call (Label "?error") [Const err_CALL_NOT_CLOSURE; Reg scratch_reg]) );
       ( err_arity_mismatch_label,
         to_asm (native_call (Label "?error") [Const err_CALL_ARITY_ERR; Reg scratch_reg]) );
-      ( crash_label,
-        to_asm (native_call (Label "?error") [Const err_CRASH]) ) ]
+      (crash_label, to_asm (native_call (Label "?error") [Const err_CRASH])) ]
 ;;
 
 let compile_prog (anfed, (env : arg name_envt name_envt)) =

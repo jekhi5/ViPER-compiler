@@ -61,15 +61,16 @@ let tnsa name program expected =
     ~printer:(fun s -> s)
 ;;
 
-(* let tfvs name program expected = name>:: *)
-(*   (fun _ -> *)
-(*     let ast = parse_string name program in *)
-(*     let anfed = anf (tag ast) in *)
-(*     let vars = free_vars_P anfed [] in *)
-(*     let c = Stdlib.compare in *)
-(*     let str_list_print strs = "[" ^ (ExtString.String.join ", " strs) ^ "]" in *)
-(*     assert_equal (List.sort c vars) (List.sort c expected) ~printer:str_list_print) *)
-(* ;; *)
+let tfvs name program expected =
+  name
+  >:: fun _ ->
+  let ast = parse_string name program in
+  let (AProgram (anfed, _)) = anf (tag ast) in
+  let vars = StringSet.elements @@ free_vars anfed in
+  let c = Stdlib.compare in
+  let str_list_print strs = "[" ^ ExtString.String.join ", " strs ^ "]" in
+  assert_equal (List.sort c vars) (List.sort c expected) ~printer:str_list_print
+;;
 
 let builtins_size =
   4 (* arity + 0 vars + codeptr + padding *)
@@ -160,11 +161,13 @@ let nsa =
     tnsa "number" "1" [("ocsh_0", [])] ]
 ;;
 
+let fv = [tfvs "fv1" "(lambda(a): a + x + z)(5)" ["x"; "z"]]
+
 let suite =
   "unit_tests"
   >:::
   (* pair_tests @ oom @ gc @ input *)
-  nsa @ pair_tests @ gc
+  nsa @ pair_tests @ gc @ fv
 ;;
 
 (* input_file_test_suite () *)
