@@ -1151,8 +1151,8 @@ let rec deepest_stack (env : arg name_envt) : int =
 
 let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
 
-(* Sets the last four bits of the value in the given location to 0. *)
-let untag_snakeval arg = IAnd (arg, HexConst 0x1111111111111000L)
+(* Sets the last four bits of the value in thze given location to 0. *)
+let untag_snakeval arg = IAnd (arg, HexConst 0xFFFFFFF8L)
 
 let crash = [IJmp (Label index_high_label)]
 
@@ -1548,6 +1548,7 @@ and compile_call (e : tag cexpr) _ (env_env : arg name_envt name_envt) _ _ env_n
       @ push_args
       @ [IMov (Reg scratch_reg, offset_RSP); IPush (Reg scratch_reg); ICall (RegOffset (1, RAX))]
       @ stack_cleanup
+      
   | _ -> raise (InternalCompilerError "Expected CApp in compile_call")
 
 and compile_aexpr
@@ -1874,8 +1875,10 @@ and call (closure : arg) args =
     (* Arity_check will result in an untagged heap ptr in R11. *)
     [ IMov (Reg scratch_reg, Reg RAX);
       untag_snakeval (Reg scratch_reg);
+      
       (* Note that we multiply the caller arity by two, since closures store a snakeval. *)
       ICmp (Sized (QWORD_PTR, RegOffset (0, scratch_reg)), Const (Int64.of_int (2 * call_arity)));
+      (* ] @ crash @ [ *)
       IJne (Label err_arity_mismatch_label) ]
   in
   let push_args =
