@@ -1392,7 +1392,7 @@ let rec reserve size tag =
 (* Additionally, you are provided an initial environment of values that you may want to
    assume should take up the first few stack slots.  See the compiliation of Programs
    below for one way to use this ability... *)
-and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
+and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_var_offsets :
     instruction list * instruction list * instruction list =
   (* Debug instruction that terminates the program *)
   let env = safe_find_opt name env_env ~callee_tag:(sprintf "COMPILE_FUN! id: %s" name) in
@@ -1404,7 +1404,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
   let arity = List.length args in
   let free_vars = StringSet.elements (free_vars acexp) in
   (* The order we get these out of the set is not the same as their order on the stack. *)
-  let free_var_regs = List.mapi (fun i _ -> RegOffset (i + 3, RBP)) free_vars in
+  (* let free_var_regs = List.rev @@ List.mapi (fun i _ -> RegOffset (i + 3, RBP)) free_vars in *)
   let num_free = List.length free_vars in
   let load_closure =
     List.concat
@@ -1421,7 +1421,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si :
            | _ ->
                [ IMov (Sized (QWORD_PTR, Reg RAX), arg);
                  IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ] )
-         free_var_regs )
+         free_var_offsets )
   in
   let stack_padding =
     if vars mod 2 = 1 then
@@ -1515,14 +1515,16 @@ and compile_aexpr
     (is_tail : bool)
     (env_name : string) : instruction list =
   match e with
-  | ALet (id, CLambda (args, fun_body, tag), let_body, _) ->
+  | ALet (id, (CLambda (args, fun_body, tag) as lambda), let_body, _) ->
       let cur_env =
         safe_find_opt env_name env_env
           ~callee_tag:(sprintf "COMPILE_AEXPR! ALet1. env_name: %s" env_name)
       in
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-        let a, b, c = compile_fun id args fun_body env_env tag si in
+        let free = StringSet.elements @@ free_vars (ACExpr lambda) in
+        let free_locations = List.map (fun v -> safe_find_opt v cur_env) free in
+        let a, b, c = compile_fun id args fun_body env_env tag si free_locations in
         a @ b @ c
       in
       let body = compile_aexpr let_body si env_env num_args is_tail env_name in
@@ -1555,8 +1557,11 @@ and compile_aexpr
             let compiled_bound =
               match bound with
               (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-              | CLambda (args, fun_body, tag) ->
-                  let a, b, c = compile_fun binder args fun_body env_env tag si in
+              | CLambda (args, fun_body, tag) as lambda ->
+                (* TODO: Fix this! *)
+                let free = StringSet.elements @@ free_vars (ACExpr lambda) in
+                let free_locations = List.map (fun v -> safe_find_opt v (safe_find_opt binder rec_env)) free in
+                  let a, b, c = compile_fun binder args fun_body env_env tag si free_locations in
                   a @ b @ c
               | _ -> compile_cexpr bound si rec_env num_args is_tail env_name
             in
@@ -1943,7 +1948,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
       (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
       let prologue, comp_main, epilogue =
         (* compile_lambda (CLambda (["$heap"; "$size"] body, 0), [0; 0], Snake, 0) 0 env 2 false ocsh_name *)
-        compile_fun ocsh_name ["$heap"; "$size"] body env tag 0
+        compile_fun ocsh_name ["$heap"; "$size"] body env tag 0 []
       in
       let heap_start =
         [ ILineComment "heap start";
