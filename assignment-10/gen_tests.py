@@ -4,19 +4,19 @@ from glob import glob
 import argparse
 
 """
-Looks at all `.garter` files in the directory.
+Looks at all `.racer` files in the directory.
 Splits them on a delimiter. Places everything past the delimiter into an out file.
 
 Example:
 
-test1.garter:
+test1.racer:
     add1(2 + 3)
     ;
     6
 
 =>
 
-test1.garter:
+test1.racer:
     add1(2 + 3)
 
 test1.out:
@@ -24,7 +24,7 @@ test1.out:
 """
 
 
-def walk_dir(delimiter=r"@", dirname: str = ".", filetype=".garter", verbose=0) -> None:
+def walk_dir(delimiter=r"@", dirname: str = ".", filetype=".racer", verbose=0) -> None:
     if verbose > 0:
         print("Generating test files...")
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--dir", type=str, default="input/")
     parser.add_argument("-s", "--splitter", type=str, default=r"@")
     parser.add_argument("-v", "--verbose", type=int, default=0)
-    parser.add_argument("-f", "--filetype", type=str, default=".garter")
+    parser.add_argument("-f", "--filetype", type=str, default=".racer")
 
     args = parser.parse_args()
     main(args)
