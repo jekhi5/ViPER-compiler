@@ -19,6 +19,7 @@ let string_of_op1 op =
   | IsNum -> "isnum"
   | IsBool -> "isbool"
   | IsTuple -> "istuple"
+  | Crash -> "crash"
 ;;
 
 let name_of_op1 op =
@@ -31,6 +32,7 @@ let name_of_op1 op =
   | IsNum -> "IsNum"
   | IsBool -> "IsBool"
   | IsTuple -> "IsTuple"
+  | Crash -> "Crash"
 ;;
 
 let string_of_op2 op =
@@ -95,9 +97,9 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     "..."
   else
     match e with
-    | ESeq (e1, e2, a) -> string_of_expr e1 ^ "; " ^ string_of_expr e2
+    | ESeq (e1, e2, _) -> string_of_expr e1 ^ "; " ^ string_of_expr e2
     | ETuple ([e], a) -> "(" ^ string_of_expr e ^ ",)" ^ print_a a
-    | ETuple (exprs, a) -> "(" ^ ExtString.String.join ", " (List.map string_of_expr exprs) ^ ")"
+    | ETuple (exprs, _) -> "(" ^ ExtString.String.join ", " (List.map string_of_expr exprs) ^ ")"
     | EGetItem (e, idx, a) -> sprintf "%s[%s]%s" (string_of_expr e) (string_of_expr idx) (print_a a)
     | ESetItem (e, idx, newval, a) ->
         sprintf "%s[%s] := %s %s" (string_of_expr e) (string_of_expr idx) (string_of_expr newval)
@@ -447,7 +449,7 @@ let format_declgroup (fmt : Format.formatter) (print_a : 'a -> string) (d : 'a d
 
 let format_program (fmt : Format.formatter) (print_a : 'a -> string) (p : 'a program) : unit =
   match p with
-  | Program (decls, body, a) ->
+  | Program (decls, body, _) ->
       print_list fmt
         (fun fmt -> format_declgroup fmt print_a)
         decls

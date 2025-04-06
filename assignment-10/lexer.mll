@@ -42,6 +42,7 @@ rule token = parse
   | "def" { DEF }
   | "and" { ANDDEF }
   | "print" { PRINT }
+  | "crash" { CRASH }
   | "printStack" { PRINTSTACK }
   | "nil" { NIL }
   | "true" { TRUE }
