@@ -1144,22 +1144,24 @@ let empty = StringSet.empty
 (* TODO: Clean up duplicated code *)
 
 (* https://course.ccs.neu.edu/cs4410/lec_register-alloc_notes.html#%28part._.Liveness_analysis_for_expression-based_languages%29 *)
-let rec live_in (s : 'a aexpr) : StringSet.t = 
+let rec live_in (s : 'a aexpr) : StringSet.t =
   match s with
-  | ALet (x, e, b, _) -> (free_vars (ACExpr e) |> u (free_vars b)) |> d (StringSet.singleton x)
+  | ALet (x, e, b, _) -> free_vars (ACExpr e) |> u (free_vars b) |> d (StringSet.singleton x)
   | _ -> empty
 
 and def (e : 'a aexpr) : StringSet.t =
   let rec helpC e =
     match e with
     | CIf (_, th, el, _) -> def th |> u (def el)
-    | CLambda (args, b, _) -> (StringSet.of_list args) |> u (def b)
+    | CLambda (args, b, _) -> StringSet.of_list args |> u (def b)
     | _ -> empty
   in
   match e with
   | ASeq (_, b, _) -> def b
   | ALet (id, _, b, _) -> StringSet.add id (def b)
-  | ALetRec (binds, body, _) -> let ids, _ = List.split binds in StringSet.of_list ids |> u (def body) 
+  | ALetRec (binds, body, _) ->
+      let ids, _ = List.split binds in
+      StringSet.of_list ids |> u (def body)
   | ACExpr c -> helpC c
 
 and use (e : 'a aexpr) : StringSet.t =
@@ -1182,7 +1184,19 @@ and use (e : 'a aexpr) : StringSet.t =
   | ALetRec (binds, body, _) -> List.fold_left (fun acc (_, c) -> helpC c |> u acc) (use body) binds
   | ACExpr c -> helpC c
 
-and live_out (s : 'a aexpr) : StringSet.t = raise (NotYetImplemented "live_out")
+and live_out (s : 'a aexpr) : StringSet.t =
+  let rec helpI e = empty
+  and helpC e =
+    match e with
+    | CIf (_, b, c, _) -> live_in b |> u (live_in c)
+    | CLambda (_, a, _) -> use a
+    | _ -> empty (* They got no successors... *)
+  in
+  match s with
+  | ASeq (a, b, _) | ALet (_, a, b, _) -> helpC a |> u (use b)
+  | ALetRec (binds, body, _) -> List.fold_left (fun acc (_, c) -> helpC c |> u acc) (use body) binds
+  | ACExpr c -> helpC c
+;;
 
 let interfere (e : StringSet.t aexpr) (live : StringSet.t) : grapht =
   raise (NotYetImplemented "Generate interference graphs from expressions for racer")
@@ -1192,8 +1206,65 @@ let color_graph (g : grapht) (init_env : arg name_envt) : arg name_envt =
   raise (NotYetImplemented "Implement graph coloring for racer")
 ;;
 
-let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
-  raise (NotYetImplemented "Implement register allocation for racer")
+let register_allocation ((AProgram(body, _) as prog) : tag aprogram) : tag aprogram * arg name_envt name_envt =
+  let rec helpC (cexp : tag cexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
+      arg name_envt name_envt =
+    match cexp with
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
+    | CIf (_, thn, els, _) ->
+        let thn_env = helpA thn env (si + 1) env_name in
+        helpA els thn_env (si + 1) env_name
+    | CLambda (ids, body, _) ->
+        let args_locs = List.mapi (fun index id -> (id, RegOffset (index + 3, RBP))) ids in
+        let args_env =
+          List.fold_left
+            (fun envt_envt (id, location) -> update_envt_envt env_name id location envt_envt)
+            env args_locs
+        in
+        helpA body args_env 1 env_name
+  and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
+      arg name_envt name_envt =
+    match aexp with
+    | ACExpr cexp -> helpC cexp env si env_name
+    | ASeq (first, next, _) ->
+        (* Order matters here? *)
+        merge_envs (helpA next env (si + 1) env_name) (helpC first env si env_name)
+    | ALetRec ([], body, _) -> helpA body env (si + 1) env_name
+    | ALet (id, (CLambda _ as lambda), body, _) ->
+        let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
+        let offset = si_to_arg si in
+        let body_offset = helpA body add_base_env_for_lambda (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_offset in
+        let lambda_offset = helpC lambda cur_envt si id in
+        lambda_offset
+    | ALet (id, bound, body, _) ->
+        let offset = si_to_arg si in
+        let body_env = helpA body env (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_env in
+        let bound_env = helpC bound cur_envt si env_name in
+        bound_env
+    | ALetRec ((id, (CLambda _ as lambda)) :: rest, body, tag) ->
+        let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
+        let offset = si_to_arg si in
+        let body_offset = helpA body add_base_env_for_lambda (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_offset in
+        let lambda_offset = helpC lambda cur_envt si id in
+        (* TODO: Think about this a little more. Is there too much indirection? *)
+        let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
+        (* This is where we could put our mutual recursion code -- If we had any! *)
+        let rest_env = helpA (ALetRec (rest, body, tag)) with_self_reference (si + 1) env_name in
+        rest_env
+    | ALetRec ((id, bound) :: rest, body, tag) ->
+        let offset = si_to_arg si in
+        let body_env = helpA body env (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id offset body_env in
+        let bound_env = helpC bound cur_envt si env_name in
+        let rest_env = helpA (ALetRec (rest, body, tag)) bound_env (si + 1) env_name in
+        rest_env
+  in
+  let cached = free_vars_cache prog in
+  let body_env = helpA body (assoc_to_map [(ocsh_name, StringMap.empty)]) 1 ocsh_name in
+  (prog, body_env)
 ;;
 
 let count_vars e =
