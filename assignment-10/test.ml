@@ -65,7 +65,12 @@ let set = StringSet.of_list
 
 let empty = StringSet.empty
 
-let string_of_set s = if StringSet.cardinal s = 0 then "[]" else StringSet.fold (fun x acc -> acc ^ ";" ^ x) s "@"
+let string_of_set s =
+  if StringSet.cardinal s = 0 then
+    "[]"
+  else
+    StringSet.fold (fun x acc -> acc ^ ";" ^ x) s "@"
+;;
 
 let tfvsc name program expected =
   name
@@ -73,7 +78,7 @@ let tfvsc name program expected =
   let ast = parse_string name program in
   let anfed = anf (tag ast) in
   let cached = free_vars_cache anfed in
-  assert_equal cached expected ~printer:(string_of_aprogram_with 100 string_of_set)
+  assert_equal expected cached ~printer:(string_of_aprogram_with 100 string_of_set)
 ;;
 
 let builtins_size =
@@ -127,7 +132,62 @@ let gc =
 ;;
 
 let fvc =
-  [ tfvsc "full_prog1" "let foo = true in foo"
+  [ tfvsc "nested_lambda"
+      "let foo = (lambda(w, x, y, z):\n\
+      \             (lambda(a): a + x + z))\n\
+      \ in\n\
+      \    foo(1, 2, 3, 4)(5)"
+      (AProgram
+         ( ALet
+             ( "lam_5",
+               CLambda
+                 ( ["w"; "x"; "y"; "z"],
+                   ALet
+                     ( "lam_6",
+                       CLambda
+                         ( ["a"],
+                           ALet
+                             ( "binop_8",
+                               CPrim2
+                                 ( Plus,
+                                   ImmId ("a", set ["a"]),
+                                   ImmId ("x", set ["x"]),
+                                   set ["x"; "a"] ),
+                               ACExpr
+                                 (CPrim2
+                                    ( Plus,
+                                      ImmId ("binop_8", set ["binop_8"]),
+                                      ImmId ("z", set ["z"]),
+                                      set ["z"; "binop_8"] ) ),
+                               set ["a"; "x"; "z"] ),
+                           empty ),
+                       ACExpr (CImmExpr (ImmId ("lam_6", set ["lam_6"]))),
+                       empty ),
+                   set ["w"; "x"; "y"; "z"] ),
+               ALet
+                 ( "foo",
+                   CImmExpr (ImmId ("lam_5", set ["lam_5"])),
+                   ALet
+                     ( "app_19",
+                       CApp
+                         ( ImmId ("?foo", set ["foo"]),
+                           [ ImmNum (4L, empty);
+                             ImmNum (3L, empty);
+                             ImmNum (2L, empty);
+                             ImmNum (1L, empty) ],
+                           Snake,
+                           set ["foo"] ),
+                       ACExpr
+                         (CApp
+                            ( ImmId ("?app_19", set ["app_19"]),
+                              [ImmNum (5L, empty)],
+                              Snake,
+                              set ["app_19"] ) ),
+                       set ["foo"] ),
+                   set ["lam_5"] ),
+               set ["w"; "x"; "y"; "z"] ),
+           set ["w"; "x"; "y"; "z"] ) );
+    tfvsc "full_prog1" "let foo = true in foo"
       (AProgram
          ( ALet
              ( "foo",
