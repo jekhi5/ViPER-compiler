@@ -4,6 +4,7 @@ open OUnit2
 open Pretty
 open Exprs
 open Errors
+open Phases
 
 let t name program input expected =
   name >:: test_run ~args:[] ~std_input:input Naive program name expected
@@ -80,6 +81,36 @@ let tfvsc name program expected =
   let cached = free_vars_cache anfed in
   let printer = string_of_aprogram_with 100 string_of_set in
   assert_equal (printer expected) (printer cached) ~printer:(fun x -> x)
+;;
+
+let envt_envt_of_list (e : (string * (string * 'a) list) list) : 'a name_envt name_envt =
+  assoc_to_map (List.map (fun (key, inner) -> (key, assoc_to_map inner)) e)
+;;
+
+let tnsa name program expected =
+  let _, locations = naive_stack_allocation (atag (anf (tag (parse_string name program)))) in
+  name
+  >:: fun _ ->
+  assert_equal
+    (string_of_name_envt_envt (envt_envt_of_list expected))
+    (string_of_name_envt_envt locations)
+    ~printer:(fun s -> s)
+;;
+
+let tra name program expected =
+  let _, locations = register_allocation (atag (anf (tag (parse_string name program)))) in
+  name
+  >:: fun _ ->
+  assert_equal
+    (string_of_name_envt_envt (envt_envt_of_list expected))
+    (string_of_name_envt_envt locations)
+    ~printer:(fun s -> s)
+;;
+
+let tli name program expected =
+  let (AProgram (body, _)) = free_vars_cache (atag (anf (tag (parse_string name program)))) in
+  let result = compute_live_in body in
+  name >:: fun _ -> assert_equal (StringSet.of_list expected) result ~printer:string_of_set
 ;;
 
 let builtins_size =
@@ -212,9 +243,94 @@ let fvc =
            set ["bar"] ) ) ]
 ;;
 
+let nsa =
+  [ tnsa "simple_nsa1" "let x = 1 in x + 5" [("ocsh_0", [("x", RegOffset (~-1, RBP))])];
+    tnsa "simple_nsa2" "let x = 1, y = 3, z = 4 in 5"
+      [ ( "ocsh_0",
+          [("x", RegOffset (~-1, RBP)); ("y", RegOffset (~-2, RBP)); ("z", RegOffset (~-3, RBP))] )
+      ];
+    tnsa "simple_lambda" "let a = 1 in (lambda(x): x)(5)"
+      [ ("ocsh_0", [("a", RegOffset (~-1, RBP)); ("lam_8", RegOffset (~-2, RBP))]);
+        ("lam_8", [("x", RegOffset (3, RBP))]) ];
+    (* Remember that all lambdas are indirected... *)
+    tnsa "non_nested_lambdas"
+      "let a=1, foo = (lambda(x): x), bar = (lambda(y, x): y + x), baz = (lambda: a) in 1"
+      [ ( "ocsh_0",
+          [ ("a", RegOffset (~-1, RBP));
+            ("lam_8", RegOffset (~-2, RBP));
+            ("foo", RegOffset (~-3, RBP));
+            ("lam_13", RegOffset (~-4, RBP));
+            ("bar", RegOffset (~-5, RBP));
+            ("lam_21", RegOffset (~-6, RBP));
+            ("baz", RegOffset (~-7, RBP)) ] );
+        ("lam_8", [("x", RegOffset (3, RBP))]);
+        ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
+        ("lam_21", []) ];
+    tnsa "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
+      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_6", RegOffset (~-1, RBP))]);
+        ("lam_6", [("y", RegOffset (3, RBP))]) ];
+    (* Commented this test because we know LetRec is broken... *)
+    (* tnsa "letrec1" "let rec foo = (lambda(x): x) in 1"
+      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ]; *)
+    tnsa "number" "1" [("ocsh_0", [])] ]
+;;
+
+let ra =
+  [ tra "simple_ra1" "let x = 1 in x + 5" [("ocsh_0", [("x", RegOffset (~-1, RBP))])];
+    tra "simple_ra2" "let x = 1, y = 3, z = 4 in 5"
+      [ ( "ocsh_0",
+          [("x", RegOffset (~-1, RBP)); ("y", RegOffset (~-2, RBP)); ("z", RegOffset (~-3, RBP))] )
+      ];
+    tra "simple_lambda" "let a = 1 in (lambda(x): x)(5)"
+      [ ("ocsh_0", [("a", RegOffset (~-1, RBP)); ("lam_8", RegOffset (~-2, RBP))]);
+        ("lam_8", [("x", RegOffset (3, RBP))]) ];
+    (* Remember that all lambdas are indirected... *)
+    tra "non_nested_lambdas"
+      "let a=1, foo = (lambda(x): x), bar = (lambda(y, x): y + x), baz = (lambda: a) in 1"
+      [ ( "ocsh_0",
+          [ ("a", RegOffset (~-1, RBP));
+            ("lam_8", RegOffset (~-2, RBP));
+            ("foo", RegOffset (~-3, RBP));
+            ("lam_13", RegOffset (~-4, RBP));
+            ("bar", RegOffset (~-5, RBP));
+            ("lam_21", RegOffset (~-6, RBP));
+            ("baz", RegOffset (~-7, RBP)) ] );
+        ("lam_8", [("x", RegOffset (3, RBP))]);
+        ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
+        ("lam_21", []) ];
+    tra "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
+      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_6", RegOffset (~-1, RBP))]);
+        ("lam_6", [("y", RegOffset (3, RBP))]) ];
+    (* Commented this test because we know LetRec is broken... *)
+    (* tra "letrec1" "let rec foo = (lambda(x): x) in 1"
+      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ]; *)
+    tra "number" "1" [("ocsh_0", [])] ]
+;;
+
+let live_in =
+  [ tli "given_ex"
+      "let \n\
+      \     x = true \n\
+      \   in\n\
+      \     let \n\
+      \       y = if true: let \n\
+      \                      b = 5 \n\
+      \                    in \n\
+      \                      b else: 6 \n\
+      \     in\n\
+      \      x"
+      ["x"] ]
+;;
+
+let live_out = []
+
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ live_in @ live_out
 (* pair_tests @ oom @ gc @ input *)
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

@@ -1143,11 +1143,75 @@ let empty = StringSet.empty
 
 (* TODO: Clean up duplicated code *)
 
-(* https://course.ccs.neu.edu/cs4410/lec_register-alloc_notes.html#%28part._.Liveness_analysis_for_expression-based_languages%29 *)
-let rec live_in (s : 'a aexpr) : StringSet.t =
-  match s with
-  | ALet (x, e, b, _) -> d (free_vars (ACExpr e) |> u (free_vars b)) (StringSet.singleton x)
-  | _ -> empty
+let get_free_from_cache (expr : StringSet.t aexpr) : StringSet.t =
+  let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
+    match cexpr with
+    | CIf (_, _, _, cache)
+     |CPrim1 (_, _, cache)
+     |CPrim2 (_, _, _, cache)
+     |CTuple (_, cache)
+     |CGetItem (_, _, cache)
+     |CSetItem (_, _, _, cache)
+     |CLambda (_, _, cache)
+     |CApp (_, _, _, cache)
+     |CImmExpr (ImmId (_, cache)) -> cache
+    | CImmExpr _ -> empty
+  in
+  match expr with
+  | ASeq (_, _, cache) | ALet (_, _, _, cache) | ALetRec (_, _, cache) -> cache
+  | ACExpr cexpr -> helpC cexpr
+;;
+
+let rec compute_live_in (expr : StringSet.t aexpr) : StringSet.t =
+  let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
+    match cexpr with
+    | CIf (cond, thn, els, _) ->
+        let free_cond = get_free_from_cache (ACExpr (CImmExpr cond)) in
+        let thn_out = compute_live_out thn in
+        let els_out = compute_live_out els in
+        let free_thn = get_free_from_cache thn in
+        let free_els = get_free_from_cache els in
+        thn_out |> u els_out |> u free_thn |> u free_els |> u free_cond
+    | CImmExpr imm_expr -> get_free_from_cache (ACExpr (CImmExpr imm_expr))
+    | CLambda (args, body, _) ->
+        let free_body = get_free_from_cache body in
+        let live_out_body = compute_live_out body in
+        let args_set = StringSet.of_list args in
+        d (free_body |> u live_out_body) args_set
+    | CPrim1 (_, _, cache)
+     |CPrim2 (_, _, _, cache)
+     |CApp (_, _, _, cache)
+     |CTuple (_, cache)
+     |CGetItem (_, _, cache)
+     |CSetItem (_, _, _, cache) -> cache
+  in
+  match expr with
+  | ASeq (first, next, _) -> get_free_from_cache (ACExpr first) |> u (get_free_from_cache next)
+  | ALet (x, e, b, _) ->
+      let free_e = get_free_from_cache (ACExpr e) in
+      let free_b = get_free_from_cache b in
+      let live_out_b = compute_live_out b in
+      d (free_e |> u free_b |> u live_out_b) (StringSet.singleton x)
+  | ALetRec (bindings, body, _) ->
+      let names, bounds = List.split bindings in
+      let free_bounds =
+        List.fold_left (fun acc bound -> get_free_from_cache (ACExpr bound) |> u acc) empty bounds
+      in
+      let names_set = StringSet.of_list names in
+      let free_body = get_free_from_cache body in
+      d (free_body |> u free_bounds |> u (compute_live_out body)) names_set
+  | ACExpr cexpr -> helpC cexpr
+
+and compute_live_out (expr : StringSet.t aexpr) : StringSet.t =
+  let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
+    match cexpr with
+    | CIf (_, thn, els, _) -> compute_live_in thn |> u (compute_live_in els)
+    | CLambda (_, body, _) -> compute_live_in body
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> empty
+  in
+  match expr with
+  | ASeq (_, b, _) | ALet (_, _, b, _) | ALetRec (_, b, _) -> compute_live_in b
+  | ACExpr cexpr -> helpC cexpr
 
 and def (e : 'a aexpr) : StringSet.t =
   let rec helpC e =
@@ -1183,19 +1247,6 @@ and use (e : 'a aexpr) : StringSet.t =
   | ASeq (a, b, _) | ALet (_, a, b, _) -> helpC a |> u (use b)
   | ALetRec (binds, body, _) -> List.fold_left (fun acc (_, c) -> helpC c |> u acc) (use body) binds
   | ACExpr c -> helpC c
-
-and live_out (s : 'a aexpr) : StringSet.t =
-  let rec helpI e = empty
-  and helpC e =
-    match e with
-    | CIf (_, b, c, _) -> live_in b |> u (live_in c)
-    | CLambda (_, a, _) -> use a
-    | _ -> empty (* They got no successors... *)
-  in
-  match s with
-  | ASeq (a, b, _) | ALet (_, a, b, _) -> helpC a |> u (use b)
-  | ALetRec (binds, body, _) -> List.fold_left (fun acc (_, c) -> helpC c |> u acc) (use body) binds
-  | ACExpr c -> helpC c
 ;;
 
 let interfere (e : StringSet.t aexpr) (live : StringSet.t) : grapht =
@@ -1206,9 +1257,12 @@ let color_graph (g : grapht) (init_env : arg name_envt) : arg name_envt =
   raise (NotYetImplemented "Implement graph coloring for racer")
 ;;
 
-let register_allocation ((AProgram(body, _) as prog) : tag aprogram) : tag aprogram * arg name_envt name_envt =
-  let rec helpC (cexp : tag cexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
-      arg name_envt name_envt =
+let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
+  let rec helpC
+      (cexp : StringSet.t cexpr)
+      (env : arg name_envt name_envt)
+      (si : int)
+      (env_name : string) : arg name_envt name_envt =
     match cexp with
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
     | CIf (_, thn, els, _) ->
@@ -1222,8 +1276,8 @@ let register_allocation ((AProgram(body, _) as prog) : tag aprogram) : tag aprog
             env args_locs
         in
         helpA body args_env 1 env_name
-  and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
-      arg name_envt name_envt =
+  and helpA (aexp : StringSet.t aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string)
+      : arg name_envt name_envt =
     match aexp with
     | ACExpr cexp -> helpC cexp env si env_name
     | ASeq (first, next, _) ->
@@ -1262,8 +1316,8 @@ let register_allocation ((AProgram(body, _) as prog) : tag aprogram) : tag aprog
         let rest_env = helpA (ALetRec (rest, body, tag)) bound_env (si + 1) env_name in
         rest_env
   in
-  let cached = free_vars_cache prog in
-  let body_env = helpA body (assoc_to_map [(ocsh_name, StringMap.empty)]) 1 ocsh_name in
+  let (AProgram (new_body, _)) = free_vars_cache prog in
+  let body_env = helpA new_body (assoc_to_map [(ocsh_name, StringMap.empty)]) 1 ocsh_name in
   (prog, body_env)
 ;;
 
