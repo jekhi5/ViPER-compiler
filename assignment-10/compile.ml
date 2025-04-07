@@ -1147,7 +1147,7 @@ let empty = StringSet.empty
 let rec live_in (s : 'a aexpr) : StringSet.t = 
   match s with
   | ALet (x, e, b, _) -> (free_vars (ACExpr e) |> u (free_vars b)) |> d (StringSet.singleton x)
-  | ALetRec _ ->
+  | _ -> empty
 
 and def (e : 'a aexpr) : StringSet.t =
   let rec helpC e =
