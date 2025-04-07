@@ -969,7 +969,7 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : StringSet.t apr
     (* FV[lam(x): b] = FV[b] ∖ {x} *)
     | CLambda (ids, body, _) ->
         let new_body, free_body = helpA body in
-        let free = free_body |> d (StringSet.of_list ids) in
+        let free = d free_body (StringSet.of_list ids) in
         (CLambda (ids, new_body, free), free)
   and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
@@ -1146,7 +1146,7 @@ let empty = StringSet.empty
 (* https://course.ccs.neu.edu/cs4410/lec_register-alloc_notes.html#%28part._.Liveness_analysis_for_expression-based_languages%29 *)
 let rec live_in (s : 'a aexpr) : StringSet.t =
   match s with
-  | ALet (x, e, b, _) -> free_vars (ACExpr e) |> u (free_vars b) |> d (StringSet.singleton x)
+  | ALet (x, e, b, _) -> d (free_vars (ACExpr e) |> u (free_vars b)) (StringSet.singleton x)
   | _ -> empty
 
 and def (e : 'a aexpr) : StringSet.t =
