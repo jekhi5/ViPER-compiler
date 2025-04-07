@@ -2097,7 +2097,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
               "by adding no more than 15 to it" ) ]
       in
       let set_stack_bottom =
-        [ILabel "?our_code_starts_here"; IMov (Reg R12, Reg RDI)]
+        [ILabel ocsh_name; IMov (Reg R12, Reg RDI)]
         @ native_call (Label "?set_stack_bottom") [Reg RBP]
         @ [IMov (Reg RDI, Reg R12)]
       in

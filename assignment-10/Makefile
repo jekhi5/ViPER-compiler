@@ -2,7 +2,7 @@ SNAKE_EXT=racer
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
   NASM_FORMAT=elf64
-  CLANG_FLAGS=-mstackrealign -m64 -g -fstack-protector-all -Wstack-protector -fno-omit-frame-pointer -z noexecstack
+  CLANG_FLAGS=-mstackrealign -m64 -g -fstack-protector-all -Wstack-protector -fno-omit-frame-pointer -z noexecstack -no-pie -gdwarf-4
 else
 ifeq ($(UNAME), Darwin)
   NASM_FORMAT=macho64
