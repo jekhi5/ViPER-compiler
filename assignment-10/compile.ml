@@ -393,6 +393,12 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
               @ process_args rest
           | BTuple (binds, _) :: rest -> process_args (binds @ rest)
         in
+        let rec flatten_bind (bind : sourcespan bind) : (string * scope_info) list =
+          match bind with
+          | BBlank _ -> []
+          | BName (x, _, xloc) -> [(x, (xloc, None, None))]
+          | BTuple (args, _) -> List.concat (List.map flatten_bind args)
+        in
         process_args binds
         @ wf_E body (merge_envs (assoc_to_map (List.concat (List.map flatten_bind binds))) env)
   and wf_D d (env : scope_info name_envt) =
@@ -858,6 +864,8 @@ let anf (p : tag program) : unit aprogram =
  *)
 let u = StringSet.union
 
+let d = StringSet.diff
+
 (* Is it more convenient to return a StringSet, or just to slap a to_list at the end? *)
 let free_vars (e : 'a aexpr) : StringSet.t =
   let rec helpI (e : 'a immexpr) (bound_ids : StringSet.t) : StringSet.t =
@@ -900,97 +908,101 @@ let free_vars (e : 'a aexpr) : StringSet.t =
 
 let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : StringSet.t aprogram =
   let empty = StringSet.empty in
-  let rec helpI (e : 'a immexpr) (bound_ids : StringSet.t) : StringSet.t immexpr * StringSet.t =
+  let rec helpI (e : 'a immexpr) : StringSet.t immexpr * StringSet.t =
     match e with
-    | ImmId (id, _) when not (StringSet.mem id bound_ids) ->
-        (ImmId (id, StringSet.singleton id), StringSet.singleton id)
-    | ImmId (id, _) -> (ImmId (id, empty), empty)
-    | ImmBool (b, _) -> (ImmBool (b, empty), empty)
+    (* FV[x] = {x} *)
+    | ImmId (id, _) -> ImmId (id, StringSet.singleton id), (StringSet.singleton id)
+    (* FV[num] = {} *)
     | ImmNum (n, _) -> (ImmNum (n, empty), empty)
+    | ImmBool (b, _) -> (ImmBool (b, empty), empty)
     | ImmNil _ -> (ImmNil empty, empty)
-  and helpC (e : 'a cexpr) (bound_ids : StringSet.t) : StringSet.t cexpr * StringSet.t =
+  and helpC (e : 'a cexpr) : StringSet.t cexpr * StringSet.t =
     match e with
     | CIf (cond, thn, els, _) ->
-        let new_cond, free_cond = helpI cond bound_ids in
-        let new_thn, free_thn = helpA thn bound_ids in
-        let new_els, free_els = helpA els bound_ids in
+        let new_cond, free_cond = helpI cond  in
+        let new_thn, free_thn = helpA thn in
+        let new_els, free_els = helpA els in
         let free = free_cond |> u free_thn |> u free_els in
         (CIf (new_cond, new_thn, new_els, free), free)
     | CPrim1 (op, expr, _) ->
-        let new_expr, free = helpI expr bound_ids in
+        let new_expr, free = helpI expr  in
         (CPrim1 (op, new_expr, free), free)
     | CPrim2 (op, left, right, _) ->
-        let new_left, free_left = helpI left bound_ids in
-        let new_right, free_right = helpI right bound_ids in
+        let new_left, free_left = helpI left in
+        let new_right, free_right = helpI right in
         let free = free_left |> u free_right in
         (CPrim2 (op, new_left, new_right, free), free)
     | CApp (func, args, call_type, _) ->
-        let new_func, free_func = helpI func bound_ids in
+        let new_func, free_func = helpI func in
         let new_args, free_args =
           List.fold_left
             (fun (acc, set) arg ->
-              let new_arg, free_arg = helpI arg bound_ids in
+              let new_arg, free_arg = helpI arg in
               (new_arg :: acc, set |> u free_arg) )
             ([], empty) args
         in
         let free = free_args |> u free_func in
         (CApp (new_func, new_args, call_type, free), free)
     | CImmExpr expr ->
-        let new_expr, free = helpI expr bound_ids in
+        let new_expr, free = helpI expr in
         (CImmExpr new_expr, free)
     | CTuple (args, _) ->
         let new_args, free =
           List.fold_left
             (fun (acc, set) arg ->
-              let new_arg, free_arg = helpI arg bound_ids in
+              let new_arg, free_arg = helpI arg in
               (new_arg :: acc, free_arg |> u set) )
             ([], empty) args
         in
         (CTuple (new_args, free), free)
     | CGetItem (tup, idx, _) ->
-        let new_tup, free_tup = helpI tup bound_ids in
-        let new_idx, free_idx = helpI idx bound_ids in
+        let new_tup, free_tup = helpI tup in
+        let new_idx, free_idx = helpI idx in
         let free = free_idx |> u free_tup in
         (CGetItem (new_tup, new_idx, free), free)
     | CSetItem (tup, idx, new_elem, _) ->
-      let new_tup, free_tup = helpI tup bound_ids in
-        let new_idx, free_idx = helpI idx bound_ids in
-        let new_val, free_val = helpI new_elem bound_ids in
+      let new_tup, free_tup = helpI tup in
+        let new_idx, free_idx = helpI idx in
+        let new_val, free_val = helpI new_elem in
         let free = free_idx |> u free_tup |> u free_val in
         (CSetItem (new_tup, new_idx, new_val, free), free)
+    (* FV[lam(x): b] = FV[b] ∖ {x} *)
     | CLambda (ids, body, _) -> 
-      let new_body, free = helpA body (StringSet.of_list ids |> u bound_ids) in
+      let new_body, free_body = helpA body in
+      let free = free_body |> d (StringSet.of_list ids) in
       CLambda (ids, new_body, free), free
-  and helpA (e : 'a aexpr) (bound_ids : StringSet.t) : StringSet.t aexpr * StringSet.t =
+  and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
     | ASeq (first, next, _) -> 
-      let new_first, free_first = helpC first bound_ids in
-      let new_next, free_next = helpA next bound_ids in
+      let new_first, free_first = helpC first in
+      let new_next, free_next = helpA next in
       let free = free_first |> u free_next in
       ASeq (new_first, new_next, free), free
+    (* FV[let x = e in b] = FV[e] ∪ (FV[b] ∖ {x}) *)
     | ALet (name, bound, body, _) ->
-      let new_bound, free_bound = helpC bound bound_ids in
-      let new_body, free_body = helpA body (StringSet.add name bound_ids) in
-      let free = free_bound |> u free_body in
+      let new_bound, free_bound = helpC bound in
+      let new_body, free_body = helpA body in
+      let free = free_bound |> u (StringSet.remove name free_body) in
       ALet (name, new_bound, new_body, free), free
+    (* FV[let rec x = e in b] = (FV[e] ∪ FV[b]) ∖ {x} *)
     | ALetRec (binds, body, _) ->
-        let new_binds, declared, free_binds =
+        let new_binds, free_binds =
         (* This fold means that LetRec free variables are unidirectional!
          * Mutual recursion is not possible!
          *)
           List.fold_left
-            (fun (acc, declared, free) (name, cexpr) ->
-              let add_name = StringSet.add name declared in
-              let new_bound, free_bound = helpC cexpr add_name in
-              ((name, new_bound) :: acc, add_name, free_bound |> u free) )
-            ([], bound_ids, StringSet.empty) binds
+            (fun (acc, free) (name, cexpr) ->
+              let new_bound, free_bound = helpC cexpr  in
+              ((name, new_bound) :: acc, free_bound |> u free) )
+            ([], StringSet.empty) binds
         in
-        let new_body, free_body = helpA body declared in
+        let new_body, free_body = helpA body in
         let free = free_body |> u free_binds in
+        let free = StringSet.diff free (StringSet.of_list (List.map fst binds)) in
         ALetRec(new_binds, new_body, free), free
-    | ACExpr cexpr -> let new_c, free  = (helpC cexpr bound_ids) in ACExpr new_c, free
+    | ACExpr cexpr -> let new_c, free  = (helpC cexpr) in ACExpr new_c, free
   in
-  let new_body, free_body = helpA body StringSet.empty in
+  let new_body, free_body = helpA body in
   AProgram (new_body, free_body)
 ;;
 

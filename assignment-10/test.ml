@@ -50,15 +50,31 @@ let tparse name program expected =
 
 let teq name actual expected = name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> s)
 
-(* let tfvs name program expected = name>:: *)
-(*   (fun _ -> *)
-(*     let ast = parse_string name program in *)
-(*     let anfed = anf (tag ast) in *)
-(*     let vars = free_vars_P anfed [] in *)
-(*     let c = Stdlib.compare in *)
-(*     let str_list_print strs = "[" ^ (ExtString.String.join ", " strs) ^ "]" in *)
-(*     assert_equal (List.sort c vars) (List.sort c expected) ~printer:str_list_print) *)
-(* ;; *)
+(* let tfvs name program expected =
+  name
+  >:: fun _ ->
+  let ast = parse_string name program in
+  let anfed = anf (tag ast) in
+  let vars = free_vars_cache anfed in
+  let c = Stdlib.compare in
+  let str_list_print strs = "[" ^ ExtString.String.join ", " strs ^ "]" in
+  assert_equal (List.sort c vars) (List.sort c expected) ~printer:str_list_print
+;; *)
+
+let set = StringSet.of_list
+
+let empty = StringSet.empty
+
+let string_of_set s = if StringSet.cardinal s = 0 then "[]" else StringSet.fold (fun x acc -> acc ^ ";" ^ x) s "@"
+
+let tfvsc name program expected =
+  name
+  >:: fun _ ->
+  let ast = parse_string name program in
+  let anfed = anf (tag ast) in
+  let cached = free_vars_cache anfed in
+  assert_equal cached expected ~printer:(string_of_aprogram_with 100 string_of_set)
+;;
 
 let builtins_size =
   4 (* arity + 0 vars + codeptr + padding *)
@@ -71,19 +87,22 @@ let pair_tests =
       \            begin\n\
       \              t[0] := 7;\n\
       \              t\n\
-      \            end" "" "(7, (5, 6))";
+      \            end"
+      "" "(7, (5, 6))";
     t "tup2"
       "let t = (4, (5, nil)) in\n\
       \            begin\n\
       \              t[1] := nil;\n\
       \              t\n\
-      \            end" "" "(4, nil)";
+      \            end"
+      "" "(4, nil)";
     t "tup3"
       "let t = (4, (5, nil)) in\n\
       \            begin\n\
       \              t[1] := t;\n\
       \              t\n\
-      \            end" "" "(4, <cyclic tuple 1>)";
+      \            end"
+      "" "(4, <cyclic tuple 1>)";
     t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))" ]
 ;;
 
@@ -103,11 +122,37 @@ let gc =
       \         f();\n\
       \         f();\n\
       \         f()\n\
-      \       end" "" "(1, 2)" ]
+      \       end"
+      "" "(1, 2)" ]
+;;
+
+let fvc =
+  [ tfvsc "full_prog1" "let foo = true in foo"
+      (AProgram
+         ( ALet
+             ( "foo",
+               CImmExpr (ImmBool (true, empty)),
+               ACExpr (CImmExpr (ImmId ("foo", set ["foo"]))),
+               empty ),
+           empty ) );
+    tfvsc "full_prog2" "let foo = 1 in foo + bar"
+      (AProgram
+         ( ALet
+             ( "foo",
+               CImmExpr (ImmNum (1L, empty)),
+               ACExpr
+                 (CPrim2
+                    ( Plus,
+                      ImmId ("foo", set ["foo"]),
+                      ImmId ("bar", set ["bar"]),
+                      set ["foo"; "bar"] ) ),
+               set ["bar"] ),
+           set ["bar"] ) ) ]
 ;;
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: pair_tests @ oom @ gc @ input
+let suite = "unit_tests" >::: fvc
+(* pair_tests @ oom @ gc @ input *)
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
