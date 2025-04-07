@@ -78,7 +78,7 @@ let tfvsc name program expected =
   let ast = parse_string name program in
   let anfed = anf (tag ast) in
   let cached = free_vars_cache anfed in
-  let printer = (string_of_aprogram_with 100 string_of_set) in
+  let printer = string_of_aprogram_with 100 string_of_set in
   assert_equal (printer expected) (printer cached) ~printer:(fun x -> x)
 ;;
 
@@ -162,10 +162,10 @@ let fvc =
                                       ImmId ("z", set ["z"]),
                                       set ["z"; "binop_8"] ) ),
                                set ["a"; "x"; "z"] ),
-                           empty ),
+                           set ["x"; "z"] ),
                        ACExpr (CImmExpr (ImmId ("lam_6", set ["lam_6"]))),
-                       empty ),
-                   set ["w"; "x"; "y"; "z"] ),
+                       set ["x"; "z"] ),
+                   empty ),
                ALet
                  ( "foo",
                    CImmExpr (ImmId ("lam_5", set ["lam_5"])),
@@ -187,8 +187,8 @@ let fvc =
                               set ["app_19"] ) ),
                        set ["foo"] ),
                    set ["lam_5"] ),
-               set ["w"; "x"; "y"; "z"] ),
-           set ["w"; "x"; "y"; "z"] ) );
+               empty ),
+           empty ) );
     tfvsc "full_prog1" "let foo = true in foo"
       (AProgram
          ( ALet
