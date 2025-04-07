@@ -911,7 +911,7 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : StringSet.t apr
   let rec helpI (e : 'a immexpr) : StringSet.t immexpr * StringSet.t =
     match e with
     (* FV[x] = {x} *)
-    | ImmId (id, _) -> ImmId (id, StringSet.singleton id), (StringSet.singleton id)
+    | ImmId (id, _) -> (ImmId (id, StringSet.singleton id), StringSet.singleton id)
     (* FV[num] = {} *)
     | ImmNum (n, _) -> (ImmNum (n, empty), empty)
     | ImmBool (b, _) -> (ImmBool (b, empty), empty)
@@ -919,13 +919,13 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : StringSet.t apr
   and helpC (e : 'a cexpr) : StringSet.t cexpr * StringSet.t =
     match e with
     | CIf (cond, thn, els, _) ->
-        let new_cond, free_cond = helpI cond  in
+        let new_cond, free_cond = helpI cond in
         let new_thn, free_thn = helpA thn in
         let new_els, free_els = helpA els in
         let free = free_cond |> u free_thn |> u free_els in
         (CIf (new_cond, new_thn, new_els, free), free)
     | CPrim1 (op, expr, _) ->
-        let new_expr, free = helpI expr  in
+        let new_expr, free = helpI expr in
         (CPrim1 (op, new_expr, free), free)
     | CPrim2 (op, left, right, _) ->
         let new_left, free_left = helpI left in
@@ -961,46 +961,48 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : StringSet.t apr
         let free = free_idx |> u free_tup in
         (CGetItem (new_tup, new_idx, free), free)
     | CSetItem (tup, idx, new_elem, _) ->
-      let new_tup, free_tup = helpI tup in
+        let new_tup, free_tup = helpI tup in
         let new_idx, free_idx = helpI idx in
         let new_val, free_val = helpI new_elem in
         let free = free_idx |> u free_tup |> u free_val in
         (CSetItem (new_tup, new_idx, new_val, free), free)
     (* FV[lam(x): b] = FV[b] ∖ {x} *)
-    | CLambda (ids, body, _) -> 
-      let new_body, free_body = helpA body in
-      let free = free_body |> d (StringSet.of_list ids) in
-      CLambda (ids, new_body, free), free
+    | CLambda (ids, body, _) ->
+        let new_body, free_body = helpA body in
+        let free = free_body |> d (StringSet.of_list ids) in
+        (CLambda (ids, new_body, free), free)
   and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
-    | ASeq (first, next, _) -> 
-      let new_first, free_first = helpC first in
-      let new_next, free_next = helpA next in
-      let free = free_first |> u free_next in
-      ASeq (new_first, new_next, free), free
+    | ASeq (first, next, _) ->
+        let new_first, free_first = helpC first in
+        let new_next, free_next = helpA next in
+        let free = free_first |> u free_next in
+        (ASeq (new_first, new_next, free), free)
     (* FV[let x = e in b] = FV[e] ∪ (FV[b] ∖ {x}) *)
     | ALet (name, bound, body, _) ->
-      let new_bound, free_bound = helpC bound in
-      let new_body, free_body = helpA body in
-      let free = free_bound |> u (StringSet.remove name free_body) in
-      ALet (name, new_bound, new_body, free), free
+        let new_bound, free_bound = helpC bound in
+        let new_body, free_body = helpA body in
+        let free = free_bound |> u (StringSet.remove name free_body) in
+        (ALet (name, new_bound, new_body, free), free)
     (* FV[let rec x = e in b] = (FV[e] ∪ FV[b]) ∖ {x} *)
     | ALetRec (binds, body, _) ->
         let new_binds, free_binds =
-        (* This fold means that LetRec free variables are unidirectional!
-         * Mutual recursion is not possible!
-         *)
+          (* This fold means that LetRec free variables are unidirectional!
+           * Mutual recursion is not possible!
+           *)
           List.fold_left
             (fun (acc, free) (name, cexpr) ->
-              let new_bound, free_bound = helpC cexpr  in
+              let new_bound, free_bound = helpC cexpr in
               ((name, new_bound) :: acc, free_bound |> u free) )
             ([], StringSet.empty) binds
         in
         let new_body, free_body = helpA body in
         let free = free_body |> u free_binds in
         let free = StringSet.diff free (StringSet.of_list (List.map fst binds)) in
-        ALetRec(new_binds, new_body, free), free
-    | ACExpr cexpr -> let new_c, free  = (helpC cexpr) in ACExpr new_c, free
+        (ALetRec (new_binds, new_body, free), free)
+    | ACExpr cexpr ->
+        let new_c, free = helpC cexpr in
+        (ACExpr new_c, free)
   in
   let new_body, free_body = helpA body in
   AProgram (new_body, free_body)
@@ -1137,6 +1139,50 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
 ;;
 
 (* IMPLEMENT THE BELOW *)
+let empty = StringSet.empty
+
+(* TODO: Clean up duplicated code *)
+
+(* https://course.ccs.neu.edu/cs4410/lec_register-alloc_notes.html#%28part._.Liveness_analysis_for_expression-based_languages%29 *)
+let rec live_in (s : 'a aexpr) : StringSet.t = 
+  match s with
+  | ALet (x, e, b, _) -> (free_vars (ACExpr e) |> u (free_vars b)) |> d (StringSet.singleton x)
+  | ALetRec _ ->
+
+and def (e : 'a aexpr) : StringSet.t =
+  let rec helpC e =
+    match e with
+    | CIf (_, th, el, _) -> def th |> u (def el)
+    | CLambda (args, b, _) -> (StringSet.of_list args) |> u (def b)
+    | _ -> empty
+  in
+  match e with
+  | ASeq (_, b, _) -> def b
+  | ALet (id, _, b, _) -> StringSet.add id (def b)
+  | ALetRec (binds, body, _) -> let ids, _ = List.split binds in StringSet.of_list ids |> u (def body) 
+  | ACExpr c -> helpC c
+
+and use (e : 'a aexpr) : StringSet.t =
+  let rec helpI e =
+    match e with
+    | ImmId (id, _) -> StringSet.singleton id
+    | _ -> empty
+  and helpC e =
+    match e with
+    | CImmExpr a | CPrim1 (_, a, _) -> helpI a
+    | CPrim2 (_, a, b, _) | CGetItem (a, b, _) -> helpI a |> u (helpI b)
+    | CIf (a, b, c, _) -> helpI a |> u (use b) |> u (use c)
+    | CSetItem (a, b, c, _) -> helpI a |> u (helpI b) |> u (helpI c)
+    | CLambda (_, a, _) -> use a
+    | CApp (f, args, _, _) -> List.fold_left (fun acc i -> helpI i |> u acc) (helpI f) args
+    | CTuple (items, _) -> List.fold_left (fun acc i -> helpI i |> u acc) empty items
+  in
+  match e with
+  | ASeq (a, b, _) | ALet (_, a, b, _) -> helpC a |> u (use b)
+  | ALetRec (binds, body, _) -> List.fold_left (fun acc (_, c) -> helpC c |> u acc) (use body) binds
+  | ACExpr c -> helpC c
+
+and live_out (s : 'a aexpr) : StringSet.t = raise (NotYetImplemented "live_out")
 
 let interfere (e : StringSet.t aexpr) (live : StringSet.t) : grapht =
   raise (NotYetImplemented "Generate interference graphs from expressions for racer")
