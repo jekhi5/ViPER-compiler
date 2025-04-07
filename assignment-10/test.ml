@@ -78,7 +78,8 @@ let tfvsc name program expected =
   let ast = parse_string name program in
   let anfed = anf (tag ast) in
   let cached = free_vars_cache anfed in
-  assert_equal expected cached ~printer:(string_of_aprogram_with 100 string_of_set)
+  let printer = (string_of_aprogram_with 100 string_of_set) in
+  assert_equal (printer expected) (printer cached)
 ;;
 
 let builtins_size =
@@ -133,7 +134,8 @@ let gc =
 
 let fvc =
   [ tfvsc "nested_lambda"
-      "let foo = (lambda(w, x, y, z):\n\
+      "let \n\
+      \    foo = (lambda(w, x, y, z):\n\
       \             (lambda(a): a + x + z))\n\
       \ in\n\
       \    foo(1, 2, 3, 4)(5)"
