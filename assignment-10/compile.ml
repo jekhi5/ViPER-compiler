@@ -1143,7 +1143,11 @@ let empty = StringSet.empty
 
 (* TODO: Clean up duplicated code *)
 
-let get_free_from_cache (expr : StringSet.t aexpr) : StringSet.t =
+let get_cache (expr : StringSet.t aexpr) : StringSet.t =
+  let helpI (imm_expr : StringSet.t immexpr) : StringSet.t =
+    match imm_expr with
+    | ImmNum (_, c) | ImmBool (_, c) | ImmId (_, c) | ImmNil c -> c
+  in
   let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
     match cexpr with
     | CIf (_, _, _, cache)
@@ -1155,54 +1159,118 @@ let get_free_from_cache (expr : StringSet.t aexpr) : StringSet.t =
      |CLambda (_, _, cache)
      |CApp (_, _, _, cache)
      |CImmExpr (ImmId (_, cache)) -> cache
-    | CImmExpr _ -> empty
+    | CImmExpr thing -> helpI thing
   in
   match expr with
   | ASeq (_, _, cache) | ALet (_, _, _, cache) | ALetRec (_, _, cache) -> cache
   | ACExpr cexpr -> helpC cexpr
 ;;
 
-let rec compute_live_in (expr : StringSet.t aexpr) : StringSet.t =
-  let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
+let rec compute_live_in (expr : StringSet.t aexpr) (prior_live_out : StringSet.t) :
+    StringSet.t aexpr =
+  let helpI (imm_expr : StringSet.t immexpr) (prior_live_out : StringSet.t) : StringSet.t immexpr =
+    match imm_expr with
+    | ImmNum (num, _) -> ImmNum (num, prior_live_out)
+    | ImmBool (bool, _) -> ImmBool (bool, prior_live_out)
+    | ImmId (id, _) -> ImmId (id, prior_live_out |> u (StringSet.singleton id))
+    | ImmNil _ -> ImmNil prior_live_out
+  in
+  let helpC (cexpr : StringSet.t cexpr) : StringSet.t cexpr =
     match cexpr with
     | CIf (cond, thn, els, _) ->
-        let free_cond = get_free_from_cache (ACExpr (CImmExpr cond)) in
         let thn_out = compute_live_out thn in
         let els_out = compute_live_out els in
-        let free_thn = get_free_from_cache thn in
-        let free_els = get_free_from_cache els in
-        thn_out |> u els_out |> u free_thn |> u free_els |> u free_cond
-    | CImmExpr imm_expr -> get_free_from_cache (ACExpr (CImmExpr imm_expr))
+        let free_thn = get_cache thn in
+        let free_els = get_cache els in
+        let live_cond = helpI cond prior_live_out in
+        let live_cond_set = get_cache (ACExpr (CImmExpr cond)) |> u prior_live_out in
+        let live_thn = compute_live_in thn live_cond_set in
+        let live_els = compute_live_in els live_cond_set in
+        let live_set = thn_out |> u els_out |> u free_thn |> u free_els |> u live_cond_set in
+        CIf (live_cond, live_thn, live_els, live_set)
+    | CImmExpr imm_expr -> CImmExpr (helpI imm_expr prior_live_out)
     | CLambda (args, body, _) ->
-        let free_body = get_free_from_cache body in
+        let free_body = get_cache body in
         let live_out_body = compute_live_out body in
         let args_set = StringSet.of_list args in
-        d (free_body |> u live_out_body) args_set
-    | CPrim1 (_, _, cache)
-     |CPrim2 (_, _, _, cache)
-     |CApp (_, _, _, cache)
-     |CTuple (_, cache)
-     |CGetItem (_, _, cache)
-     |CSetItem (_, _, _, cache) -> cache
+        let live_body = compute_live_in body prior_live_out in
+        let live_set = d (free_body |> u live_out_body |> u prior_live_out) args_set in
+        CLambda (args, live_body, live_set)
+    | CPrim1 (op, thing, _) ->
+        let live_thing = helpI thing prior_live_out in
+        let live_in = get_cache (ACExpr (CImmExpr live_thing)) |> u prior_live_out in
+        CPrim1 (op, live_thing, live_in)
+    | CPrim2 (op, left, right, _) ->
+        let live_left = helpI left prior_live_out in
+        let live_right = helpI right prior_live_out in
+        let live_in =
+          get_cache (ACExpr (CImmExpr live_left)) |> u (get_cache (ACExpr (CImmExpr live_right)))
+        in
+        CPrim2 (op, live_left, live_right, live_in)
+    | CApp (func, args, call_type, _) ->
+        let live_func = helpI func prior_live_out in
+        let live_func_out = get_cache (ACExpr (CImmExpr live_func)) in
+        let last_arg_out, live_args =
+          List.fold_left
+            (fun ((prior_context : StringSet.t), new_args) arg ->
+              let new_arg = helpI arg prior_context in
+              let new_context = get_cache (ACExpr (CImmExpr new_arg)) in
+              (new_context, new_args @ [new_arg]) )
+            (live_func_out, []) args
+        in
+        (* TODO: Is this right? *)
+        CApp (live_func, live_args, call_type, last_arg_out)
+    | CTuple (elems, _) ->
+        let last_elem_out, live_elems =
+          List.fold_left
+            (fun ((prior_context : StringSet.t), new_elems) elem ->
+              let new_elem = helpI elem prior_context in
+              let new_context = get_cache (ACExpr (CImmExpr new_elem)) in
+              (new_context, new_elems @ [new_elem]) )
+            (prior_live_out, []) elems
+        in
+        CTuple (live_elems, last_elem_out)
+    | CGetItem (tup, idx, _) ->
+        let live_tup = helpI tup prior_live_out in
+        let live_idx = helpI idx prior_live_out in
+        let live_in =
+          get_cache (ACExpr (CImmExpr live_tup)) |> u (get_cache (ACExpr (CImmExpr live_idx)))
+        in
+        CGetItem (live_tup, live_idx, live_in)
+    | CSetItem (tup, idx, new_elem, cache) ->
+        let live_tup = helpI tup prior_live_out in
+        let live_idx = helpI idx prior_live_out in
+        let live_new_elem = helpI new_elem prior_live_out in
+        let live_in =
+          get_cache (ACExpr (CImmExpr live_tup))
+          |> u (get_cache (ACExpr (CImmExpr live_idx)))
+          |> u (get_cache (ACExpr (CImmExpr live_new_elem)))
+        in
+        CSetItem (live_tup, live_idx, live_new_elem, live_in)
   in
   match expr with
-  | ASeq (first, next, _) -> get_free_from_cache (ACExpr first) |> u (get_free_from_cache next)
+  | ASeq (first, next, _) ->
+      let live_first = helpC first prior_live_out in
+      let live_out_first = compute_live_out live_first in
+      let live_next = compute_live_in next (get_cache live_out_first) in
+      let live_in = get_cache (ACExpr live_first) |> u (get_cache live_next) in
+      ASeq (live_first, live_next, live_in)
   | ALet (x, e, b, _) ->
-      let free_e = get_free_from_cache (ACExpr e) in
-      let free_b = get_free_from_cache b in
+      let free_e = get_cache (ACExpr e) in
+      let free_b = get_cache b in
       let live_out_b = compute_live_out b in
       d (free_e |> u free_b |> u live_out_b) (StringSet.singleton x)
   | ALetRec (bindings, body, _) ->
       let names, bounds = List.split bindings in
       let free_bounds =
-        List.fold_left (fun acc bound -> get_free_from_cache (ACExpr bound) |> u acc) empty bounds
+        List.fold_left (fun acc bound -> get_cache (ACExpr bound) |> u acc) empty bounds
       in
       let names_set = StringSet.of_list names in
-      let free_body = get_free_from_cache body in
+      let free_body = get_cache body in
       d (free_body |> u free_bounds |> u (compute_live_out body)) names_set
   | ACExpr cexpr -> helpC cexpr
 
-and compute_live_out (expr : StringSet.t aexpr) : StringSet.t =
+and compute_live_out (expr : StringSet.t aexpr) : StringSet.t aexpr =
   let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
     match cexpr with
     | CIf (_, thn, els, _) -> compute_live_in thn |> u (compute_live_in els)

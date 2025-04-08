@@ -323,7 +323,9 @@ let live_in =
       \                      b else: 6 \n\
       \     in\n\
       \      x"
-      ["x"] ]
+      [];
+    tli "let_sub_expr" "let y = (if true: (let b = 5 in b) else: 6) in y" [];
+    tli "let" "let x = 5 in a + b" ["a"; "b"] ]
 ;;
 
 let live_out = []
