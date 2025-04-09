@@ -330,6 +330,37 @@ let live_in =
 
 let live_out = []
 
+let tc name given expected =
+  name >:: fun _ ->
+    assert_equal
+      (color_graph given [])
+      (assoc_to_map expected)
+
+let graph (nodes : (string * string list) list) =
+  List.fold_left (fun g (node, neighbors) -> List.fold_left (g' n -> add_edge g' node n) g neighbors) Graph.empty nodes
+
+let g1 = graph [
+  ("a" -> ["b"; "c"; "d"; "e"; "f"])
+
+let g2 = graph [
+  ("a" -> ["b"; "c"; "d"; "e"; "f"; "g"; "h"]);
+  ("b" -> ["a"; "c"; "d"; "e"; "f"; "g"; "h"]);
+  ("c" -> ["b"; "a"; "d"; "e"; "f"; "g"; "h"]);
+  ("d" -> ["b"; "c"; "a"; "e"; "f"; "g"; "h"]);
+  ("e" -> ["b"; "c"; "d"; "a"; "f"; "g"; "h"]);
+  ("f" -> ["b"; "c"; "d"; "e"; "a"; "g"; "h"]);
+  ("g" -> ["b"; "c"; "d"; "e"; "f"; "a"; "h"]);
+  ("h" -> ["b"; "c"; "d"; "e"; "f"; "g"; "a"]);
+]
+
+
+let color_graph = [
+  tc "hubwheel" g1 [("a", Reg R10); ("b", Reg R11); ("c", Reg R11); ("d", Reg R11); ("e", Reg R11); ("f", Reg R11);
+  tc "stack_spill" g1 [("a", Reg R10); ("b", Reg R11); ("c", Reg R12); ("d", Reg R13); ("e", Reg R14); ("f", Reg R15); ("g", RegOffset(~-8, RBP)); ("h", RegOffset(~-16, RBP));
+  
+  ]  
+]
+
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
 let suite = "unit_tests" >::: fvc @ nsa @ ra @ live_in @ live_out
