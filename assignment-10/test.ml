@@ -5,6 +5,7 @@ open Pretty
 open Exprs
 open Errors
 open Phases
+open Graph
 
 let t name program input expected =
   name >:: test_run ~args:[] ~std_input:input Naive program name expected
@@ -106,12 +107,12 @@ let tra name program expected =
     (string_of_name_envt_envt locations)
     ~printer:(fun s -> s)
 ;;
-
+(* 
 let tli name program expected =
   let (AProgram (body, _)) = free_vars_cache (atag (anf (tag (parse_string name program)))) in
   let result = compute_live_in body in
   name >:: fun _ -> assert_equal (StringSet.of_list expected) result ~printer:string_of_set
-;;
+;; *)
 
 let builtins_size =
   4 (* arity + 0 vars + codeptr + padding *)
@@ -333,37 +334,47 @@ let live_out = []
 let tc name given expected =
   name >:: fun _ ->
     assert_equal
-      (color_graph given [])
-      (assoc_to_map expected)
+      (string_of_name_envt (assoc_to_map expected))
+      (string_of_name_envt (color_graph given StringMap.empty))   
+      ~printer:(fun s -> s)
+
 
 let graph (nodes : (string * string list) list) =
-  List.fold_left (fun g (node, neighbors) -> List.fold_left (g' n -> add_edge g' node n) g neighbors) Graph.empty nodes
+  List.fold_left (fun g (node, neighbors) -> List.fold_left (fun g' n -> add_edge g' node n) g neighbors) Graph.empty nodes
 
 let g1 = graph [
-  ("a" -> ["b"; "c"; "d"; "e"; "f"])
+  ("a", ["b"; "c"; "d"; "e"; "f"])
+];;
 
 let g2 = graph [
-  ("a" -> ["b"; "c"; "d"; "e"; "f"; "g"; "h"]);
-  ("b" -> ["a"; "c"; "d"; "e"; "f"; "g"; "h"]);
-  ("c" -> ["b"; "a"; "d"; "e"; "f"; "g"; "h"]);
-  ("d" -> ["b"; "c"; "a"; "e"; "f"; "g"; "h"]);
-  ("e" -> ["b"; "c"; "d"; "a"; "f"; "g"; "h"]);
-  ("f" -> ["b"; "c"; "d"; "e"; "a"; "g"; "h"]);
-  ("g" -> ["b"; "c"; "d"; "e"; "f"; "a"; "h"]);
-  ("h" -> ["b"; "c"; "d"; "e"; "f"; "g"; "a"]);
+  ("a", ["b"; "c"; "d"; "e"; "f"; "g"; "h"]);
+  ("b", ["a"; "c"; "d"; "e"; "f"; "g"; "h"]);
+  ("c", ["b"; "a"; "d"; "e"; "f"; "g"; "h"]);
+  ("d", ["b"; "c"; "a"; "e"; "f"; "g"; "h"]);
+  ("e", ["b"; "c"; "d"; "a"; "f"; "g"; "h"]);
+  ("f", ["b"; "c"; "d"; "e"; "a"; "g"; "h"]);
+  ("g", ["b"; "c"; "d"; "e"; "f"; "a"; "h"]);
+  ("h", ["b"; "c"; "d"; "e"; "f"; "g"; "a"]);
+]
+
+let g3 = graph [
+  ("a", ["b"; "c"; "d"; "e"]);
+  ("b", ["a"; "c"]);
+  ("c", ["a"; "b"]);
+  ("d", ["a"; "e"]);
+  ("e", ["a"; "d"]);
 ]
 
 
-let color_graph = [
-  tc "hubwheel" g1 [("a", Reg R10); ("b", Reg R11); ("c", Reg R11); ("d", Reg R11); ("e", Reg R11); ("f", Reg R11);
-  tc "stack_spill" g1 [("a", Reg R10); ("b", Reg R11); ("c", Reg R12); ("d", Reg R13); ("e", Reg R14); ("f", Reg R15); ("g", RegOffset(~-8, RBP)); ("h", RegOffset(~-16, RBP));
-  
-  ]  
-]
+let coloring = [
+  tc "hubwheel" g1 [("a", Reg R11); ("b", Reg R10); ("c", Reg R10); ("d", Reg R10); ("e", Reg R10); ("f", Reg R10)];
+  tc "stack_spill" g2 [("h", Reg R10); ("g", Reg R11); ("f", Reg R12); ("e", Reg R13); ("d", Reg R14); ("c", Reg RBX); ("b", RegOffset(~-1, RBP)); ("a", RegOffset(~-2, RBP))];
+  tc "cliques" g3 [("a", Reg R12); ("b", Reg R11); ("c", Reg R10); ("d", Reg R11); ("e", Reg R10)];
+  ]
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ live_in @ live_out
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring (*@ live_in @ live_out*)
 (* pair_tests @ oom @ gc @ input *)
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

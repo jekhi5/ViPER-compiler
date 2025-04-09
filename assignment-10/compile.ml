@@ -1382,7 +1382,7 @@ let interfere (e : StringSet.t aexpr) (live : StringSet.t) : grapht =
 
 let colors = List.map (fun x -> Reg x) [R10; R11; R12; R13; R14; RBX]
 
-let color_graph (g : grapht) (init_env : arg name_envt) : arg name_envt =
+let color_graph ?colors:(colors = colors) (g : grapht) (init_env : arg name_envt) : arg name_envt =
   (* Get the node with the smallest degree. *)
   let rec worklist (gw : grapht) (stack : string list) : string list =
     match smallest_degree gw with
@@ -1395,7 +1395,7 @@ let color_graph (g : grapht) (init_env : arg name_envt) : arg name_envt =
     in
     let next_offset =
       (* Remember to use -8 and `min` because the offsets grow downward. *)
-      ~-8
+      ~-1
       + List.fold_left
           (fun acc arg ->
             match arg with
