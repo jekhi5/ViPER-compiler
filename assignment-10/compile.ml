@@ -1321,8 +1321,46 @@ let interfere (e : StringSet.t aexpr) (live : StringSet.t) : grapht =
   raise (NotYetImplemented "Generate interference graphs from expressions for racer")
 ;;
 
+let colors = List.map (fun x -> Reg x) [R10; R11; R12; R13; R14; RBX]
+
 let color_graph (g : grapht) (init_env : arg name_envt) : arg name_envt =
-  raise (NotYetImplemented "Implement graph coloring for racer")
+  (* Get the node with the smallest degree. *)
+  let rec worklist (gw : grapht) (stack : string list) : string list =
+    match smallest_degree gw with
+    | None -> stack
+    | Some node -> worklist (remove_node gw node) (node :: stack)
+  in
+  let next_color (nodes : neighborst) (mapping : arg name_envt) : arg =
+    let allocated =
+      List.filter_map (fun node -> StringMap.find_opt node mapping) (NeighborSet.to_list nodes)
+    in
+    let next_offset =
+      (* Remember to use -8 and `min` because the offsets grow downward. *)
+      ~-8
+      + List.fold_left
+          (fun acc arg ->
+            match arg with
+            | RegOffset (n, _) -> min n acc
+            | _ -> acc )
+          0 allocated
+    in
+    let next_register = List.find_opt (fun color -> not (List.mem color allocated)) colors in
+    match next_register with
+    | None -> RegOffset (next_offset, RBP)
+    | Some arg -> arg
+  in
+  let rec color_nodes (stack : string list) (mapping : arg name_envt) : arg name_envt =
+    match stack with
+    | [] -> mapping
+    | node :: rest ->
+        if StringMap.mem node mapping then
+          raise (InternalCompilerError "Re-coloring a node??")
+        else
+          let neighbors = Graph.find node g in
+          let color = next_color neighbors mapping in
+          color_nodes rest (StringMap.add node color mapping)
+  in
+  color_nodes (worklist g []) init_env
 ;;
 
 let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
