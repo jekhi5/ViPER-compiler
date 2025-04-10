@@ -6,6 +6,7 @@ open Exprs
 open Errors
 open Phases
 open Graph
+open Assembly
 
 let t name program input expected =
   name >:: test_run ~args:[] ~std_input:input Naive program name expected
@@ -378,16 +379,16 @@ let coloring =
         ("e", Reg R10);
         ("f", Reg R10) ];
     tc "stack_spill" g2
-      [ ("h", Reg R10);
-        ("g", Reg R11);
-        ("f", Reg R12);
-        ("e", Reg R13);
-        ("d", Reg R14);
-        ("c", Reg RBX);
-        ("b", RegOffset (~-1, RBP));
-        ("a", RegOffset (~-2, RBP)) ];
-    tc "stack_spill2" ~colors:[] g1 [];
-    tc "cliques" g3 [("a", Reg R12); ("b", Reg R11); ("c", Reg R10); ("d", Reg R11); ("e", Reg R10)]
+      [ ("a", Reg R10);
+        ("b", Reg R11);
+        ("c", Reg R12);
+        ("d", Reg R13);
+        ("e", Reg R14);
+        ("f", Reg RBX);
+        ("g", RegOffset (~-1, RBP));
+        ("h", RegOffset (~-2, RBP)) ];
+    tc "stack_spill2" ~colors:[Reg R10] g1 [("a", RegOffset (~-1, RBP)); ("b", Reg R10); ("c", Reg R10); ("d", Reg R10); ("e", Reg R10); ("f", Reg R10)];
+    tc "cliques" g3 [("a", Reg R12); ("b", Reg R10); ("c", Reg R11); ("d", Reg R10); ("e", Reg R11)]
   ]
 ;;
 
@@ -411,20 +412,24 @@ let tigc name program expected =
   assert_equal (string_of_name_envt expected) (string_of_name_envt g) ~printer:(fun s -> s)
 ;;
 
+let empty = StringMap.empty
 let interf =
-  [ tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
-      (assoc_to_map [("x", Assembly.Reg R10); ("y", Reg R10)]);
-    (* Why can't OCaml find the `Reg` constructor unless we specify `Assembly` at least once? *)
-    tigc "let1" "let a = 1, b = 2, c = 3 in 4"
-      (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R10); ("c", Reg R10)]);
-    tig "let2" "let a = 1, b = 2, c = 3 in b" Graph.empty; 
-      (* (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R10); ("c", Reg R11)]); *)
-    tigc "let3" "let a = 1, b = a, c = a in c"
-      (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R11); ("c", Reg R11)]);
-    tig "let4" "let a = 1, b = a, c = b in c" Graph.empty;
-      (* (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R11); ("c", Reg R10)]); *)
+  [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R10); ("b", Reg R11)]);
     
-    tigc "adder1" "add1(add1(add1(add1(add1(add1(5))))))" Graph.empty
+    tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
+      (assoc_to_map [("x", Reg R10); ("y", Reg R10)]);
+    
+    tigc "let1" "let a = 1, b = 2, c = 3 in 4"
+      (assoc_to_map [("a", Reg R10); ("b", Reg R10); ("c", Reg R10)]);
+    tigc "let2" "let a = 1, b = 2, c = 3 in b" (assoc_to_map [("a", Reg R10); ("b", Reg R10); ("c", Reg R11)]);
+    tigc "let3" "let a = 1, b = a, c = a in c"
+      (assoc_to_map [("a", Reg R11); ("b", Reg R10); ("c", Reg R10)]);
+    tigc "let4" "let a = 1, b = a, c = b in c" (assoc_to_map [("a", Reg R10); ("b", Reg R11); ("c", Reg R10)]);
+    
+    (* Only uses 1 register *)
+    tigc "adder1" "add1(5)" empty;
+    (* Uses 2 registers *)
+    tigc "adder2" "add1(add1(add1(add1(5))))" (assoc_to_map [("unary_3", Reg R10); ("unary_4", Reg R11); ("unary_5", Reg R10); ]) 
       
       ]
 ;;

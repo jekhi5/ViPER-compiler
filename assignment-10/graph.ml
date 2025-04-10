@@ -83,7 +83,7 @@ let merge_graphs (g1 : grapht) (g2 : grapht) : grapht =
   Graph.union (fun _ (set1 : neighborst) (set2 : neighborst) -> Some (NeighborSet.union set1 set2)) g1 g2
 
 let connect (node : string) (nodes : neighborst) (g : grapht) : grapht =
-  StringSet.fold (fun n g' -> add_edge g' node n) nodes g
+  StringSet.fold (fun n g' -> add_edge g' node n) (NeighborSet.remove node nodes) g
 
 let connect2 nodes1 nodes2 g : grapht =
   StringSet.fold (fun n g' -> connect n nodes2 g') nodes1 g

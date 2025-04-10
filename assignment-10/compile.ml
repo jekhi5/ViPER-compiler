@@ -1042,8 +1042,10 @@ let get_nested outer_key inner_key envt_envt =
 ;;
 
 let string_of_name_envt env =
-  "\n" ^ ExtString.String.join "\n"
-    (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env)) ^ "\n"
+  "\n"
+  ^ ExtString.String.join "\n"
+      (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env))
+  ^ "\n"
 ;;
 
 let safe_find_opt ?callee_tag:(addn = "") key map =
@@ -1381,14 +1383,19 @@ and use (e : 'a aexpr) : StringSet.t =
 
 and live_in_program (AProgram (body, _)) = AProgram (compute_live_in body empty, empty)
 
+let string_of_set s =
+  "(" ^ List.fold_left (fun acc str -> acc ^ ", " ^ str) "" (StringSet.to_list s) ^ ")"
+;;
+
 (* Consumes an AExpr tagged with sets of live variables *)
 let interfere (e : livevars aexpr) : grapht =
   let rec helpA e g =
     match e with
     | ASeq (_, next, l) ->
-      let g' = add_nodes g (StringSet.to_list l) in
-      helpA next (connect_set l g')
+        let g' = add_nodes g (StringSet.to_list l) in
+        helpA next (connect_set l g')
     | ALet (x, _, b, l) ->
+        (* printf "\n%s\n" (string_of_set l); *)
         let g' = add_node g x in
         let g' = add_nodes g' (StringSet.to_list l) in
         let connected = connect_set l g' in
@@ -1402,9 +1409,9 @@ let interfere (e : livevars aexpr) : grapht =
         let connected_set = connect_set l connected_names in
         let all_connected = connect2 names l connected_set in
         helpA b all_connected
-    | ACExpr (CIf (_, thn, els, l)) -> 
-      let g' = add_nodes g (StringSet.to_list l) in
-      helpA thn (helpA els (connect_set l g'))
+    | ACExpr (CIf (_, thn, els, l)) ->
+        let g' = add_nodes g (StringSet.to_list l) in
+        helpA thn (helpA els (connect_set l g'))
     | _ -> g
   in
   helpA e Graph.empty
@@ -1424,7 +1431,7 @@ let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg
       List.filter_map (fun node -> StringMap.find_opt node mapping) (NeighborSet.to_list nodes)
     in
     let next_offset =
-      (* Remember to use -8 and `min` because the offsets grow downward. *)
+      (* Remember to use -1 and `min` because the offsets grow downward. *)
       ~-1
       + List.fold_left
           (fun acc arg ->
@@ -1439,15 +1446,12 @@ let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg
     | Some arg -> arg
   in
   let rec color_nodes (stack : string list) (mapping : arg name_envt) : arg name_envt =
-    match stack with
-    | [] -> mapping
-    | node :: rest ->
-        if StringMap.mem node mapping then
-          raise (InternalCompilerError "Re-coloring a node??")
-        else
-          let neighbors = Graph.find node g in
-          let color = next_color neighbors mapping in
-          color_nodes rest (StringMap.add node color mapping)
+    List.fold_right
+      (fun node mapping' ->
+        let neighbors = Graph.find node g in
+        let color = next_color neighbors mapping' in
+        StringMap.add node color mapping' )
+       stack mapping
   in
   color_nodes (worklist g []) init_env
 ;;
