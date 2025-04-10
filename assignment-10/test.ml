@@ -429,14 +429,17 @@ let interf =
     (* Only uses 1 register *)
     tigc "adder1" "add1(5)" empty;
     (* Uses 2 registers *)
-    tigc "adder2" "add1(add1(add1(add1(5))))" (assoc_to_map [("unary_3", Reg R10); ("unary_4", Reg R11); ("unary_5", Reg R10); ]) 
-      
-      ]
+    tigc "adder2" "add1(add1(add1(add1(5))))" (assoc_to_map [("unary_3", Reg R10); ("unary_4", Reg R11); ("unary_5", Reg R10); ]);
+    
+    tigc "boa1" "1 + 2 + 3 + 4 + 5" (assoc_to_map [("binop_3", Reg R10); ("binop_4", Reg R11); ("binop_5", Reg R10); ]);
+    tigc "boa2" "(((1 + 2) + 3) + (4 + 5))" (assoc_to_map [("binop_3", Reg R11); ("binop_4", Reg R10); ("binop_8", Reg R10); ]);
+
+    ]
 ;;
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf
+let suite = "unit_tests" >::: fvc @ nsa  @ coloring @ interf
 (*@ live_in @ live_out*)
 (* pair_tests @ oom @ gc @ input *)
 

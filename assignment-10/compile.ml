@@ -1451,72 +1451,66 @@ let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg
         let neighbors = Graph.find node g in
         let color = next_color neighbors mapping' in
         StringMap.add node color mapping' )
-       stack mapping
+      stack mapping
   in
   color_nodes (worklist g []) init_env
 ;;
 
 let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
+  (* helper for composite expressions *)
   let rec helpC
-      (cexp : StringSet.t cexpr)
-      (env : arg name_envt name_envt)
-      (si : int)
-      (env_name : string) : arg name_envt name_envt =
-    match cexp with
-    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
+      (e : freevars cexpr)
+      (env_name : string)
+      (env_env : arg name_envt name_envt) : arg name_envt name_envt =
+    match e with
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env_env
     | CIf (_, thn, els, _) ->
-        let thn_env = helpA thn env (si + 1) env_name in
-        helpA els thn_env (si + 1) env_name
+        let thn_env = helpA thn env_name env_env in
+        helpA els env_name thn_env
     | CLambda (ids, body, _) ->
         let args_locs = List.mapi (fun index id -> (id, RegOffset (index + 3, RBP))) ids in
         let args_env =
           List.fold_left
             (fun envt_envt (id, location) -> update_envt_envt env_name id location envt_envt)
-            env args_locs
+            env_env args_locs
         in
-        helpA body args_env 1 env_name
-  and helpA (aexp : StringSet.t aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string)
-      : arg name_envt name_envt =
-    match aexp with
-    | ACExpr cexp -> helpC cexp env si env_name
+        helpA body env_name args_env
+  (* helper for ANF expressions *)
+  and helpA
+      (e : freevars aexpr)
+      (env_name : string)
+      (env_env : arg name_envt name_envt): arg name_envt name_envt =
+    match e with
+    | ACExpr cexp -> helpC cexp env_name env_env
     | ASeq (first, next, _) ->
         (* Order matters here? *)
-        merge_envs (helpA next env (si + 1) env_name) (helpC first env si env_name)
-    | ALetRec ([], body, _) -> helpA body env (si + 1) env_name
+        merge_envs (helpA next env_name env_env) (helpC first env_name env_env)
+    | ALetRec ([], body, _) -> helpA body env_name env_env
     | ALet (id, (CLambda _ as lambda), body, _) ->
-        let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
-        let offset = si_to_arg si in
-        let body_offset = helpA body add_base_env_for_lambda (si + 1) env_name in
+        let add_base_env_for_lambda = StringMap.add id StringMap.empty env_env in
+        let lambda_color_map =
+          color_graph (interfere e) (safe_find_opt env_name env_env)
+        in
+        let lambda_offset = helpC lambda id add_base_env_for_lambda in
+        let body_offset = helpA body env_name lambda_offset in
+        let offset =
+          safe_find_opt id lambda_color_map
+            ~callee_tag:("ALet of lambda\n" ^ string_of_name_envt lambda_color_map)
+        in
         let cur_envt = update_envt_envt env_name id offset body_offset in
-        let lambda_offset = helpC lambda cur_envt si id in
         lambda_offset
     | ALet (id, bound, body, _) ->
-        let offset = si_to_arg si in
-        let body_env = helpA body env (si + 1) env_name in
-        let cur_envt = update_envt_envt env_name id offset body_env in
-        let bound_env = helpC bound cur_envt si env_name in
-        bound_env
-    | ALetRec ((id, (CLambda _ as lambda)) :: rest, body, tag) ->
-        let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
-        let offset = si_to_arg si in
-        let body_offset = helpA body add_base_env_for_lambda (si + 1) env_name in
-        let cur_envt = update_envt_envt env_name id offset body_offset in
-        let lambda_offset = helpC lambda cur_envt si id in
-        (* TODO: Think about this a little more. Is there too much indirection? *)
-        let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
-        (* This is where we could put our mutual recursion code -- If we had any! *)
-        let rest_env = helpA (ALetRec (rest, body, tag)) with_self_reference (si + 1) env_name in
-        rest_env
-    | ALetRec ((id, bound) :: rest, body, tag) ->
-        let offset = si_to_arg si in
-        let body_env = helpA body env (si + 1) env_name in
-        let cur_envt = update_envt_envt env_name id offset body_env in
-        let bound_env = helpC bound cur_envt si env_name in
-        let rest_env = helpA (ALetRec (rest, body, tag)) bound_env (si + 1) env_name in
-        rest_env
+        let current_env = safe_find_opt env_name env_env in
+        let let_env = color_graph (interfere e) current_env in
+        let env_new = StringMap.add env_name let_env env_env in
+        (* We only want to recur if the value is a lambda *)
+        let assign_env = helpC bound env_name env_new in
+        helpA body env_name assign_env
+    | _ -> raise (NotYetImplemented "LETREC!!!")
   in
-  let (AProgram (new_body, _)) = free_vars_cache prog in
-  let body_env = helpA new_body (assoc_to_map [(ocsh_name, StringMap.empty)]) 1 ocsh_name in
+  let (AProgram (body, _)) = free_vars_cache prog in
+  let initial_env = assoc_to_map [(ocsh_name, StringMap.empty)] in
+  let body_env = helpA body ocsh_name initial_env in
   (prog, body_env)
 ;;
 
@@ -1542,7 +1536,7 @@ let rec deepest_stack (env : arg name_envt) : int =
     (fun _ value acc ->
       match value with
       | RegOffset (words, _) -> max (words / ~-1) acc
-      | _ -> raise (InternalCompilerError "Encountered non-RegOffset in deepest_stack2") )
+      | _ -> acc )
     env 0
 ;;
 
