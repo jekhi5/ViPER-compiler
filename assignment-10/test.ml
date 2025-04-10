@@ -332,49 +332,80 @@ let ra =
 let live_out = []
 
 let tc name given expected =
-  name >:: fun _ ->
-    assert_equal
-      (string_of_name_envt (assoc_to_map expected))
-      (string_of_name_envt (color_graph given StringMap.empty))   
-      ~printer:(fun s -> s)
-
+  name
+  >:: fun _ ->
+  assert_equal
+    (string_of_name_envt (assoc_to_map expected))
+    (string_of_name_envt (color_graph given StringMap.empty))
+    ~printer:(fun s -> s)
+;;
 
 let graph (nodes : (string * string list) list) =
-  List.fold_left (fun g (node, neighbors) -> List.fold_left (fun g' n -> add_edge g' node n) g neighbors) Graph.empty nodes
+  List.fold_left
+    (fun g (node, neighbors) -> List.fold_left (fun g' n -> add_edge g' node n) g neighbors)
+    Graph.empty nodes
+;;
 
-let g1 = graph [
-  ("a", ["b"; "c"; "d"; "e"; "f"])
-];;
+let g1 = graph [("a", ["b"; "c"; "d"; "e"; "f"])]
 
-let g2 = graph [
-  ("a", ["b"; "c"; "d"; "e"; "f"; "g"; "h"]);
-  ("b", ["a"; "c"; "d"; "e"; "f"; "g"; "h"]);
-  ("c", ["b"; "a"; "d"; "e"; "f"; "g"; "h"]);
-  ("d", ["b"; "c"; "a"; "e"; "f"; "g"; "h"]);
-  ("e", ["b"; "c"; "d"; "a"; "f"; "g"; "h"]);
-  ("f", ["b"; "c"; "d"; "e"; "a"; "g"; "h"]);
-  ("g", ["b"; "c"; "d"; "e"; "f"; "a"; "h"]);
-  ("h", ["b"; "c"; "d"; "e"; "f"; "g"; "a"]);
-]
+let g2 =
+  graph
+    [ ("a", ["b"; "c"; "d"; "e"; "f"; "g"; "h"]);
+      ("b", ["a"; "c"; "d"; "e"; "f"; "g"; "h"]);
+      ("c", ["b"; "a"; "d"; "e"; "f"; "g"; "h"]);
+      ("d", ["b"; "c"; "a"; "e"; "f"; "g"; "h"]);
+      ("e", ["b"; "c"; "d"; "a"; "f"; "g"; "h"]);
+      ("f", ["b"; "c"; "d"; "e"; "a"; "g"; "h"]);
+      ("g", ["b"; "c"; "d"; "e"; "f"; "a"; "h"]);
+      ("h", ["b"; "c"; "d"; "e"; "f"; "g"; "a"]) ]
+;;
 
-let g3 = graph [
-  ("a", ["b"; "c"; "d"; "e"]);
-  ("b", ["a"; "c"]);
-  ("c", ["a"; "b"]);
-  ("d", ["a"; "e"]);
-  ("e", ["a"; "d"]);
-]
+let g3 =
+  graph
+    [ ("a", ["b"; "c"; "d"; "e"]);
+      ("b", ["a"; "c"]);
+      ("c", ["a"; "b"]);
+      ("d", ["a"; "e"]);
+      ("e", ["a"; "d"]) ]
+;;
 
-
-let coloring = [
-  tc "hubwheel" g1 [("a", Reg R11); ("b", Reg R10); ("c", Reg R10); ("d", Reg R10); ("e", Reg R10); ("f", Reg R10)];
-  tc "stack_spill" g2 [("h", Reg R10); ("g", Reg R11); ("f", Reg R12); ("e", Reg R13); ("d", Reg R14); ("c", Reg RBX); ("b", RegOffset(~-1, RBP)); ("a", RegOffset(~-2, RBP))];
-  tc "cliques" g3 [("a", Reg R12); ("b", Reg R11); ("c", Reg R10); ("d", Reg R11); ("e", Reg R10)];
+let coloring =
+  [ tc "hubwheel" g1
+      [ ("a", Reg R11);
+        ("b", Reg R10);
+        ("c", Reg R10);
+        ("d", Reg R10);
+        ("e", Reg R10);
+        ("f", Reg R10) ];
+    tc "stack_spill" g2
+      [ ("h", Reg R10);
+        ("g", Reg R11);
+        ("f", Reg R12);
+        ("e", Reg R13);
+        ("d", Reg R14);
+        ("c", Reg RBX);
+        ("b", RegOffset (~-1, RBP));
+        ("a", RegOffset (~-2, RBP)) ];
+    tc "cliques" g3 [("a", Reg R12); ("b", Reg R11); ("c", Reg R10); ("d", Reg R11); ("e", Reg R10)]
   ]
+;;
+
+let tig name program expected =
+  let (AProgram (body, _)) =
+    live_in_program (free_vars_cache (atag (anf (tag (parse_string name program)))))
+  in
+  let g = interfere body in
+  name >:: fun _ -> assert_equal expected g ~printer:string_of_graph
+;;
+
+let ig = [
+  tig "interference1" "let x = 5, y = 3 in x + (y + (let z = 1 in z))" Graph.empty
+]
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring (*@ live_in @ live_out*)
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ ig
+(*@ live_in @ live_out*)
 (* pair_tests @ oom @ gc @ input *)
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

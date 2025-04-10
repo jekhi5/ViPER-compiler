@@ -13,6 +13,10 @@ type 'a name_envt = 'a StringMap.t
 
 type 'a tag_envt = 'a TagMap.t
 
+type freevars = StringSet.t
+
+type livevars = StringSet.t
+
 let print_env env how =
   debug_printf "Env is\n";
   List.iter (fun (id, bind) -> debug_printf "  %s -> %s\n" id (how bind)) env
@@ -906,7 +910,7 @@ let free_vars (e : 'a aexpr) : StringSet.t =
   helpA e StringSet.empty
 ;;
 
-let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : StringSet.t aprogram =
+let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : freevars aprogram =
   let empty = StringSet.empty in
   let rec helpI (e : 'a immexpr) : StringSet.t immexpr * StringSet.t =
     match e with
@@ -1172,7 +1176,7 @@ let get_cache (expr : StringSet.t aexpr) : StringSet.t =
  *  Returns: The same kind of expression where the `a position of the expression now holds the live_in set
  *           as well as all subexpressions also holding their own live_in set
  *)
-let rec compute_live_in (expr : StringSet.t aexpr) (live_out : StringSet.t) : StringSet.t aexpr =
+let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars aexpr =
   (* TODO: unioning all of the `live_in` sets with `live_out` at the end might be redundant
    *       and potentially wrong if we're set_diff-ing things beforehand. Review this.
    *       See the `CApp` case
@@ -1377,13 +1381,25 @@ and use (e : 'a aexpr) : StringSet.t =
 
 and live_in_program (AProgram (body, _)) = AProgram (compute_live_in body empty, empty)
 
-let interfere (e : StringSet.t aexpr) (live : StringSet.t) : grapht =
-  let g = Graph.empty in
-  match e with
-  | ALet (x, e, b, _) ->
-      let g' = StringSet.fold (fun node g' -> add_edge g' x node) live g in
-      g'
-  | _ -> raise (NotYetImplemented "Generate interference graphs from expressions for racer")
+(* Consumes an AExpr tagged with sets of live variables *)
+let interfere (e : livevars aexpr) : grapht =
+  let rec helpA e g =
+    match e with
+    | ASeq (_, next, l) -> helpA next (connect_set l g)
+    | ALet (x, _, b, l) ->
+        let connected = connect_set l g in
+        helpA b (connect x l connected)
+    | ALetRec (bindings, b, l) ->
+        let names, _ = List.split bindings in
+        let names = StringSet.of_list names in
+        let connected_names = connect_set names g in
+        let connected_set = connect_set l connected_names in
+        let all_connected = connect2 names l connected_set in
+        helpA b all_connected
+    | ACExpr (CIf (_, thn, els, l)) -> helpA thn (helpA els (connect_set l g))
+    | _ -> g
+  in
+  helpA e Graph.empty
 ;;
 
 let colors = List.map (fun x -> Reg x) [R10; R11; R12; R13; R14; RBX]
