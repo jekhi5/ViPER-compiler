@@ -56,20 +56,25 @@ let string_of_graph (g : grapht) : string =
 let remove_node (g : grapht) (name : string) : grapht =
   let g' = Graph.remove name g in
   Graph.map (fun neighbors -> NeighborSet.remove name neighbors) g'
+;;
 
-let degree (g : grapht) (name : string) : int = 
-  NeighborSet.cardinal (Graph.find name g)
+let degree (g : grapht) (name : string) : int = NeighborSet.cardinal (Graph.find name g)
 
-  let smallest_degree (g : grapht) : string option =
-    let random_node = Graph.choose_opt g in
-    match random_node with
-    | None -> None
-    | Some (node, _) ->
-        Some
-          (Graph.fold
-             (fun name neighbors smallest ->
-               if NeighborSet.cardinal neighbors < degree g smallest then
-                 name
-               else
-                 smallest )
-             g node )
+let smallest_degree (g : grapht) : string option =
+  let random_node = Graph.choose_opt g in
+  match random_node with
+  | None -> None
+  | Some (node, _) ->
+      Some
+        (Graph.fold
+           (fun name neighbors smallest ->
+             if NeighborSet.cardinal neighbors < degree g smallest then
+               name
+             else
+               smallest )
+           g node )
+;;
+
+(* Merges two graphs, taking the union of their edges. *)
+let merge_graphs (g1 : grapht) (g2 : grapht) : grapht = 
+  Graph.union (fun _ (set1 : neighborst) (set2 : neighborst) -> Some (NeighborSet.union set1 set2)) g1 g2

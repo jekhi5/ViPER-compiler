@@ -33,4 +33,5 @@
 (env
  (dev
   (flags
-   (:standard -warn-error -A))))
+   ; (:standard -warn-error -A)
+   (:standard -warn-error -A -w -26 -w -27 -w -32 -w -33 -w -39 -w -66))))

@@ -1374,15 +1374,21 @@ and use (e : 'a aexpr) : StringSet.t =
   | ASeq (a, b, _) | ALet (_, a, b, _) -> helpC a |> u (use b)
   | ALetRec (binds, body, _) -> List.fold_left (fun acc (_, c) -> helpC c |> u acc) (use body) binds
   | ACExpr c -> helpC c
+
 and live_in_program (AProgram (body, _)) = AProgram (compute_live_in body empty, empty)
 
 let interfere (e : StringSet.t aexpr) (live : StringSet.t) : grapht =
-  raise (NotYetImplemented "Generate interference graphs from expressions for racer")
+  let g = Graph.empty in
+  match e with
+  | ALet (x, e, b, _) ->
+      let g' = StringSet.fold (fun node g' -> add_edge g' x node) live g in
+      g'
+  | _ -> raise (NotYetImplemented "Generate interference graphs from expressions for racer")
 ;;
 
 let colors = List.map (fun x -> Reg x) [R10; R11; R12; R13; R14; RBX]
 
-let color_graph ?colors:(colors = colors) (g : grapht) (init_env : arg name_envt) : arg name_envt =
+let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg name_envt =
   (* Get the node with the smallest degree. *)
   let rec worklist (gw : grapht) (stack : string list) : string list =
     match smallest_degree gw with
@@ -2316,7 +2322,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
               "by adding no more than 15 to it" ) ]
       in
       let set_stack_bottom =
-        [ILabel ocsh_name; IMov (Reg R12, Reg RDI)]
+        [IMov (Reg R12, Reg RDI)]
         @ native_call (Label "?set_stack_bottom") [Reg RBP]
         @ [IMov (Reg RDI, Reg R12)]
       in

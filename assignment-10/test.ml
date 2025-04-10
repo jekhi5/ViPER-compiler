@@ -107,12 +107,12 @@ let tra name program expected =
     (string_of_name_envt_envt locations)
     ~printer:(fun s -> s)
 ;;
-(* 
+
 let tli name program expected =
   let (AProgram (body, _)) = free_vars_cache (atag (anf (tag (parse_string name program)))) in
-  let result = compute_live_in body in
-  name >:: fun _ -> assert_equal (StringSet.of_list expected) result ~printer:string_of_set
-;; *)
+  let result = compute_live_in body empty in
+  name >:: fun _ -> assert_equal expected result ~printer:(string_of_aexpr_with 100 string_of_set)
+;;
 
 let builtins_size =
   4 (* arity + 0 vars + codeptr + padding *)
@@ -312,7 +312,7 @@ let ra =
     tra "number" "1" [("ocsh_0", [])] ]
 ;;
 
-let live_in =
+(* let live_in =
   [ tli "given_ex"
       "let \n\
       \     x = true \n\
@@ -327,7 +327,7 @@ let live_in =
       [];
     tli "let_sub_expr" "let y = (if true: (let b = 5 in b) else: 6) in y" [];
     tli "let" "let x = 5 in a + b" ["a"; "b"] ]
-;;
+;; *)
 
 let live_out = []
 
