@@ -1458,10 +1458,8 @@ let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg
 
 let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
   (* helper for composite expressions *)
-  let rec helpC
-      (e : freevars cexpr)
-      (env_name : string)
-      (env_env : arg name_envt name_envt) : arg name_envt name_envt =
+  let rec helpC (e : freevars cexpr) (env_name : string) (env_env : arg name_envt name_envt) :
+      arg name_envt name_envt =
     match e with
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env_env
     | CIf (_, thn, els, _) ->
@@ -1476,10 +1474,8 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         in
         helpA body env_name args_env
   (* helper for ANF expressions *)
-  and helpA
-      (e : freevars aexpr)
-      (env_name : string)
-      (env_env : arg name_envt name_envt): arg name_envt name_envt =
+  and helpA (e : freevars aexpr) (env_name : string) (env_env : arg name_envt name_envt) :
+      arg name_envt name_envt =
     match e with
     | ACExpr cexp -> helpC cexp env_name env_env
     | ASeq (first, next, _) ->
@@ -1488,9 +1484,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
     | ALetRec ([], body, _) -> helpA body env_name env_env
     | ALet (id, (CLambda _ as lambda), body, _) ->
         let add_base_env_for_lambda = StringMap.add id StringMap.empty env_env in
-        let lambda_color_map =
-          color_graph (interfere e) (safe_find_opt env_name env_env)
-        in
+        let lambda_color_map = color_graph (interfere e) (safe_find_opt env_name env_env) in
         let lambda_offset = helpC lambda id add_base_env_for_lambda in
         let body_offset = helpA body env_name lambda_offset in
         let offset =
@@ -1838,7 +1832,13 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
         4 + arity + 1 )
     * word_size
   in
-  let gc = reserve heap_padding tag in
+  let gc =
+    (* Need to push allocated registers onto the stack in order to garbage collect them. *)
+    let gc_setup = List.rev_map (fun r -> IPush r) colors in
+    let gc_body = reserve heap_padding tag in
+    let gc_teardown = List.map (fun r -> IPop r) colors in
+    gc_setup @ gc_body @ gc_teardown
+  in
   (* reserve heap_padding tag in *)
   let stack_size = Int64.of_int (word_size * (2 + stack_padding)) in
   let prelude =
@@ -2171,8 +2171,13 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
         else
           (0L, 0)
       in
-      let gc = reserve heap_bump_amt_int tag in
-      (* let gc = [] in *)
+      let gc =
+        (* Need to push allocated registers onto the stack in order to garbage collect them. *)
+        let gc_setup = List.rev_map (fun r -> IPush r) colors in
+        let gc_body = reserve heap_bump_amt_int tag in
+        let gc_teardown = List.map (fun r -> IPop r) colors in
+        gc_setup @ gc_body @ gc_teardown
+      in
       let loading_instrs =
         List.concat
         @@ List.mapi

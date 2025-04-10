@@ -280,25 +280,25 @@ let nsa =
 ;;
 
 let ra =
-  [ tra "simple_ra1" "let x = 1 in x + 5" [("ocsh_0", [("x", RegOffset (~-1, RBP))])];
+  [ tra "simple_ra1" "let x = 1 in x + 5" [("ocsh_0", [("x", Reg R10)])];
     tra "simple_ra2" "let x = 1, y = 3, z = 4 in 5"
       [ ( "ocsh_0",
-          [("x", RegOffset (~-1, RBP)); ("y", RegOffset (~-2, RBP)); ("z", RegOffset (~-3, RBP))] )
+          [("x", Reg R10); ("y", Reg R10); ("z", Reg R10)] )
       ];
     tra "simple_lambda" "let a = 1 in (lambda(x): x)(5)"
-      [ ("ocsh_0", [("a", RegOffset (~-1, RBP)); ("lam_8", RegOffset (~-2, RBP))]);
+      [ ("ocsh_0", [("a", Reg R10); ("lam_8", Reg R10)]);
         ("lam_8", [("x", RegOffset (3, RBP))]) ];
     (* Remember that all lambdas are indirected... *)
     tra "non_nested_lambdas"
       "let a=1, foo = (lambda(x): x), bar = (lambda(y, x): y + x), baz = (lambda: a) in 1"
       [ ( "ocsh_0",
-          [ ("a", RegOffset (~-1, RBP));
-            ("lam_8", RegOffset (~-2, RBP));
-            ("foo", RegOffset (~-3, RBP));
-            ("lam_13", RegOffset (~-4, RBP));
-            ("bar", RegOffset (~-5, RBP));
-            ("lam_21", RegOffset (~-6, RBP));
-            ("baz", RegOffset (~-7, RBP)) ] );
+          [ ("a", Reg R12);
+            ("lam_8", Reg R11);
+            ("foo", Reg R10);
+            ("lam_13", Reg R11);
+            ("bar", Reg R10);
+            ("lam_21", Reg R11);
+            ("baz", Reg R10) ] );
         ("lam_8", [("x", RegOffset (3, RBP))]);
         ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
         ("lam_21", []) ];
@@ -439,8 +439,8 @@ let interf =
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc @ nsa  @ coloring @ interf
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests 
 (*@ live_in @ live_out*)
-(* pair_tests @ oom @ gc @ input *)
+(*@ oom @ gc @ input*)
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
