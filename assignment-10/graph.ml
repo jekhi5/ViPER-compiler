@@ -53,6 +53,9 @@ let string_of_graph (g : grapht) : string =
 (* =  Additional functions  = *)
 (* ========================== *)
 
+let add_nodes g nodes =
+  List.fold_left (fun g' n -> add_node g' n) g nodes
+
 let remove_node (g : grapht) (name : string) : grapht =
   let g' = Graph.remove name g in
   Graph.map (fun neighbors -> NeighborSet.remove name neighbors) g'

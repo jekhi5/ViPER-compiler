@@ -331,12 +331,12 @@ let ra =
 
 let live_out = []
 
-let tc name given expected =
+let tc ?colors:(colors = colors) name given expected =
   name
   >:: fun _ ->
   assert_equal
     (string_of_name_envt (assoc_to_map expected))
-    (string_of_name_envt (color_graph given StringMap.empty))
+    (string_of_name_envt (color_graph ~colors:colors given StringMap.empty))
     ~printer:(fun s -> s)
 ;;
 
@@ -386,6 +386,7 @@ let coloring =
         ("c", Reg RBX);
         ("b", RegOffset (~-1, RBP));
         ("a", RegOffset (~-2, RBP)) ];
+    tc "stack_spill2" ~colors:[] g1 [];
     tc "cliques" g3 [("a", Reg R12); ("b", Reg R11); ("c", Reg R10); ("d", Reg R11); ("e", Reg R10)]
   ]
 ;;
@@ -395,16 +396,42 @@ let tig name program expected =
     live_in_program (free_vars_cache (atag (anf (tag (parse_string name program)))))
   in
   let g = interfere body in
-  name >:: fun _ -> assert_equal expected g ~printer:string_of_graph
+  name
+  >:: fun _ ->
+  assert_equal (string_of_graph expected) (string_of_graph g) ~printer:(fun s -> s)
 ;;
 
-let ig = [
-  tig "interference1" "let x = 5, y = 3 in x + (y + (let z = 1 in z))" Graph.empty
-]
+let tigc name program expected =
+  let (AProgram (body, _)) =
+    live_in_program (free_vars_cache (atag (anf (tag (parse_string name program)))))
+  in
+  let g = color_graph (interfere body) StringMap.empty in
+  name
+  >:: fun _ ->
+  assert_equal (string_of_name_envt expected) (string_of_name_envt g) ~printer:(fun s -> s)
+;;
+
+let interf =
+  [ tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
+      (assoc_to_map [("x", Assembly.Reg R10); ("y", Reg R10)]);
+    (* Why can't OCaml find the `Reg` constructor unless we specify `Assembly` at least once? *)
+    tigc "let1" "let a = 1, b = 2, c = 3 in 4"
+      (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R10); ("c", Reg R10)]);
+    tig "let2" "let a = 1, b = 2, c = 3 in b" Graph.empty; 
+      (* (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R10); ("c", Reg R11)]); *)
+    tigc "let3" "let a = 1, b = a, c = a in c"
+      (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R11); ("c", Reg R11)]);
+    tig "let4" "let a = 1, b = a, c = b in c" Graph.empty;
+      (* (assoc_to_map [("a", Assembly.Reg R10); ("b", Reg R11); ("c", Reg R10)]); *)
+    
+    tigc "adder1" "add1(add1(add1(add1(add1(add1(5))))))" Graph.empty
+      
+      ]
+;;
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ ig
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf
 (*@ live_in @ live_out*)
 (* pair_tests @ oom @ gc @ input *)
 
