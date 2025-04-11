@@ -468,7 +468,18 @@ let interf =
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests
+let run_with_ra = [
+  tr "adder1" "add1(5)" "" "6";
+  tr "adder2" "add1(add1(add1(add1(5))))" "" "9";
+  tr "boa1" "1 + 2 + 3 + 4 + 5" "" "15";
+  tr "boa2" "(((1 + 2) + 3) + (4 + 5))" "" "15";
+
+  tr "nested_lambdas1" "let foo = (lambda(x): (lambda(y): y + x)) in 3" "" "3";
+  tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12";
+
+]
+
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra
 (*@ live_in @ live_out*)
 (*@ oom @ gc @ input*)
 
