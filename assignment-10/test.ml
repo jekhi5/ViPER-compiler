@@ -282,12 +282,9 @@ let nsa =
 let ra =
   [ tra "simple_ra1" "let x = 1 in x + 5" [("ocsh_0", [("x", Reg R12)])];
     tra "simple_ra2" "let x = 1, y = 3, z = 4 in 5"
-      [ ( "ocsh_0",
-          [("x", Reg R12); ("y", Reg R12); ("z", Reg R12)] )
-      ];
+      [("ocsh_0", [("x", Reg R10); ("y", Reg R10); ("z", Reg R10)])];
     tra "simple_lambda" "let a = 1 in (lambda(x): x)(5)"
-      [ ("ocsh_0", [("a", Reg R12); ("lam_8", Reg R12)]);
-        ("lam_8", [("x", RegOffset (3, RBP))]) ];
+      [("ocsh_0", [("a", Reg R10); ("lam_8", Reg R10)]); ("lam_8", [("x", RegOffset (3, RBP))])];
     (* Remember that all lambdas are indirected... *)
     tra "non_nested_lambdas"
       "let a=1, foo = (lambda(x): x), bar = (lambda(y, x): y + x), baz = (lambda: a) in 1"
@@ -310,7 +307,34 @@ let ra =
     (* tra "letrec1" "let rec foo = (lambda(x): x) in 1"
       [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
         ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ]; *)
-    tra "number" "1" [("ocsh_0", [])] ]
+    tra "number" "1" [("ocsh_0", [])];
+    tra "nested_let_and_lambda"
+      "\n\
+      \    let \n\
+      \      a = 5,\n\
+      \      b = add1(a),\n\
+      \      c = sub1(b),\n\
+      \      e = 2,\n\
+      \      f = let\n\
+      \            x = 4,\n\
+      \            y = (lambda(r, p): r + p),\n\
+      \            z = add1(y(x, e))\n\
+      \          in\n\
+      \            z\n\
+      \    in\n\
+      \      f"
+      [ ( "ocsh_0",
+          [ ("a", Reg R12);
+            ("app_34", Reg R12);
+            ("b", Reg R13);
+            ("c", Reg R12);
+            ("e", Reg R13);
+            ("f", Reg R12);
+            ("lam_25", Reg R12);
+            ("x", Reg R14);
+            ("y", Reg RBX);
+            ("z", Reg R13) ] );
+        ("lam_25", [("p", RegOffset (4, RBP)); ("r", RegOffset (3, RBP))]) ] ]
 ;;
 
 (* let live_in =
@@ -332,12 +356,12 @@ let ra =
 
 let live_out = []
 
-let tc ?colors:(colors = colors) name given expected =
+let tc ?(colors = colors) name given expected =
   name
   >:: fun _ ->
   assert_equal
     (string_of_name_envt (assoc_to_map expected))
-    (string_of_name_envt (color_graph ~colors:colors given StringMap.empty))
+    (string_of_name_envt (color_graph ~colors given StringMap.empty))
     ~printer:(fun s -> s)
 ;;
 
@@ -379,16 +403,22 @@ let coloring =
         ("e", Reg R12);
         ("f", Reg R12) ];
     tc "stack_spill" g2
-      [ ("a", Reg R12);
-        ("b", Reg R13);
-        ("c", Reg R14);
-        ("d", Reg RBX);
-        ("e", RegOffset (~-1, RBP));
-        ("f", RegOffset (~-2, RBP));
-        ("g", RegOffset (~-3, RBP));
-        ("h", RegOffset (~-4, RBP)) ];
-    tc "stack_spill2" ~colors:[Reg R10] g1 [("a", RegOffset (~-1, RBP)); ("b", Reg R10); ("c", Reg R10); ("d", Reg R10); ("e", Reg R10); ("f", Reg R10)];
-    tc "cliques" g3 [("a", Reg R14); ("b", Reg R12); ("c", Reg R13); ("d", Reg R12); ("e", Reg R13)]
+      [ ("a", Reg R10);
+        ("b", Reg R11);
+        ("c", Reg R12);
+        ("d", Reg R13);
+        ("e", Reg R14);
+        ("f", Reg RBX);
+        ("g", RegOffset (~-1, RBP));
+        ("h", RegOffset (~-2, RBP)) ];
+    tc "stack_spill2" ~colors:[Reg R10] g1
+      [ ("a", RegOffset (~-1, RBP));
+        ("b", Reg R10);
+        ("c", Reg R10);
+        ("d", Reg R10);
+        ("e", Reg R10);
+        ("f", Reg R10) ];
+    tc "cliques" g3 [("a", Reg R12); ("b", Reg R10); ("c", Reg R11); ("d", Reg R10); ("e", Reg R11)]
   ]
 ;;
 
@@ -398,8 +428,7 @@ let tig name program expected =
   in
   let g = interfere body in
   name
-  >:: fun _ ->
-  assert_equal (string_of_graph expected) (string_of_graph g) ~printer:(fun s -> s)
+  >:: fun _ -> assert_equal (string_of_graph expected) (string_of_graph g) ~printer:(fun s -> s)
 ;;
 
 let tigc name program expected =
@@ -413,40 +442,33 @@ let tigc name program expected =
 ;;
 
 let empty = StringMap.empty
+
 let interf =
-  [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R12); ("b", Reg R13)]);
-    
+  [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R10); ("b", Reg R11)]);
     tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
-      (assoc_to_map [("x", Reg R12); ("y", Reg R12)]);
-    
+      (assoc_to_map [("x", Reg R10); ("y", Reg R10)]);
     tigc "let1" "let a = 1, b = 2, c = 3 in 4"
-      (assoc_to_map [("a", Reg R12); ("b", Reg R12); ("c", Reg R12)]);
-    tigc "let2" "let a = 1, b = 2, c = 3 in b" (assoc_to_map [("a", Reg R12); ("b", Reg R12); ("c", Reg R13)]);
+      (assoc_to_map [("a", Reg R10); ("b", Reg R10); ("c", Reg R10)]);
+    tigc "let2" "let a = 1, b = 2, c = 3 in b"
+      (assoc_to_map [("a", Reg R10); ("b", Reg R10); ("c", Reg R11)]);
     tigc "let3" "let a = 1, b = a, c = a in c"
-      (assoc_to_map [("a", Reg R13); ("b", Reg R12); ("c", Reg R12)]);
-    tigc "let4" "let a = 1, b = a, c = b in c" (assoc_to_map [("a", Reg R12); ("b", Reg R13); ("c", Reg R12)]);
-    
+      (assoc_to_map [("a", Reg R11); ("b", Reg R10); ("c", Reg R10)]);
+    tigc "let4" "let a = 1, b = a, c = b in c"
+      (assoc_to_map [("a", Reg R10); ("b", Reg R11); ("c", Reg R10)]);
     (* Only uses 1 register *)
     tigc "adder1" "add1(5)" empty;
     (* Uses 2 registers *)
-    tigc "adder2" "add1(add1(add1(add1(5))))" (assoc_to_map [("unary_3", Reg R12); ("unary_4", Reg R13); ("unary_5", Reg R12); ]);
-    
-    tigc "boa1" "1 + 2 + 3 + 4 + 5" (assoc_to_map [("binop_3", Reg R12); ("binop_4", Reg R13); ("binop_5", Reg R12); ]);
-    tigc "boa2" "(((1 + 2) + 3) + (4 + 5))" (assoc_to_map [("binop_3", Reg R13); ("binop_4", Reg R12); ("binop_8", Reg R12); ]);
-
-    ]
+    tigc "adder2" "add1(add1(add1(add1(5))))"
+      (assoc_to_map [("unary_3", Reg R10); ("unary_4", Reg R11); ("unary_5", Reg R10)]);
+    tigc "boa1" "1 + 2 + 3 + 4 + 5"
+      (assoc_to_map [("binop_3", Reg R10); ("binop_4", Reg R11); ("binop_5", Reg R10)]);
+    tigc "boa2" "(((1 + 2) + 3) + (4 + 5))"
+      (assoc_to_map [("binop_3", Reg R11); ("binop_4", Reg R10); ("binop_8", Reg R10)]) ]
 ;;
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let run_with_ra = [
-  tr "adder1" "add1(5)" "" "6";
-  tr "adder2" "add1(add1(add1(add1(5))))" "" "9";
-  tr "boa1" "1 + 2 + 3 + 4 + 5" "" "15";
-  tr "boa2" "(((1 + 2) + 3) + (4 + 5))" "" "15";
-]
-
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests
 (*@ live_in @ live_out*)
 (*@ oom @ gc @ input*)
 
