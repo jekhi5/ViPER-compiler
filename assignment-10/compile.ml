@@ -1417,7 +1417,8 @@ let interfere (e : livevars aexpr) : grapht =
   helpA e Graph.empty
 ;;
 
-let colors = List.map (fun x -> Reg x) [R10; R11; R12; R13; R14; RBX]
+(* We got rid of the scratch registers because they were too important... *)
+let colors = List.map (fun x -> Reg x) [R12; R13; R14; RBX]
 
 let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg name_envt =
   (* Get the node with the smallest degree. *)
@@ -1478,9 +1479,6 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
       arg name_envt name_envt =
     match e with
     | ACExpr cexp -> helpC cexp env_name env_env
-    | ASeq (first, next, _) ->
-        (* Order matters here? *)
-        merge_envs (helpA next env_name env_env) (helpC first env_name env_env)
     | ALetRec ([], body, _) -> helpA body env_name env_env
     | ALet (id, (CLambda _ as lambda), body, _) ->
         let add_base_env_for_lambda = StringMap.add id StringMap.empty env_env in
@@ -1494,13 +1492,25 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         let cur_envt = update_envt_envt env_name id offset body_offset in
         lambda_offset
     | ALet (id, bound, body, _) ->
-        let current_env = safe_find_opt env_name env_env in
-        let let_env = color_graph (interfere e) current_env in
-        let env_new = StringMap.add env_name let_env env_env in
-        (* We only want to recur if the value is a lambda *)
+        let cur_env = safe_find_opt env_name env_env in
+        let colored = color_graph (interfere e) cur_env in
+        let env_new = StringMap.add env_name colored env_env in
         let assign_env = helpC bound env_name env_new in
         helpA body env_name assign_env
-    | _ -> raise (NotYetImplemented "LETREC!!!")
+    | ALetRec ([(_, bound)], body, _) ->
+        (* LetRec is not yet truly implemented, since we can't handle mutual recursion. *)
+        let cur_env = safe_find_opt env_name env_env in
+        let colored = color_graph (interfere e) cur_env in
+        let env_new = StringMap.add env_name colored env_env in
+        let bound_env = helpC bound env_name env_env in
+        helpA body env_name bound_env
+    | ASeq (first, next, _) ->
+      let cur_env = safe_find_opt env_name env_env in
+        let seq_env = color_graph (interfere e) cur_env in
+        let env_new = StringMap.add env_name seq_env env_env in
+        let fst_env = helpC first env_name env_new in
+        helpA next env_name fst_env
+    | _ -> raise (NotYetImplemented "lol")
   in
   let (AProgram (body, _)) = free_vars_cache prog in
   let initial_env = assoc_to_map [(ocsh_name, StringMap.empty)] in

@@ -280,25 +280,25 @@ let nsa =
 ;;
 
 let ra =
-  [ tra "simple_ra1" "let x = 1 in x + 5" [("ocsh_0", [("x", Reg R10)])];
+  [ tra "simple_ra1" "let x = 1 in x + 5" [("ocsh_0", [("x", Reg R12)])];
     tra "simple_ra2" "let x = 1, y = 3, z = 4 in 5"
       [ ( "ocsh_0",
-          [("x", Reg R10); ("y", Reg R10); ("z", Reg R10)] )
+          [("x", Reg R12); ("y", Reg R12); ("z", Reg R12)] )
       ];
     tra "simple_lambda" "let a = 1 in (lambda(x): x)(5)"
-      [ ("ocsh_0", [("a", Reg R10); ("lam_8", Reg R10)]);
+      [ ("ocsh_0", [("a", Reg R12); ("lam_8", Reg R12)]);
         ("lam_8", [("x", RegOffset (3, RBP))]) ];
     (* Remember that all lambdas are indirected... *)
     tra "non_nested_lambdas"
       "let a=1, foo = (lambda(x): x), bar = (lambda(y, x): y + x), baz = (lambda: a) in 1"
       [ ( "ocsh_0",
-          [ ("a", Reg R12);
-            ("lam_8", Reg R11);
-            ("foo", Reg R10);
-            ("lam_13", Reg R11);
-            ("bar", Reg R10);
-            ("lam_21", Reg R11);
-            ("baz", Reg R10) ] );
+          [ ("a", Reg R14);
+            ("lam_8", Reg R13);
+            ("foo", Reg R12);
+            ("lam_13", Reg R13);
+            ("bar", Reg R12);
+            ("lam_21", Reg R13);
+            ("baz", Reg R12) ] );
         ("lam_8", [("x", RegOffset (3, RBP))]);
         ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
         ("lam_21", []) ];
@@ -372,23 +372,23 @@ let g3 =
 
 let coloring =
   [ tc "hubwheel" g1
-      [ ("a", Reg R11);
-        ("b", Reg R10);
-        ("c", Reg R10);
-        ("d", Reg R10);
-        ("e", Reg R10);
-        ("f", Reg R10) ];
-    tc "stack_spill" g2
-      [ ("a", Reg R10);
-        ("b", Reg R11);
+      [ ("a", Reg R13);
+        ("b", Reg R12);
         ("c", Reg R12);
-        ("d", Reg R13);
-        ("e", Reg R14);
-        ("f", Reg RBX);
-        ("g", RegOffset (~-1, RBP));
-        ("h", RegOffset (~-2, RBP)) ];
+        ("d", Reg R12);
+        ("e", Reg R12);
+        ("f", Reg R12) ];
+    tc "stack_spill" g2
+      [ ("a", Reg R12);
+        ("b", Reg R13);
+        ("c", Reg R14);
+        ("d", Reg RBX);
+        ("e", RegOffset (~-1, RBP));
+        ("f", RegOffset (~-2, RBP));
+        ("g", RegOffset (~-3, RBP));
+        ("h", RegOffset (~-4, RBP)) ];
     tc "stack_spill2" ~colors:[Reg R10] g1 [("a", RegOffset (~-1, RBP)); ("b", Reg R10); ("c", Reg R10); ("d", Reg R10); ("e", Reg R10); ("f", Reg R10)];
-    tc "cliques" g3 [("a", Reg R12); ("b", Reg R10); ("c", Reg R11); ("d", Reg R10); ("e", Reg R11)]
+    tc "cliques" g3 [("a", Reg R14); ("b", Reg R12); ("c", Reg R13); ("d", Reg R12); ("e", Reg R13)]
   ]
 ;;
 
@@ -414,32 +414,39 @@ let tigc name program expected =
 
 let empty = StringMap.empty
 let interf =
-  [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R10); ("b", Reg R11)]);
+  [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R12); ("b", Reg R13)]);
     
     tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
-      (assoc_to_map [("x", Reg R10); ("y", Reg R10)]);
+      (assoc_to_map [("x", Reg R12); ("y", Reg R12)]);
     
     tigc "let1" "let a = 1, b = 2, c = 3 in 4"
-      (assoc_to_map [("a", Reg R10); ("b", Reg R10); ("c", Reg R10)]);
-    tigc "let2" "let a = 1, b = 2, c = 3 in b" (assoc_to_map [("a", Reg R10); ("b", Reg R10); ("c", Reg R11)]);
+      (assoc_to_map [("a", Reg R12); ("b", Reg R12); ("c", Reg R12)]);
+    tigc "let2" "let a = 1, b = 2, c = 3 in b" (assoc_to_map [("a", Reg R12); ("b", Reg R12); ("c", Reg R13)]);
     tigc "let3" "let a = 1, b = a, c = a in c"
-      (assoc_to_map [("a", Reg R11); ("b", Reg R10); ("c", Reg R10)]);
-    tigc "let4" "let a = 1, b = a, c = b in c" (assoc_to_map [("a", Reg R10); ("b", Reg R11); ("c", Reg R10)]);
+      (assoc_to_map [("a", Reg R13); ("b", Reg R12); ("c", Reg R12)]);
+    tigc "let4" "let a = 1, b = a, c = b in c" (assoc_to_map [("a", Reg R12); ("b", Reg R13); ("c", Reg R12)]);
     
     (* Only uses 1 register *)
     tigc "adder1" "add1(5)" empty;
     (* Uses 2 registers *)
-    tigc "adder2" "add1(add1(add1(add1(5))))" (assoc_to_map [("unary_3", Reg R10); ("unary_4", Reg R11); ("unary_5", Reg R10); ]);
+    tigc "adder2" "add1(add1(add1(add1(5))))" (assoc_to_map [("unary_3", Reg R12); ("unary_4", Reg R13); ("unary_5", Reg R12); ]);
     
-    tigc "boa1" "1 + 2 + 3 + 4 + 5" (assoc_to_map [("binop_3", Reg R10); ("binop_4", Reg R11); ("binop_5", Reg R10); ]);
-    tigc "boa2" "(((1 + 2) + 3) + (4 + 5))" (assoc_to_map [("binop_3", Reg R11); ("binop_4", Reg R10); ("binop_8", Reg R10); ]);
+    tigc "boa1" "1 + 2 + 3 + 4 + 5" (assoc_to_map [("binop_3", Reg R12); ("binop_4", Reg R13); ("binop_5", Reg R12); ]);
+    tigc "boa2" "(((1 + 2) + 3) + (4 + 5))" (assoc_to_map [("binop_3", Reg R13); ("binop_4", Reg R12); ("binop_8", Reg R12); ]);
 
     ]
 ;;
 
 let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests 
+let run_with_ra = [
+  tr "adder1" "add1(5)" "" "6";
+  tr "adder2" "add1(add1(add1(add1(5))))" "" "9";
+  tr "boa1" "1 + 2 + 3 + 4 + 5" "" "15";
+  tr "boa2" "(((1 + 2) + 3) + (4 + 5))" "" "15";
+]
+
+let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra
 (*@ live_in @ live_out*)
 (*@ oom @ gc @ input*)
 
