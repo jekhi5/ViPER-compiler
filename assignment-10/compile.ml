@@ -1103,9 +1103,9 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         bound_env
     | ALetRec ((id, (CLambda _ as lambda)) :: rest, body, tag) ->
         let add_base_env_for_lambda = StringMap.add id StringMap.empty env in
-        let offset = si_to_arg si in
-        let body_offset = helpA body add_base_env_for_lambda (si + 1) env_name in
-        let cur_envt = update_envt_envt env_name id offset body_offset in
+        let cur_offset = si_to_arg si in
+        let body_envt_envt = helpA body add_base_env_for_lambda (si + 1) env_name in
+        let cur_envt = update_envt_envt env_name id cur_offset body_envt_envt in
         let lambda_offset = helpC lambda cur_envt si id in
         (* TODO: Think about this a little more. Is there too much indirection? *)
         let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
@@ -1847,10 +1847,18 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
   let load_closure_setup =
     [ ILineComment "=== Load closure values ===";
       (* Convert the `arity` and the `num_free` to be SNALVALs *)
-      IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int (arity * 2)));
-      ILea (Reg scratch_reg, RelLabel fun_label);
-      IMov (Sized (QWORD_PTR, RegOffset (1, heap_reg)), Reg scratch_reg);
-      IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int (num_free * 2))) ]
+      IInstrComment
+        ( IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int (arity * 2))),
+          "Arity in SNAKEVAL" );
+      IInstrComment
+        ( ILea (Reg scratch_reg, RelLabel fun_label),
+          "Load the address of the function label into scratch reg" );
+      IInstrComment
+        ( IMov (Sized (QWORD_PTR, RegOffset (1, heap_reg)), Reg scratch_reg),
+          "Load the func address into the 1st offset of the heap" );
+      IInstrComment
+        ( IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int (num_free * 2))),
+          "Load the number of free vars into the 2nd offset of the heap (as a SNAKEVAL)" ) ]
   in
   (* TODO: what should the value be for SI? *)
   let compiled_body = compile_aexpr body si new_env (List.length args) false name in
@@ -1859,9 +1867,11 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
   in
   let bump_heap =
     [ ILineComment "===========================";
+      ILineComment "===== Begin Bump Heap =====";
       IMov (Reg RAX, Reg heap_reg);
-      IAdd (Reg RAX, Const closure_tag);
-      IAdd (Reg heap_reg, Const (Int64.of_int heap_padding)) ]
+      IInstrComment (IAdd (Reg RAX, Const closure_tag), "Add on the closure tag");
+      IInstrComment (IAdd (Reg heap_reg, Const (Int64.of_int heap_padding)), "Pad the heap");
+      ILineComment "====== End Bump Heap ======" ]
   in
   ( prelude,
     [ ILineComment "=== Unpacking closure ===";
@@ -1872,7 +1882,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
        * This means that we can't mangle it!
        *)
       IMov (Reg scratch_reg, RegOffset (2, RBP));
-      ISub (Reg scratch_reg, Const 5L) ]
+      ISub (Reg scratch_reg, Const closure_tag) ]
     @ unpack_closure_instrs
     @ [ ILineComment "=====================";
         ISub (Reg RSP, Const stack_size);
@@ -1985,13 +1995,20 @@ and compile_aexpr
         let a, b, c = compile_fun id args fun_body env_env tag si free_locations in
         a @ b @ c
       in
-      let body = compile_aexpr let_body si env_env num_args is_tail env_name in
+      (* TODO: THIS IS WHERE THE LETREC FIX WAS HOPING TO GO *)
+      (* WAS TRYING TO UPDATE THE ENVIRONMENT TO HAVE THE NEW OFFSET *)
       let offset =
         safe_find_opt id cur_env
           ~callee_tag:
             (sprintf "COMPILE_AEXPR! Alet1. id: %s, env: %s" id (string_of_name_envt cur_env))
       in
-      prelude @ [IMov (offset, Reg RAX)] @ body
+      let updated_env_env = update_envt_envt env_name id offset env_env in
+      let body = compile_aexpr let_body si updated_env_env num_args is_tail env_name in
+      [ILineComment "=== Compile ALet Aexpr ==="]
+      @ prelude
+      @ [IMov (offset, Reg RAX)]
+      @ body
+      @ [ILineComment "== End Compile ALet Aexpr =="]
   | ALet (id, bound, body, _) ->
       let cur_env =
         safe_find_opt env_name env_env
@@ -2027,7 +2044,11 @@ and compile_aexpr
             in
             (* TODO: Before or after? *)
             (* TODO: rec_env or env_env? *)
-            (rec_env, acc_instrs @ compiled_bound @ [IMov (offset, Reg RAX)]) )
+            ( rec_env,
+              acc_instrs @ compiled_bound
+              @ [ IInstrComment
+                    ( IMov (offset, Reg RAX),
+                      "Move the id that was found into the offset of the base pointer" ) ] ) )
           (env_env, [ (* compiled code *) ])
           bindings
       in
@@ -2042,7 +2063,11 @@ and compile_aexpr
 and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_args is_tail env_name =
   match e with
   | CImmExpr immexp ->
-      [IMov (Reg scratch_reg, compile_imm immexp env_env env_name); IMov (Reg RAX, Reg scratch_reg)]
+      let compiled_immexp = compile_imm immexp env_env env_name in
+      [ IInstrComment
+          ( IMov (Reg scratch_reg, compiled_immexp),
+            "" (*sprintf "%s" (string_of_name_envt_envt env_env)*) );
+        IMov (Reg RAX, Reg scratch_reg) ]
   | CIf (cond, thn, els, t) ->
       let else_label = sprintf "if_else#%d" t in
       let done_label = sprintf "if_done#%d" t in
