@@ -131,6 +131,9 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         let binds_strs = List.map string_of_bind binds in
         let binds_str = List.fold_left ( ^ ) "" (intersperse binds_strs ", ") in
         sprintf "(lam(%s) %s)%s" binds_str (string_of_expr body) (print_a a)
+    | ECheckSpits (result, expected, a) ->
+        sprintf "(check %s spits %s)%s" (string_of_expr result) (string_of_expr expected)
+          (print_a a)
 ;;
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
@@ -218,6 +221,9 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
         sprintf "(lam(%s) %s)%s" (ExtString.String.join ", " args) (string_of_aexpr body)
           (print_a a)
     | CImmExpr i -> string_of_immexpr i
+    | CCheckSpits (result, expected, a) ->
+        sprintf "(check %s spits %s)%s" (string_of_immexpr result) (string_of_immexpr expected)
+          (print_a a)
 
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
@@ -419,6 +425,13 @@ let rec format_expr (fmt : Format.formatter) (print_a : 'a -> string) (e : 'a ex
       pp_print_string fmt ":";
       pp_print_space fmt ();
       help body;
+      close_paren fmt
+  | ECheckSpits (result, expected, a) ->
+      open_label fmt "ECheckSpits" (print_a a);
+      help result;
+      print_comma_sep fmt;
+      help expected;
+      print_comma_sep fmt;
       close_paren fmt
 ;;
 

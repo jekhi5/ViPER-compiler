@@ -271,7 +271,7 @@ and untagE e =
   | ELetRec (binds, body, _) ->
       ELetRec (List.map (fun (b, e, _) -> (untagB b, untagE e, ())) binds, untagE body, ())
   | ELambda (binds, body, _) -> ELambda (List.map untagB binds, untagE body, ())
-  | ECheckSpits (result, expected, _) -> ECheckSpits (result, expected, ())
+  | ECheckSpits (result, expected, _) -> ECheckSpits (untagE result, untagE expected, ())
 
 and untagB b =
   match b with

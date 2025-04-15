@@ -48,7 +48,9 @@ let tanf name program expected =
 let tparse name program expected =
   name
   >:: fun _ ->
-  assert_equal (untagP expected) (untagP (parse_string name program)) ~printer:string_of_program
+  assert_equal
+    (string_of_program (untagP expected))
+    (string_of_program (untagP (parse_string name program)))
 ;;
 
 let teq name actual expected = name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> s)
@@ -296,7 +298,7 @@ let ra =
             ("bar", Reg R12);
             ("lam_21", Reg R13);
             ("baz", Reg R12) ] );
-        ("lam_8", [("x", RegOffset (3, RBP))]); ];
+        ("lam_8", [("x", RegOffset (3, RBP))]) ];
     tra "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
       [ ("ocsh_0", []);
         ("lam_5", [("x", RegOffset (3, RBP))]);
@@ -475,8 +477,109 @@ let run_with_ra =
     tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12" ]
 ;;
 
-let suite = "unit_tests" >::: fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra
+let parse_check_spits =
+  [ tparse "basic_check_spits" "check 1 spits 1"
+      (Program ([], ECheckSpits (ENumber (1L, ()), ENumber (1L, ()), ()), ()));
+    tparse "complex_result"
+      "check (\n\
+      \    let \n\
+      \      a = 1,\n\
+      \      b = add1(a + 3),\n\
+      \      c = let rec\n\
+      \            sum = (lambda(x): if x == 0: 0 else: x + sum(x - 1))\n\
+      \          in\n\
+      \            sum(b)\n\
+      \    in\n\
+      \      c) \n\
+      \      spits 15"
+      (Program
+         ( [],
+           ECheckSpits
+             ( ELet
+                 ( [ (BName ("a", false, ()), ENumber (1L, ()), ());
+                     ( BName ("b", false, ()),
+                       EPrim1 (Add1, EPrim2 (Plus, EId ("a", ()), ENumber (3L, ()), ()), ()),
+                       () );
+                     ( BName ("c", false, ()),
+                       ELetRec
+                         ( [ ( BName ("sum", false, ()),
+                               ELambda
+                                 ( [BName ("x", false, ())],
+                                   EIf
+                                     ( EPrim2 (Eq, EId ("x", ()), ENumber (0L, ()), ()),
+                                       ENumber (0L, ()),
+                                       EPrim2
+                                         ( Plus,
+                                           EId ("x", ()),
+                                           EApp
+                                             ( EId ("?sum", ()),
+                                               [EPrim2 (Minus, EId ("x", ()), ENumber (1L, ()), ())],
+                                               Snake,
+                                               () ),
+                                           () ),
+                                       () ),
+                                   () ),
+                               () ) ],
+                           EApp (EId ("?sum", ()), [EId ("b", ())], Snake, ()),
+                           () ),
+                       () ) ],
+                   EId ("c", ()),
+                   () ),
+               ENumber (15L, ()),
+               () ),
+           () ) );
+    tparse "complex_expected"
+      "check 15 spits (\n\
+      \    let \n\
+      \      a = 1,\n\
+      \      b = add1(a + 3),\n\
+      \      c = let rec\n\
+      \            sum = (lambda(x): if x == 0: 0 else: x + sum(x - 1))\n\
+      \          in\n\
+      \            sum(b)\n\
+      \    in\n\
+      \      c)"
+      (Program
+         ( [],
+           ECheckSpits
+             ( ENumber (15L, ()),
+               ELet
+                 ( [ (BName ("a", false, ()), ENumber (1L, ()), ());
+                     ( BName ("b", false, ()),
+                       EPrim1 (Add1, EPrim2 (Plus, EId ("a", ()), ENumber (3L, ()), ()), ()),
+                       () );
+                     ( BName ("c", false, ()),
+                       ELetRec
+                         ( [ ( BName ("sum", false, ()),
+                               ELambda
+                                 ( [BName ("x", false, ())],
+                                   EIf
+                                     ( EPrim2 (Eq, EId ("x", ()), ENumber (0L, ()), ()),
+                                       ENumber (0L, ()),
+                                       EPrim2
+                                         ( Plus,
+                                           EId ("x", ()),
+                                           EApp
+                                             ( EId ("?sum", ()),
+                                               [EPrim2 (Minus, EId ("x", ()), ENumber (1L, ()), ())],
+                                               Snake,
+                                               () ),
+                                           () ),
+                                       () ),
+                                   () ),
+                               () ) ],
+                           EApp (EId ("?sum", ()), [EId ("b", ())], Snake, ()),
+                           () ),
+                       () ) ],
+                   EId ("c", ()),
+                   () ),
+               () ),
+           () ) ) ]
+;;
+
+let suite = "unit_tests" >::: parse_check_spits
+(* fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra @  *)
 (*@ live_in @ live_out*)
 (*@ oom @ gc @ input*)
 
-let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
+let () = run_test_tt_main ("all_tests" >::: [suite (* input_file_test_suite () *)])

@@ -54,6 +54,7 @@ expr :
   | BEGIN expr END { $2 }
   | binop_expr SEMI expr { ESeq($1, $3, full_span()) }
   | binop_expr { $1 }
+  | CHECK expr SPITS expr { ECheckSpits($2, $4, full_span()) }
 
 exprs :
   | expr { [$1] }
@@ -82,9 +83,6 @@ prim2 :
   | LESSSPACE { Less }
   | LESSEQ { LessEq }
   | EQEQ { Eq }
-
-check_spits :
-  | CHECK expr SPITS expr { ECheckSpits($1, $3, full_span()) }
 
 binop_expr :
   | binop_expr prim2 binop_operand %prec PLUS { EPrim2($2, $1, $3, full_span()) }
