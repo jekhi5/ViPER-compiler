@@ -1,0 +1,37 @@
+(library
+ (name racer_impl)
+ (modules
+  assembly
+  compile
+  errors
+  exprs
+  phases
+  pretty
+  runner
+  lexer
+  parser
+  graph)
+ (libraries ounit2 extlib unix)
+ (wrapped false))
+
+(ocamllex
+ (modules lexer))
+
+(menhir
+ (modules parser))
+
+(executable
+ (name main)
+ (modules main)
+ (libraries racer_impl))
+
+(test
+ (name test)
+ (modules test)
+ (libraries racer_impl))
+
+(env
+ (dev
+  (flags
+   ; (:standard -warn-error -A)
+   (:standard -warn-error -A -w -26 -w -27 -w -32 -w -33 -w -39 -w -66))))
