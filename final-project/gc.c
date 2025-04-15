@@ -40,11 +40,11 @@ void smarter_print_heap(uint64_t* from_start, uint64_t* from_end, uint64_t* to_s
 }
 
 /*
-  Copies a Racer value from the given address to the new heap, 
+  Copies a Viper value from the given address to the new heap, 
   but only if the value is heap-allocated and needs copying.
 
   Arguments:
-    racer_val_addr: the *address* of some Racer value, which contains a Racer value,
+    viper_val_addr: the *address* of some Viper value, which contains a Viper value,
                     i.e. a tagged word.  
                     It may or may not be a pointer to a heap-allocated value...
     heap_top: the location at which to begin copying, if any copying is needed
@@ -56,7 +56,7 @@ void smarter_print_heap(uint64_t* from_start, uint64_t* from_end, uint64_t* to_s
     If the data needed to be copied, then this replaces the value at its old location 
     with a forwarding pointer to its new location
  */
-uint64_t* copy_if_needed(uint64_t* racer_val_addr, uint64_t* heap_top) {
+uint64_t* copy_if_needed(uint64_t* viper_val_addr, uint64_t* heap_top) {
   // no-op for now
   return heap_top;
 }
@@ -65,9 +65,9 @@ uint64_t* copy_if_needed(uint64_t* racer_val_addr, uint64_t* heap_top) {
   Implements Cheney's garbage collection algorithm.
 
   Arguments:
-    bottom_frame: the base pointer of our_code_starts_here, i.e. the bottommost Racer frame
-    top_frame: the base pointer of the topmost Racer stack frame
-    top_stack: the current stack pointer of the topmost Racer stack frame
+    bottom_frame: the base pointer of our_code_starts_here, i.e. the bottommost Viper frame
+    top_frame: the base pointer of the topmost Viper stack frame
+    top_stack: the current stack pointer of the topmost Viper stack frame
     from_start and from_end: bookend the from-space of memory that is being compacted
     to_start: the beginning of the to-space of memory
 

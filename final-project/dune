@@ -1,5 +1,5 @@
 (library
- (name racer_impl)
+ (name viper_impl)
  (modules
   assembly
   compile
@@ -23,12 +23,12 @@
 (executable
  (name main)
  (modules main)
- (libraries racer_impl))
+ (libraries viper_impl))
 
 (test
  (name test)
  (modules test)
- (libraries racer_impl))
+ (libraries viper_impl))
 
 (env
  (dev
