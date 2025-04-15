@@ -81,6 +81,8 @@ rule token = parse
   | "end" { END }
   | "rec" { REC }
   | "shadow" { SHADOW }
+  | "check" { CHECK }
+  | "spits" { SPITS }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | eof { EOF }
   | _ as c { failwith (sprintf "Unrecognized character: %c" c) }

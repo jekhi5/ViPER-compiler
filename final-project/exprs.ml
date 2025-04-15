@@ -66,6 +66,7 @@ and 'a expr =
   | EApp of 'a expr * 'a expr list * call_type * 'a
   | ELambda of 'a bind list * 'a expr * 'a
   | ELetRec of 'a binding list * 'a expr * 'a
+  | ECheckSpits of 'a expr * 'a expr * 'a
 
 type 'a decl = DFun of string * 'a bind list * 'a expr * 'a
 
@@ -89,6 +90,7 @@ and 'a cexpr =
   | CGetItem of 'a immexpr * 'a immexpr * 'a
   | CSetItem of 'a immexpr * 'a immexpr * 'a immexpr * 'a
   | CLambda of string list * 'a aexpr * 'a
+  | CCheckSpits of 'a immexpr * 'a immexpr * 'a
 
 and 'a aexpr =
   (* anf expressions *)
@@ -126,6 +128,7 @@ let get_tag_E e =
   | ESetItem (_, _, _, t) -> t
   | ESeq (_, _, t) -> t
   | ELambda (_, _, t) -> t
+  | ECheckSpits (_, _, t) -> t
 ;;
 
 let get_tag_D d =
@@ -186,6 +189,10 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
   | ELambda (binds, body, a) ->
       let tag_lam = f a in
       ELambda (List.map (map_tag_B f) binds, map_tag_E f body, tag_lam)
+  | ECheckSpits (result, expected, a) ->
+      let tag_result = map_tag_E f result in
+      let tag_expected = map_tag_E f expected in
+      ECheckSpits (tag_result, tag_expected, f a)
 
 and map_tag_B (f : 'a -> 'b) b =
   match b with
@@ -264,6 +271,7 @@ and untagE e =
   | ELetRec (binds, body, _) ->
       ELetRec (List.map (fun (b, e, _) -> (untagB b, untagE e, ())) binds, untagE body, ())
   | ELambda (binds, body, _) -> ELambda (List.map untagB binds, untagE body, ())
+  | ECheckSpits (result, expected, _) -> ECheckSpits (result, expected, ())
 
 and untagB b =
   match b with
@@ -321,6 +329,9 @@ let atag (p : 'a aprogram) : tag aprogram =
     | CLambda (args, body, _) ->
         let lam_tag = tag () in
         CLambda (args, helpA body, lam_tag)
+    | CCheckSpits (result, expected, _) ->
+        let check_tag = tag () in
+        CCheckSpits (helpI result, helpI expected, check_tag)
   and helpI (i : 'a immexpr) : tag immexpr =
     match i with
     | ImmNil _ -> ImmNil (tag ())

@@ -17,35 +17,6 @@ type freevars = StringSet.t
 
 type livevars = StringSet.t
 
-(* 
-  []=============================================[]
-    Hello,
-      This homework went better than our previous ones,
-      but still not our best work.
-      Racer was really fun to implement, but final projects and
-      the impending holiday put a collar on our productivity.
-      (Also, we spent a solid few days fixing leftover bugs from ~~garter~~ fer-de-lance..)
-      
-      We know some things do not work:
-      - Let Recs are still broken, though we at least located the bug.
-        We just ran out of time to fix it :(.
-      - Garbage collection still does not work.
-        We know it needs to be adjusted for racer,
-        by pushing and popping the registers onto and off of the stack,
-        to ensure they get collected.
-      - We removed R10 and R11 from the color pool to prevent conflicts with scratch values.
-        Is there a way to fix this that doesn't suck?
-        As such, some of our tests might be failing as they don't reflect the updated color list.
-      
-      As soon as we hand in this assignment, we are going to (individually) race through the second written assignment.
-
-      The final exam will be nicer considering we have much fewer responsibilities.
-    
-      Thank you for grading our assignments
-        - Emery and Jacob
-  []=============================================[]
-*)
-
 let print_env env how =
   debug_printf "Env is\n";
   List.iter (fun (id, bind) -> debug_printf "  %s -> %s\n" id (how bind)) env
