@@ -582,4 +582,4 @@ let suite = "unit_tests" >::: parse_check_spits
 (*@ live_in @ live_out*)
 (*@ oom @ gc @ input*)
 
-let () = run_test_tt_main ("all_tests" >::: [suite (* input_file_test_suite () *)])
+let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

@@ -8,7 +8,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 
 %token <int64> NUM
 %token <string> ID
-%token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE
+%token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE TRY CATCH AS
 
 %right SEMI
 %left COLON COLONEQ
@@ -27,7 +27,9 @@ const :
   | TRUE { EBool(true, full_span()) }
   | FALSE { EBool(false, full_span()) }
   | NIL %prec SEMI { ENil(full_span()) }
-  // Exceptions
+  | excpetion { $1 }
+  
+excpetion:  
   | EXRUNTIME { EException(Runtime, full_span()) }
   | EXVALUE { EException(Value, full_span()) }
 
@@ -59,6 +61,8 @@ expr :
   | binop_expr SEMI expr { ESeq($1, $3, full_span()) }
   | binop_expr { $1 }
   | CHECK expr SPITS expr { ECheckSpits($2, $4, full_span()) }
+  // try () catch RuntimeExcexption as e in ()
+  | TRY expr CATCH exception AS bind IN expr { ETryCatch($2, $6, $4, $8 full_span()) }
 
 exprs :
   | expr { [$1] }

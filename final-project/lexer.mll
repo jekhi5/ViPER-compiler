@@ -85,6 +85,9 @@ rule token = parse
   | "spits" { SPITS }
   | "RuntimeException" { EXRUNTIME }
   | "ValueException" { EXVALUE }
+  | "try" { TRY }
+  | "catch" { CATCH }
+  | "as" { AS }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | eof { EOF }
   | _ as c { failwith (sprintf "Unrecognized character: %c" c) }

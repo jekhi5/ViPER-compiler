@@ -73,6 +73,8 @@ and 'a expr =
   | ELetRec of 'a binding list * 'a expr * 'a
   | ECheckSpits of 'a expr * 'a expr * 'a
   | EException of except * 'a
+  (* try () catch RuntimeExcexption as e in () *)
+  | ETryCatch of 'a expr * 'a bind * except * 'a expr * 'a
 
 type 'a decl = DFun of string * 'a bind list * 'a expr * 'a
 
@@ -98,6 +100,8 @@ and 'a cexpr =
   | CSetItem of 'a immexpr * 'a immexpr * 'a immexpr * 'a
   | CLambda of string list * 'a aexpr * 'a
   | CCheckSpits of 'a immexpr * 'a immexpr * 'a
+  (* The CTryCatch does not have a `bind` anymore because it was desugared away *)
+  | CTryCatch of 'a aexpr * except * 'a aexpr * 'a
 
 and 'a aexpr =
   (* anf expressions *)
@@ -136,7 +140,8 @@ let get_tag_E e =
   | ESeq (_, _, t) -> t
   | ELambda (_, _, t) -> t
   | ECheckSpits (_, _, t) -> t
-  | EException(_, t) -> t
+  | EException (_, t) -> t
+  | ETryCatch (_, _, _, _, t) -> t
 ;;
 
 let get_tag_D d =
@@ -202,6 +207,11 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_expected = map_tag_E f expected in
       ECheckSpits (tag_result, tag_expected, f a)
   | EException (e, a) -> EException (e, f a)
+  | ETryCatch (t, bind, except, c, a) ->
+      let tag_try_catch = f a in
+      let tag_try = map_tag_E f t in
+      let tag_catch = map_tag_E f c in
+      ETryCatch (tag_try, bind, except, tag_catch, tag_try_catch)
 
 and map_tag_B (f : 'a -> 'b) b =
   match b with
@@ -243,19 +253,6 @@ let combine_tags (f1 : 'a -> 'b) (f2 : 'a -> 'c) (p : 'a program) : ('b * 'c) pr
   map_tag_P (fun a -> (f1 a, f2 a)) p
 ;;
 
-let tag_and_map (f : 'a -> 'b) (p : 'a program) : ('a * 'b) program =
-  map_tag_P (fun a -> (a, f a)) p
-;;
-
-let prog_and_tag (p : 'a program) : ('a * tag) program =
-  let next = ref 0 in
-  let tag _ =
-    next := !next + 1;
-    !next
-  in
-  tag_and_map tag p
-;;
-
 let rec untagP (p : 'a program) : unit program =
   match p with
   | Program (decls, body, _) ->
@@ -282,6 +279,7 @@ and untagE e =
   | ELambda (binds, body, _) -> ELambda (List.map untagB binds, untagE body, ())
   | ECheckSpits (result, expected, _) -> ECheckSpits (untagE result, untagE expected, ())
   | EException (ex, _) -> EException (ex, ())
+  | ETryCatch (t, bind, except, c, _) -> ETryCatch (untagE t, bind, except, untagE c, ())
 
 and untagB b =
   match b with
@@ -342,6 +340,9 @@ let atag (p : 'a aprogram) : tag aprogram =
     | CCheckSpits (result, expected, _) ->
         let check_tag = tag () in
         CCheckSpits (helpI result, helpI expected, check_tag)
+    | CTryCatch (t, except, c, _) ->
+        let try_catch_tag = tag () in
+        CTryCatch (helpA t, except, helpA c, try_catch_tag)
   and helpI (i : 'a immexpr) : tag immexpr =
     match i with
     | ImmNil _ -> ImmNil (tag ())

@@ -50,6 +50,14 @@ let tuple_tag_mask = 0x0000000000000007L
 
 let const_nil = HexConst tuple_tag
 
+(* We are digging into the booleans here. 
+ * 0011111... is representative of a runtime exception (like you tried to do addition with a boolean)
+ * 0001111... is representative of a value based exception (raised by the user. Ex: illegal argument exception)
+ *)
+let runtime_exception = HexConst 0x3FFFFFFFFFFFFFFFL
+
+let value_exception = HexConst 0x1FFFFFFFFFFFFFFFL
+
 let err_COMP_NOT_NUM = 1L
 
 let err_ARITH_NOT_NUM = 2L
@@ -406,7 +414,15 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         process_args binds
         @ wf_E body (merge_envs (assoc_to_map (List.concat (List.map flatten_bind binds))) env)
     | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
-    | EException _ -> raise (NotYetImplemented "Exception")
+    | EException _ -> []
+    | ETryCatch (t, bind, _, c, _) ->
+        let catch_errs =
+          match bind with
+          | BBlank _ -> wf_E c env
+          | BName (id, shadowable, loc) -> wf_E c (StringMap.add id (loc, None, None) env)
+          | BTuple (_, loc) -> [Unsupported ("Tuple binding in try-catch is unsupported", loc)]
+        in
+        wf_E t env @ catch_errs
   and wf_D d (env : scope_info name_envt) =
     match d with
     | DFun (_, args, body, _) ->
@@ -483,17 +499,18 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       | _ -> Error exns )
 ;;
 
+let gensym =
+  let next = ref 0 in
+  fun name ->
+    next := !next + 1;
+    sprintf "%s_%d" name !next
+;;
+
 (* ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
    ;;;;;; DESUGARING ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; *)
 
 let desugar (p : sourcespan program) : sourcespan program =
-  let gensym =
-    let next = ref 0 in
-    fun name ->
-      next := !next + 1;
-      sprintf "%s_%d" name !next
-  in
   let rec helpP (p : sourcespan program) =
     match p with
     | Program (decls, body, tag) ->
@@ -589,7 +606,17 @@ let desugar (p : sourcespan program) : sourcespan program =
         in
         ELambda (params, newbody, tag)
     | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
-    | EException _ -> raise (NotYetImplemented "Exception")
+    | EException _ -> e
+    | ETryCatch (t, bind, except, c, tag) ->
+        (* This wraps the catch block in a let of the form:
+         * let `bind` = `except` in c
+         * which ensures that the environment will include the binding when we compile the
+         * catch block. This is only useful because exceptions are just constants. If the
+         * exception had a user defined value, this would no longer be possible because
+         * the exception could be modified at runtime
+         *)
+        let new_catch_let = ELet ([(bind, EException (except, tag), tag)], c, tag) in
+        ETryCatch (t, bind, except, new_catch_let, tag)
   in
   helpP p
 ;;
@@ -650,10 +677,10 @@ let rename_and_tag (p : tag program) : tag program =
           Snake
         in
         EApp (func, List.map (helpE env) args, call_type, tag)
-    | ELet (binds, body, tag) ->
-        let binds', env' = helpBG env binds in
+    | ELet (bindings, body, tag) ->
+        let bindings', env' = helpBG env bindings in
         let body' = helpE env' body in
-        ELet (binds', body', tag)
+        ELet (bindings', body', tag)
     | ELetRec (bindings, body, tag) ->
         let revbinds, env =
           List.fold_left
@@ -672,7 +699,11 @@ let rename_and_tag (p : tag program) : tag program =
         let body' = helpE env' body in
         ELambda (binds', body', tag)
     | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
-    | EException _ -> raise (NotYetImplemented "Exception")
+    | EException _ -> e
+    (* We do NOT extend the environment for the catch block here because in desugar we wrapped
+     * it in an ELet with the binding
+     *)
+    | ETryCatch (t, bind, except, c, tag) -> ETryCatch (helpE env t, bind, except, helpE env c, tag)
   in
   rename [] p
 ;;
@@ -762,6 +793,7 @@ let anf (p : tag program) : unit aprogram =
         let idx_imm, idx_setup = helpI idx in
         let new_imm, new_setup = helpI newval in
         (CSetItem (tup_imm, idx_imm, new_imm, ()), tup_setup @ idx_setup @ new_setup)
+    | ETryCatch (t, bind, except, c, _) -> (CTryCatch (helpA t, except, helpA c, ()), [])
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -856,7 +888,10 @@ let anf (p : tag program) : unit aprogram =
     | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
     | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
-    | EException _ -> raise (NotYetImplemented "Exception")
+    | EException (ex, _) -> (ImmExcept (ex, ()), [])
+    | ETryCatch (t, bind, except, c, tag) ->
+        let tmp = sprintf "try_catch_%d" tag in
+        (ImmId (tmp, ()), [BLet (tmp, CTryCatch (helpA t, except, helpA c, ()))])
   and helpA e : unit aexpr =
     let ans, ans_setup = helpC e in
     List.fold_right
@@ -901,6 +936,7 @@ let free_vars (e : 'a aexpr) : StringSet.t =
         helpI tup bound_ids |> u (helpI idx bound_ids) |> u (helpI new_elem bound_ids)
     | CLambda (ids, body, _) -> helpA body (StringSet.of_list ids |> u bound_ids)
     | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | CTryCatch (t, except, c, _) -> helpA t bound_ids |> u (helpA c bound_ids)
   and helpA (e : 'a aexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
     | ASeq (first, next, _) -> helpC first bound_ids |> u (helpA next bound_ids)
@@ -929,7 +965,7 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : freevars aprogr
     | ImmNum (n, _) -> (ImmNum (n, empty), empty)
     | ImmBool (b, _) -> (ImmBool (b, empty), empty)
     | ImmNil _ -> (ImmNil empty, empty)
-    | ImmExcept _ -> raise (NotYetImplemented "exceptions")
+    | ImmExcept (ex, _) -> (ImmExcept (ex, empty), empty)
   and helpC (e : 'a cexpr) : StringSet.t cexpr * StringSet.t =
     match e with
     | CIf (cond, thn, els, _) ->
@@ -986,6 +1022,11 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : freevars aprogr
         let free = d free_body (StringSet.of_list ids) in
         (CLambda (ids, new_body, free), free)
     | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | CTryCatch (t, except, c, _) ->
+        let new_try, free_try = helpA t in
+        let new_catch, free_catch = helpA c in
+        let free = free_try |> u free_catch in
+        (CTryCatch (new_try, except, new_catch, free), free)
   and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
     | ASeq (first, next, _) ->
@@ -1092,6 +1133,9 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
             env args_locs
         in
         helpA body args_env 1 env_name
+    | CTryCatch (t, except, c, _) ->
+        let try_env = helpA t env (si + 1) env_name in
+        helpA c try_env (si + 1) env_name
   and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
       arg name_envt name_envt =
     match aexp with
@@ -1164,8 +1208,7 @@ let empty = StringSet.empty
 let get_cache (expr : StringSet.t aexpr) : StringSet.t =
   let helpI (imm_expr : StringSet.t immexpr) : StringSet.t =
     match imm_expr with
-    | ImmNum (_, c) | ImmBool (_, c) | ImmId (_, c) | ImmNil c -> c
-    | ImmExcept _ -> raise (NotYetImplemented "CheckSpits")
+    | ImmNum (_, c) | ImmBool (_, c) | ImmId (_, c) | ImmNil c | ImmExcept (_, c) -> c
   in
   let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
     match cexpr with
@@ -1177,6 +1220,7 @@ let get_cache (expr : StringSet.t aexpr) : StringSet.t =
      |CSetItem (_, _, _, cache)
      |CLambda (_, _, cache)
      |CApp (_, _, _, cache)
+     |CTryCatch (_, _, _, cache)
      |CImmExpr (ImmId (_, cache)) -> cache
     | CImmExpr thing -> helpI thing
     | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
@@ -1203,7 +1247,7 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
     | ImmBool (bool, _) -> ImmBool (bool, live_out)
     | ImmId (id, _) -> ImmId (id, live_out |> u (StringSet.singleton id))
     | ImmNil _ -> ImmNil live_out
-    | ImmExcept _ -> raise (NotYetImplemented "CheckSpits")
+    | ImmExcept (ex, _) -> ImmExcept (ex, live_out)
   in
   let helpC (cexpr : StringSet.t cexpr) (live_out : StringSet.t) : StringSet.t cexpr =
     match cexpr with
@@ -1301,7 +1345,13 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
           |> u free_vars
         in
         CSetItem (live_tup, live_idx, live_new_elem, live_in)
-        | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | CTryCatch (t, except, c, _) ->
+        let live_catch = compute_live_in c live_out in
+        let live_try = compute_live_in t live_out in
+        let free_vars = free_vars live_catch |> u (free_vars live_try) in
+        let live_in = get_cache live_try |> u (get_cache live_catch) |> u free_vars in
+        CTryCatch (live_try, except, live_catch, live_in)
   in
   match expr with
   | ASeq (first, next, _) ->
@@ -1361,42 +1411,6 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
   match expr with
   | ASeq (_, b, _) | ALet (_, _, b, _) | ALetRec (_, b, _) -> compute_live_in b
   | ACExpr cexpr -> helpC cexpr *)
-
-and def (e : 'a aexpr) : StringSet.t =
-  let rec helpC e =
-    match e with
-    | CIf (_, th, el, _) -> def th |> u (def el)
-    | CLambda (args, b, _) -> StringSet.of_list args |> u (def b)
-    | _ -> empty
-  in
-  match e with
-  | ASeq (_, b, _) -> def b
-  | ALet (id, _, b, _) -> StringSet.add id (def b)
-  | ALetRec (binds, body, _) ->
-      let ids, _ = List.split binds in
-      StringSet.of_list ids |> u (def body)
-  | ACExpr c -> helpC c
-
-and use (e : 'a aexpr) : StringSet.t =
-  let rec helpI e =
-    match e with
-    | ImmId (id, _) -> StringSet.singleton id
-    | _ -> empty
-  and helpC e =
-    match e with
-    | CImmExpr a | CPrim1 (_, a, _) -> helpI a
-    | CPrim2 (_, a, b, _) | CGetItem (a, b, _) -> helpI a |> u (helpI b)
-    | CIf (a, b, c, _) -> helpI a |> u (use b) |> u (use c)
-    | CSetItem (a, b, c, _) -> helpI a |> u (helpI b) |> u (helpI c)
-    | CLambda (_, a, _) -> use a
-    | CApp (f, args, _, _) -> List.fold_left (fun acc i -> helpI i |> u acc) (helpI f) args
-    | CTuple (items, _) -> List.fold_left (fun acc i -> helpI i |> u acc) empty items
-    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
-  in
-  match e with
-  | ASeq (a, b, _) | ALet (_, a, b, _) -> helpC a |> u (use b)
-  | ALetRec (binds, body, _) -> List.fold_left (fun acc (_, c) -> helpC c |> u acc) (use body) binds
-  | ACExpr c -> helpC c
 
 and live_in_program (AProgram (body, _)) = AProgram (compute_live_in body empty, empty)
 
@@ -1491,7 +1505,10 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
             env_env args_locs
         in
         helpA body env_name args_env
-        | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | CTryCatch (t, _, c, _) ->
+        let try_env = helpA t env_name env_env in
+        helpA c env_name try_env
   (* helper for ANF expressions *)
   and helpA (e : freevars aexpr) (env_name : string) (env_env : arg name_envt name_envt) :
       arg name_envt name_envt =
@@ -1593,7 +1610,28 @@ let crash = [IJmp (Label index_high_label)]
 (* We could check a parameterized register, but that creates complexity in reporting the error. *)
 (* We opt to hard-code RAX, for more consistency in exchange for some more boiler-plate code. *)
 let check_bool (goto : string) : instruction list =
+  let end_label = gensym "bool_check" in
+  (* This specifically checks for the enumerated bool values
+   * because we used some of the bool values for other stuff
+   *)
   [ IMov (Reg scratch_reg2, Reg RAX);
+    IMov (Reg scratch_reg, const_false);
+    ICmp (Reg scratch_reg2, Reg scratch_reg);
+    IJz (Label end_label);
+    IMov (Reg scratch_reg, const_true);
+    ICmp (Reg scratch_reg2, Reg scratch_reg);
+    IJnz (Label goto);
+    ILabel end_label ]
+;;
+
+let check_exception (goto : string) : instruction list =
+  [ IMov (Reg scratch_reg2, Reg RAX);
+    IMov (Reg scratch_reg, const_false);
+    ICmp (Reg scratch_reg2, Reg scratch_reg);
+    IJz (Label goto);
+    IMov (Reg scratch_reg, const_true);
+    ICmp (Reg scratch_reg2, Reg scratch_reg);
+    IJz (Label goto);
     IMov (Reg scratch_reg, HexConst bool_tag_mask);
     IAnd (Reg scratch_reg2, Reg scratch_reg);
     ICmp (Reg scratch_reg2, HexConst bool_tag);
@@ -2164,7 +2202,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               ILineComment (sprintf "END is_tuple%d   -------------" t) ]
       | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
       | Crash -> [IJmp (Label crash_label)]
-      | Raise -> raise (NotYetImplemented "CheckSpits") )
+      (* TODO: Once try-catch is implemented, update this functionality *)
+      | Raise -> [IMov (Reg RDI, e_reg); IJmp (Label crash_label)] )
   | CPrim2 (op, e1, e2, t) -> (
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
@@ -2299,7 +2338,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
-          | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+  | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+  | CTryCatch _ -> raise (NotYetImplemented "TryCatch")
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with
@@ -2308,7 +2348,10 @@ and compile_imm e (env_env : arg name_envt name_envt) env_name =
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> get_nested env_name x env_env
   | ImmNil _ -> Const tuple_tag
-  | ImmExcept _ -> raise (NotYetImplemented "CheckSpits")
+  | ImmExcept (ex, _) -> (
+    match ex with
+    | Runtime -> runtime_exception
+    | Value -> value_exception )
 ;;
 
 (* This function can be used to take the native functions and produce DFuns whose bodies
