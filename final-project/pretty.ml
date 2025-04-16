@@ -20,6 +20,7 @@ let string_of_op1 op =
   | IsBool -> "isbool"
   | IsTuple -> "istuple"
   | Crash -> "crash"
+  | Raise -> "raise"
 ;;
 
 let name_of_op1 op =
@@ -33,6 +34,7 @@ let name_of_op1 op =
   | IsBool -> "IsBool"
   | IsTuple -> "IsTuple"
   | Crash -> "Crash"
+  | Raise -> "Raise"
 ;;
 
 let string_of_op2 op =
@@ -85,6 +87,12 @@ let string_of_call_type ct =
   | Unknown -> "?"
 ;;
 
+let string_of_exception e =
+  match e with
+  | Runtime -> "RuntimeException"
+  | Value -> "ValueException"
+;;
+
 let rec string_of_binding_with (depth : int) (print_a : 'a -> string) ((bind, expr, _) : 'a binding)
     : string =
   sprintf "%s = %s" (string_of_bind bind) (string_of_expr_with depth print_a expr)
@@ -134,6 +142,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | ECheckSpits (result, expected, a) ->
         sprintf "(check %s spits %s)%s" (string_of_expr result) (string_of_expr expected)
           (print_a a)
+    | EException (ex, a) -> string_of_exception ex ^ print_a a
 ;;
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
@@ -231,6 +240,7 @@ and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   | ImmNum (n, a) -> Int64.to_string n ^ print_a a
   | ImmBool (b, a) -> string_of_bool b ^ print_a a
   | ImmId (x, a) -> x ^ print_a a
+  | ImmExcept (ex, a) -> string_of_exception ex ^ print_a a
 
 and string_of_aprogram_with (depth : int) (print_a : 'a -> string) (p : 'a aprogram) : string =
   match p with
@@ -432,6 +442,10 @@ let rec format_expr (fmt : Format.formatter) (print_a : 'a -> string) (e : 'a ex
       print_comma_sep fmt;
       help expected;
       print_comma_sep fmt;
+      close_paren fmt
+  | EException (ex, a) ->
+      open_label fmt "EException" (print_a a);
+      pp_print_string fmt (string_of_exception ex);
       close_paren fmt
 ;;
 

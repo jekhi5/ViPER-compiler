@@ -83,6 +83,8 @@ rule token = parse
   | "shadow" { SHADOW }
   | "check" { CHECK }
   | "spits" { SPITS }
+  | "RuntimeException" { EXRUNTIME }
+  | "ValueException" { EXVALUE }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | eof { EOF }
   | _ as c { failwith (sprintf "Unrecognized character: %c" c) }

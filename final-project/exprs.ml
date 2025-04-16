@@ -13,6 +13,10 @@ type tag = int
 
 type sourcespan = Lexing.position * Lexing.position
 
+type except =
+  | Runtime
+  | Value
+
 type prim1 =
   | Add1
   | Sub1
@@ -23,6 +27,7 @@ type prim1 =
   | Not
   | PrintStack
   | Crash
+  | Raise
 
 type prim2 =
   | Plus
@@ -67,6 +72,7 @@ and 'a expr =
   | ELambda of 'a bind list * 'a expr * 'a
   | ELetRec of 'a binding list * 'a expr * 'a
   | ECheckSpits of 'a expr * 'a expr * 'a
+  | EException of except * 'a
 
 type 'a decl = DFun of string * 'a bind list * 'a expr * 'a
 
@@ -78,6 +84,7 @@ type 'a immexpr =
   | ImmBool of bool * 'a
   | ImmId of string * 'a
   | ImmNil of 'a
+  | ImmExcept of except * 'a (* This will need to change if we add more data... *)
 
 and 'a cexpr =
   (* compound expressions *)
@@ -129,6 +136,7 @@ let get_tag_E e =
   | ESeq (_, _, t) -> t
   | ELambda (_, _, t) -> t
   | ECheckSpits (_, _, t) -> t
+  | EException(_, t) -> t
 ;;
 
 let get_tag_D d =
@@ -193,6 +201,7 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_result = map_tag_E f result in
       let tag_expected = map_tag_E f expected in
       ECheckSpits (tag_result, tag_expected, f a)
+  | EException (e, a) -> EException (e, f a)
 
 and map_tag_B (f : 'a -> 'b) b =
   match b with
@@ -272,6 +281,7 @@ and untagE e =
       ELetRec (List.map (fun (b, e, _) -> (untagB b, untagE e, ())) binds, untagE body, ())
   | ELambda (binds, body, _) -> ELambda (List.map untagB binds, untagE body, ())
   | ECheckSpits (result, expected, _) -> ECheckSpits (untagE result, untagE expected, ())
+  | EException (ex, _) -> EException (ex, ())
 
 and untagB b =
   match b with
@@ -338,6 +348,7 @@ let atag (p : 'a aprogram) : tag aprogram =
     | ImmId (x, _) -> ImmId (x, tag ())
     | ImmNum (n, _) -> ImmNum (n, tag ())
     | ImmBool (b, _) -> ImmBool (b, tag ())
+    | ImmExcept (e, _) -> ImmExcept (e, tag ())
   and helpP p =
     match p with
     | AProgram (body, _) -> AProgram (helpA body, 0)

@@ -405,6 +405,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         in
         process_args binds
         @ wf_E body (merge_envs (assoc_to_map (List.concat (List.map flatten_bind binds))) env)
+    | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | EException _ -> raise (NotYetImplemented "Exception")
   and wf_D d (env : scope_info name_envt) =
     match d with
     | DFun (_, args, body, _) ->
@@ -586,6 +588,8 @@ let desugar (p : sourcespan program) : sourcespan program =
           List.fold_right (fun binds body -> ELet (binds, body, tag)) newbinds (helpE body)
         in
         ELambda (params, newbody, tag)
+    | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | EException _ -> raise (NotYetImplemented "Exception")
   in
   helpP p
 ;;
@@ -667,6 +671,8 @@ let rename_and_tag (p : tag program) : tag program =
         let binds', env' = helpBS env binds in
         let body' = helpE env' body in
         ELambda (binds', body', tag)
+    | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | EException _ -> raise (NotYetImplemented "Exception")
   in
   rename [] p
 ;;
@@ -849,6 +855,8 @@ let anf (p : tag program) : unit aprogram =
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
     | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
+    | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
+    | EException _ -> raise (NotYetImplemented "Exception")
   and helpA e : unit aexpr =
     let ans, ans_setup = helpC e in
     List.fold_right
@@ -892,6 +900,7 @@ let free_vars (e : 'a aexpr) : StringSet.t =
     | CSetItem (tup, idx, new_elem, _) ->
         helpI tup bound_ids |> u (helpI idx bound_ids) |> u (helpI new_elem bound_ids)
     | CLambda (ids, body, _) -> helpA body (StringSet.of_list ids |> u bound_ids)
+    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
   and helpA (e : 'a aexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
     | ASeq (first, next, _) -> helpC first bound_ids |> u (helpA next bound_ids)
@@ -920,6 +929,7 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : freevars aprogr
     | ImmNum (n, _) -> (ImmNum (n, empty), empty)
     | ImmBool (b, _) -> (ImmBool (b, empty), empty)
     | ImmNil _ -> (ImmNil empty, empty)
+    | ImmExcept _ -> raise (NotYetImplemented "exceptions")
   and helpC (e : 'a cexpr) : StringSet.t cexpr * StringSet.t =
     match e with
     | CIf (cond, thn, els, _) ->
@@ -975,6 +985,7 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : freevars aprogr
         let new_body, free_body = helpA body in
         let free = d free_body (StringSet.of_list ids) in
         (CLambda (ids, new_body, free), free)
+    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
   and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
     | ASeq (first, next, _) ->
@@ -1064,6 +1075,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
       arg name_envt name_envt =
     match cexp with
     | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> env
+    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
     | CIf (_, thn, els, _) ->
         let thn_env = helpA thn env (si + 1) env_name in
         helpA els thn_env (si + 1) env_name
@@ -1153,6 +1165,7 @@ let get_cache (expr : StringSet.t aexpr) : StringSet.t =
   let helpI (imm_expr : StringSet.t immexpr) : StringSet.t =
     match imm_expr with
     | ImmNum (_, c) | ImmBool (_, c) | ImmId (_, c) | ImmNil c -> c
+    | ImmExcept _ -> raise (NotYetImplemented "CheckSpits")
   in
   let helpC (cexpr : StringSet.t cexpr) : StringSet.t =
     match cexpr with
@@ -1166,6 +1179,7 @@ let get_cache (expr : StringSet.t aexpr) : StringSet.t =
      |CApp (_, _, _, cache)
      |CImmExpr (ImmId (_, cache)) -> cache
     | CImmExpr thing -> helpI thing
+    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
   in
   match expr with
   | ASeq (_, _, cache) | ALet (_, _, _, cache) | ALetRec (_, _, cache) -> cache
@@ -1189,6 +1203,7 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
     | ImmBool (bool, _) -> ImmBool (bool, live_out)
     | ImmId (id, _) -> ImmId (id, live_out |> u (StringSet.singleton id))
     | ImmNil _ -> ImmNil live_out
+    | ImmExcept _ -> raise (NotYetImplemented "CheckSpits")
   in
   let helpC (cexpr : StringSet.t cexpr) (live_out : StringSet.t) : StringSet.t cexpr =
     match cexpr with
@@ -1286,6 +1301,7 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
           |> u free_vars
         in
         CSetItem (live_tup, live_idx, live_new_elem, live_in)
+        | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
   in
   match expr with
   | ASeq (first, next, _) ->
@@ -1375,6 +1391,7 @@ and use (e : 'a aexpr) : StringSet.t =
     | CLambda (_, a, _) -> use a
     | CApp (f, args, _, _) -> List.fold_left (fun acc i -> helpI i |> u acc) (helpI f) args
     | CTuple (items, _) -> List.fold_left (fun acc i -> helpI i |> u acc) empty items
+    | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
   in
   match e with
   | ASeq (a, b, _) | ALet (_, a, b, _) -> helpC a |> u (use b)
@@ -1474,6 +1491,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
             env_env args_locs
         in
         helpA body env_name args_env
+        | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
   (* helper for ANF expressions *)
   and helpA (e : freevars aexpr) (env_name : string) (env_env : arg name_envt name_envt) :
       arg name_envt name_envt =
@@ -1505,7 +1523,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         let bound_env = helpC bound env_name env_env in
         helpA body env_name bound_env
     | ASeq (first, next, _) ->
-      let cur_env = safe_find_opt env_name env_env in
+        let cur_env = safe_find_opt env_name env_env in
         let seq_env = color_graph (interfere e) cur_env in
         let env_new = StringMap.add env_name seq_env env_env in
         let fst_env = helpC first env_name env_new in
@@ -2145,7 +2163,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               ILabel done_label;
               ILineComment (sprintf "END is_tuple%d   -------------" t) ]
       | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
-      | Crash -> [IJmp (Label crash_label)] )
+      | Crash -> [IJmp (Label crash_label)]
+      | Raise -> raise (NotYetImplemented "CheckSpits") )
   | CPrim2 (op, e1, e2, t) -> (
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
@@ -2280,6 +2299,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
+          | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with
@@ -2288,6 +2308,7 @@ and compile_imm e (env_env : arg name_envt name_envt) env_name =
   | ImmBool (false, _) -> const_false
   | ImmId (x, _) -> get_nested env_name x env_env
   | ImmNil _ -> Const tuple_tag
+  | ImmExcept _ -> raise (NotYetImplemented "CheckSpits")
 ;;
 
 (* This function can be used to take the native functions and produce DFuns whose bodies
