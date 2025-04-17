@@ -211,7 +211,8 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_try_catch = f a in
       let tag_try = map_tag_E f t in
       let tag_catch = map_tag_E f c in
-      ETryCatch (tag_try, bind, except, tag_catch, tag_try_catch)
+      let tag_bind = map_tag_B f bind in
+      ETryCatch (tag_try, tag_bind, except, tag_catch, tag_try_catch)
 
 and map_tag_B (f : 'a -> 'b) b =
   match b with
