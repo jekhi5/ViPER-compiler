@@ -615,8 +615,8 @@ let desugar (p : sourcespan program) : sourcespan program =
          * exception had a user defined value, this would no longer be possible because
          * the exception could be modified at runtime
          *)
-        let new_catch_let = ELet ([(bind, EException (except, tag), tag)], c, tag) in
-        ETryCatch (t, bind, except, new_catch_let, tag)
+        let new_catch_let = ELet ([(bind, EException (except, tag), tag)], helpE c, tag) in
+        ETryCatch (helpE t, bind, except, new_catch_let, tag)
   in
   helpP p
 ;;
@@ -2340,6 +2340,14 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           ILineComment "===== End set-item =====" ]
   | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
   | CTryCatch _ -> raise (NotYetImplemented "TryCatch")
+(*
+ * 1. Setup closure for `try` block
+ * 2. Setup exception handler:
+ *    - What is in the exception handler?
+ *      - Original RSP and RBP from before we entered this block
+ *      - Location of _this_ `try` block's `catch` block
+ *      - *Note*: before leaving the `try` block, the exception should be put into RAX
+ *)
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with
