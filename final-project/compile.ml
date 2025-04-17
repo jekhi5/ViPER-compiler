@@ -156,10 +156,21 @@ let prepend = merge_envs
 
 (* you can add any functions or data defined by the runtime here for future use *)
 let initial_val_env = assoc_to_map []
+(* [ ("nil", (dummy_span, None, None));
+      ("true", (dummy_span, None, None));
+      ("false", (dummy_span, None, None)) ] *)
 
 let prim_bindings = assoc_to_map []
+(* [ ("isnum", (dummy_span, Some 1, Some 1));
+      ("isbool", (dummy_span, Some 1, Some 1));
+      ("istuple", (dummy_span, Some 1, Some 1));
+      ("add1", (dummy_span, Some 1, Some 1));
+      ("sub1", (dummy_span, Some 1, Some 1));
+      ("print", (dummy_span, Some 1, Some 1));
+      ("printStack", (dummy_span, Some 0, Some 0)) ] *)
 
 let native_fun_bindings = assoc_to_map []
+(* [("input", (dummy_span, Some 0, Some 0)); ("equal", (dummy_span, Some 2, Some 2))] *)
 
 let initial_fun_env = merge_envs prim_bindings native_fun_bindings
 
@@ -472,8 +483,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       let initial_env = initial_val_env in
       let initial_env =
         StringMap.fold
-          (fun name (_, arg_count) env ->
-            StringMap.add name (dummy_span, Some arg_count, Some arg_count) env )
+          (fun name (_, arg_count1, arg_count2) env ->
+            StringMap.add name (dummy_span, arg_count1, arg_count2) env )
           initial_env initial_fun_env
       in
       let rec find name (decls : 'a decl list) =
@@ -800,7 +811,8 @@ let anf (p : tag program) : unit aprogram =
         (CSetItem (tup_imm, idx_imm, new_imm, ()), tup_setup @ idx_setup @ new_setup)
     | ETryCatch (t, bind, EException (except, _), c, _) ->
         (CTryCatch (helpA t, except, helpA c, ()), [])
-    | ETryCatch _ -> raise (InternalCompilerError "Violated invatiant: Tried to catch a non-exception")
+    | ETryCatch _ ->
+        raise (InternalCompilerError "Violated invatiant: Tried to catch a non-exception")
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -2196,7 +2208,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           [ (* Print both passes its value to the external function, and returns it. *)
             IMov (Reg RDI, e_reg);
             (* TODO: Is this right?? *)
-            ICall (Label "print") (* The answer goes in RAX :) *) ]
+            ICall (Label "?print") (* The answer goes in RAX :) *) ]
       | IsTuple ->
           let false_label = sprintf "is_tuple_false#%d" t in
           let done_label = sprintf "is_tuple_done#%d" t in
@@ -2393,7 +2405,10 @@ let add_native_lambdas (p : sourcespan program) =
   | Program (declss, body, tag) ->
       Program
         ( StringMap.fold
-            (fun name (_, arity) declss -> wrap_native name arity :: declss)
+            (fun name (_, arity, _) declss ->
+              match arity with
+              | Some a -> wrap_native name a :: declss
+              | _ -> raise (InternalCompilerError "All native functions require arity") )
             native_fun_bindings declss,
           body,
           tag )
