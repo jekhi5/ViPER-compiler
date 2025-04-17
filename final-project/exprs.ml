@@ -74,7 +74,7 @@ and 'a expr =
   | ECheckSpits of 'a expr * 'a expr * 'a
   | EException of except * 'a
   (* try () catch RuntimeExcexption as e in () *)
-  | ETryCatch of 'a expr * 'a bind * except * 'a expr * 'a
+  | ETryCatch of 'a expr * 'a bind * 'a expr * 'a expr * 'a
 
 type 'a decl = DFun of string * 'a bind list * 'a expr * 'a
 
@@ -207,12 +207,13 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_expected = map_tag_E f expected in
       ECheckSpits (tag_result, tag_expected, f a)
   | EException (e, a) -> EException (e, f a)
-  | ETryCatch (t, bind, except, c, a) ->
+  | ETryCatch (t, bind, excptn, c, a) ->
       let tag_try_catch = f a in
       let tag_try = map_tag_E f t in
       let tag_catch = map_tag_E f c in
       let tag_bind = map_tag_B f bind in
-      ETryCatch (tag_try, tag_bind, except, tag_catch, tag_try_catch)
+      let tag_exception = map_tag_E f excptn in
+      ETryCatch (tag_try, tag_bind, tag_exception, tag_catch, tag_try_catch)
 
 and map_tag_B (f : 'a -> 'b) b =
   match b with
@@ -280,7 +281,7 @@ and untagE e =
   | ELambda (binds, body, _) -> ELambda (List.map untagB binds, untagE body, ())
   | ECheckSpits (result, expected, _) -> ECheckSpits (untagE result, untagE expected, ())
   | EException (ex, _) -> EException (ex, ())
-  | ETryCatch (t, bind, except, c, _) -> ETryCatch (untagE t, bind, except, untagE c, ())
+  | ETryCatch (t, bind, excptn, c, _) -> ETryCatch (untagE t, bind, untagE excptn, untagE c, ())
 
 and untagB b =
   match b with

@@ -27,9 +27,9 @@ const :
   | TRUE { EBool(true, full_span()) }
   | FALSE { EBool(false, full_span()) }
   | NIL %prec SEMI { ENil(full_span()) }
-  | excpetion { $1 }
+  | snakeexcept { $1 }
   
-excpetion:  
+snakeexcept:
   | EXRUNTIME { EException(Runtime, full_span()) }
   | EXVALUE { EException(Value, full_span()) }
 
@@ -62,7 +62,7 @@ expr :
   | binop_expr { $1 }
   | CHECK expr SPITS expr { ECheckSpits($2, $4, full_span()) }
   // try () catch RuntimeExcexption as e in ()
-  | TRY expr CATCH exception AS bind IN expr { ETryCatch($2, $6, $4, $8 full_span()) }
+  | TRY expr CATCH snakeexcept AS bind IN expr { ETryCatch($2, $6, $4, $8, full_span()) }
 
 exprs :
   | expr { [$1] }

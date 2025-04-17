@@ -415,14 +415,19 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         @ wf_E body (merge_envs (assoc_to_map (List.concat (List.map flatten_bind binds))) env)
     | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
     | EException _ -> []
-    | ETryCatch (t, bind, _, c, _) ->
+    | ETryCatch (t, bind, except_expr, c, loc) ->
         let catch_errs =
           match bind with
           | BBlank _ -> wf_E c env
           | BName (id, shadowable, loc) -> wf_E c (StringMap.add id (loc, None, None) env)
           | BTuple (_, loc) -> [Unsupported ("Tuple binding in try-catch is unsupported", loc)]
         in
-        wf_E t env @ catch_errs
+        let error_expr_err =
+          match except_expr with
+          | EException _ -> []
+          | _ -> [Unsupported ("Can only catch exceptions", loc)]
+        in
+        wf_E t env @ catch_errs @ error_expr_err
   and wf_D d (env : scope_info name_envt) =
     match d with
     | DFun (_, args, body, _) ->
@@ -607,7 +612,7 @@ let desugar (p : sourcespan program) : sourcespan program =
         ELambda (params, newbody, tag)
     | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
     | EException _ -> e
-    | ETryCatch (t, bind, except, c, tag) ->
+    | ETryCatch (t, bind, excptn, c, tag) ->
         (* This wraps the catch block in a let of the form:
          * let `bind` = `except` in c
          * which ensures that the environment will include the binding when we compile the
@@ -615,8 +620,8 @@ let desugar (p : sourcespan program) : sourcespan program =
          * exception had a user defined value, this would no longer be possible because
          * the exception could be modified at runtime
          *)
-        let new_catch_let = ELet ([(bind, EException (except, tag), tag)], helpE c, tag) in
-        ETryCatch (helpE t, bind, except, new_catch_let, tag)
+        let new_catch_let = ELet ([(bind, excptn, tag)], helpE c, tag) in
+        ETryCatch (helpE t, bind, excptn, new_catch_let, tag)
   in
   helpP p
 ;;
@@ -703,7 +708,7 @@ let rename_and_tag (p : tag program) : tag program =
     (* We do NOT extend the environment for the catch block here because in desugar we wrapped
      * it in an ELet with the binding
      *)
-    | ETryCatch (t, bind, except, c, tag) -> ETryCatch (helpE env t, bind, except, helpE env c, tag)
+    | ETryCatch (t, bind, excptn, c, tag) -> ETryCatch (helpE env t, bind, excptn, helpE env c, tag)
   in
   rename [] p
 ;;
@@ -793,7 +798,9 @@ let anf (p : tag program) : unit aprogram =
         let idx_imm, idx_setup = helpI idx in
         let new_imm, new_setup = helpI newval in
         (CSetItem (tup_imm, idx_imm, new_imm, ()), tup_setup @ idx_setup @ new_setup)
-    | ETryCatch (t, bind, except, c, _) -> (CTryCatch (helpA t, except, helpA c, ()), [])
+    | ETryCatch (t, bind, EException (except, _), c, _) ->
+        (CTryCatch (helpA t, except, helpA c, ()), [])
+    | ETryCatch _ -> raise (InternalCompilerError "Violated invatiant: Tried to catch a non-exception")
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -889,9 +896,11 @@ let anf (p : tag program) : unit aprogram =
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
     | ECheckSpits _ -> raise (NotYetImplemented "CheckSpits")
     | EException (ex, _) -> (ImmExcept (ex, ()), [])
-    | ETryCatch (t, bind, except, c, tag) ->
+    | ETryCatch (t, bind, EException (except, _), c, tag) ->
         let tmp = sprintf "try_catch_%d" tag in
         (ImmId (tmp, ()), [BLet (tmp, CTryCatch (helpA t, except, helpA c, ()))])
+    | ETryCatch _ ->
+        raise (InternalCompilerError "Violated invariant. Tried to catch a non-exception")
   and helpA e : unit aexpr =
     let ans, ans_setup = helpC e in
     List.fold_right
