@@ -260,7 +260,7 @@ let rec untagP (p : 'a program) : unit program =
   | Program (decls, body, _) ->
       Program (List.map (fun group -> List.map untagD group) decls, untagE body, ())
 
-and untagE e =
+and untagE (e : 'a expr) =
   match e with
   | ESeq (e1, e2, _) -> ESeq (untagE e1, untagE e2, ())
   | ETuple (exprs, _) -> ETuple (List.map untagE exprs, ())
@@ -281,15 +281,16 @@ and untagE e =
   | ELambda (binds, body, _) -> ELambda (List.map untagB binds, untagE body, ())
   | ECheckSpits (result, expected, _) -> ECheckSpits (untagE result, untagE expected, ())
   | EException (ex, _) -> EException (ex, ())
-  | ETryCatch (t, bind, excptn, c, _) -> ETryCatch (untagE t, bind, untagE excptn, untagE c, ())
+  | ETryCatch (t, bind, excptn, c, _) ->
+      ETryCatch (untagE t, untagB bind, untagE excptn, untagE c, ())
 
-and untagB b =
+and untagB (b : 'a bind) =
   match b with
   | BBlank _ -> BBlank ()
   | BName (x, allow_shadow, _) -> BName (x, allow_shadow, ())
   | BTuple (binds, _) -> BTuple (List.map untagB binds, ())
 
-and untagD d =
+and untagD (d : 'a decl) =
   match d with
   | DFun (name, args, body, _) -> DFun (name, List.map untagB args, untagE body, ())
 ;;

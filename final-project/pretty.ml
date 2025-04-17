@@ -143,6 +143,9 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         sprintf "(check %s spits %s)%s" (string_of_expr result) (string_of_expr expected)
           (print_a a)
     | EException (ex, a) -> string_of_exception ex ^ print_a a
+    | ETryCatch (t, bind, excptn, c, a) ->
+        sprintf "(try (%s) catch %s as %s in (%s))%s" (string_of_expr t) (string_of_expr excptn)
+          (string_of_bind bind) (string_of_expr c) (print_a a)
 ;;
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
@@ -233,6 +236,9 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
     | CCheckSpits (result, expected, a) ->
         sprintf "(check %s spits %s)%s" (string_of_immexpr result) (string_of_immexpr expected)
           (print_a a)
+    | CTryCatch (t, except, c, a) ->
+        sprintf "(try (%s) catch %s in (%s))%s" (string_of_aexpr t) (string_of_exception except)
+          (string_of_aexpr c) (print_a a)
 
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
@@ -446,6 +452,22 @@ let rec format_expr (fmt : Format.formatter) (print_a : 'a -> string) (e : 'a ex
   | EException (ex, a) ->
       open_label fmt "EException" (print_a a);
       pp_print_string fmt (string_of_exception ex);
+      close_paren fmt
+  | ETryCatch (t, bind, excptn, c, a) ->
+      let id =
+        match bind with
+        | BName (id, _, _) -> id
+        | _ -> "_"
+      in
+      open_label fmt "ETryCatch" (print_a a);
+      help t;
+      print_comma_sep fmt;
+      help (EId (id, a));
+      print_comma_sep fmt;
+      help excptn;
+      print_comma_sep fmt;
+      help c;
+      print_comma_sep fmt;
       close_paren fmt
 ;;
 
