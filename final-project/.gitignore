@@ -13,3 +13,4 @@ output/*/*.dSYM
 *.log
 _build/*
 **/.DS_Store
+**/.vscode
