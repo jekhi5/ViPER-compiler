@@ -2221,7 +2221,16 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               IMov (Reg RAX, const_false);
               ILabel done_label;
               ILineComment (sprintf "END is_tuple%d   -------------" t) ]
-      | PrintStack -> raise (NotYetImplemented "Fill in PrintStack here")
+      | PrintStack ->
+          [ ILineComment "===== Printing Stack =====";
+            IMov (Reg RDI, Const 1L);
+            IMov (Reg RSI, Reg RSP);
+            IMov (Reg RDX, Reg RBP);
+            IAdd (Reg RDX, Const 16L);
+            IMov (Reg RCX, Const 0L);
+            IMov (Reg scratch_reg, RelLabel heap_end_label);
+            ICall (Label "?print_stack");
+            ILineComment "=== End Printing Stack ===" ]
       | Crash -> [IJmp (Label crash_label)]
       (* TODO: Once try-catch is implemented, update this functionality *)
       | Raise -> [IMov (Reg RDI, e_reg); IJmp (Label crash_label)] )
