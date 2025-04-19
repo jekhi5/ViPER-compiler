@@ -759,8 +759,10 @@ let anf (p : tag program) : unit aprogram =
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
-    | ELetRec (binds, body, _) ->
-        let processBind (bind, rhs, _) =
+
+    
+    | ELetRec (bindings, body, _) ->
+        let processBinding (bind, rhs, _) =
           match bind with
           | BName (name, _, _) -> (name, helpC rhs)
           | _ ->
@@ -769,10 +771,11 @@ let anf (p : tag program) : unit aprogram =
                    (sprintf "Encountered a non-simple binding in ANFing a let-rec: %s"
                       (string_of_bind bind) ) )
         in
-        let names, new_binds_setup = List.split (List.map processBind binds) in
-        let new_binds, new_setup = List.split new_binds_setup in
+        let names, new_binds_setup = List.split (List.map processBinding bindings) in
+        let _, new_setup = List.split new_binds_setup in
+        (* List.map2 (fun name blet -> ) names  *)
         let body_ans, body_setup = helpC body in
-        (body_ans, List.concat new_setup @ (BLetRec (List.combine names new_binds) :: body_setup))
+        (body_ans, (BLetRec (List.combine names new_binds) :: List.concat new_setup @ body_setup))
     | ELambda (args, body, tag) ->
         let processBind bind =
           match bind with
@@ -2109,7 +2112,29 @@ and compile_aexpr
             (sprintf "COMPILE_AEXPR! Alet2. id: %s, env: %s" id (string_of_name_envt cur_env))
       in
       prelude @ [IMov (offset, Reg RAX)] @ body
-  | ALetRec (bindings, let_body, _) ->
+  | ALetRec (bindings, body, _) ->
+    let current_env = safe_find_opt env_name env_env in
+      let bindings_instr =
+        List.concat
+          (List.map
+             (fun (id, assign_val) ->
+               let new_env = update_envt_envt env_name id (Reg heap_reg) env_env in
+               let compiled_assign_val =
+                 compile_cexpr assign_val si new_env num_args is_tail env_name
+               in
+               let stack_idx =
+                 match find_opt current_env id with
+                 | None -> raise (InternalCompilerError (sprintf "Cannot find %s in environment" id))
+                 | Some si -> si
+               in
+               [ILineComment (sprintf "making lambda for %s" id)]
+               @ compiled_assign_val
+               @ [IMov (stack_idx, Reg RAX)] )
+             bindings )
+      in
+      let body = compile_aexpr body si env_env num_args is_tail env_name in
+      bindings_instr @ body
+  (* | ALetRec (bindings, let_body, _) ->
       let new_env, compiled_bindings =
         List.fold_left
           (fun (acc_env, acc_instrs) (binder, bound) ->
@@ -2140,7 +2165,7 @@ and compile_aexpr
           bindings
       in
       let compiled_body = compile_aexpr let_body si new_env num_args is_tail env_name in
-      compiled_bindings @ compiled_body
+      compiled_bindings @ compiled_body *)
   | ASeq (first, next, _) ->
       let compiled_first = compile_cexpr first si env_env num_args is_tail env_name in
       let compiled_next = compile_aexpr next si env_env num_args is_tail env_name in

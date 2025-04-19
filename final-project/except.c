@@ -12,7 +12,7 @@ struct exception_handler {
     struct exception_handler *prev;     // Link to previous entry (outer try block)
     jmp_buf context;                    // Saved execution context (setjmp/longjmp)
     SNAKEVAL *exception_type;           // For which kind of exception is this handler looking? 
-    void *exception_scratch;            // Space to store the current exception during handling
+    SNAKEVAL *exception_scratch;            // Space to store the current exception during handling
 };
 
 /* Global pointer to the top of the exception handler stack */
@@ -79,7 +79,7 @@ void ex_raise(SNAKEVAL *ed, SNAKEVAL *et) {
     push_exception_data(ed, et);
     
     // Enter the exception dispatcher
-    ex_dispatcher();
+    ex_dispatcher(*ed);
     
     // Should never reach here - dispatcher doesn't return
     abort();
