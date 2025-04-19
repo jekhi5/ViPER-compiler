@@ -743,6 +743,14 @@ let anf (p : tag program) : unit aprogram =
     match p with
     | Program ([], body, _) -> AProgram (helpA body, ())
     | Program _ -> raise (InternalCompilerError "decls should have been desugared away")
+  and processBinding (bind, rhs, _) =
+    match bind with
+    | BName (name, _, _) -> (name, helpC rhs)
+    | _ ->
+        raise
+          (InternalCompilerError
+             (sprintf "Encountered a non-simple binding in ANFing a let-rec: %s"
+                (string_of_bind bind) ) )
   and helpC (e : tag expr) : unit cexpr * unit anf_bind list =
     match e with
     | EPrim1 (op, arg, _) ->
@@ -764,23 +772,17 @@ let anf (p : tag program) : unit aprogram =
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
-
-    
-    | ELetRec (bindings, body, _) ->
-        let processBinding (bind, rhs, _) =
-          match bind with
-          | BName (name, _, _) -> (name, helpC rhs)
-          | _ ->
-              raise
-                (InternalCompilerError
-                   (sprintf "Encountered a non-simple binding in ANFing a let-rec: %s"
-                      (string_of_bind bind) ) )
+    | ELetRec ([binding], body, _) ->
+        let name, new_bind_setup = processBinding binding in
+        let _, bound_setup = new_bind_setup in
+        let lambda =
+          match bound_setup with
+          | [BLet (_, lambda)] -> lambda
+          | _ -> raise (InternalCompilerError "LetRec of non-lambda")
         in
-        let names, new_binds_setup = List.split (List.map processBinding bindings) in
-        let _, new_setup = List.split new_binds_setup in
-        (* List.map2 (fun name blet -> ) names  *)
         let body_ans, body_setup = helpC body in
-        (body_ans, (BLetRec (List.combine names new_binds) :: List.concat new_setup @ body_setup))
+        (body_ans, (BLetRec [(name, lambda)] :: bound_setup) @ body_setup)
+    | ELetRec (bindings, body, _) -> raise (NotYetImplemented "Mutual recursion")
     | ELambda (args, body, tag) ->
         let processBind bind =
           match bind with
@@ -2117,8 +2119,11 @@ and compile_aexpr
             (sprintf "COMPILE_AEXPR! Alet2. id: %s, env: %s" id (string_of_name_envt cur_env))
       in
       prelude @ [IMov (offset, Reg RAX)] @ body
-  | ALetRec (bindings, body, _) ->
+  | ALetRec([id, (CLambda (args, fun_body, tag) as lambda)], let_body, _) ->
     let current_env = safe_find_opt env_name env_env in
+    []
+  | ALetRec (bindings, body, _) ->
+      let current_env = safe_find_opt env_name env_env in
       let bindings_instr =
         List.concat
           (List.map
