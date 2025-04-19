@@ -174,7 +174,8 @@ let prim_bindings =
 ;;
 
 let native_fun_bindings =
-  assoc_to_map [("input", (dummy_span, Some 0, Some 0)); ("equal", (dummy_span, Some 2, Some 2))]
+  (* assoc_to_map [("input", (dummy_span, Some 0, Some 0)); ("equal", (dummy_span, Some 2, Some 2))] *)
+  assoc_to_map []
 ;;
 
 let initial_fun_env = merge_envs prim_bindings native_fun_bindings
@@ -781,7 +782,7 @@ let anf (p : tag program) : unit aprogram =
           | _ -> raise (InternalCompilerError "LetRec of non-lambda")
         in
         let body_ans, body_setup = helpC body in
-        (body_ans, (BLetRec [(name, lambda)] :: bound_setup) @ body_setup)
+        (body_ans, (BLetRec [(name, lambda)]) :: body_setup)
     | ELetRec (bindings, body, _) -> raise (NotYetImplemented "Mutual recursion")
     | ELambda (args, body, tag) ->
         let processBind bind =
@@ -2120,8 +2121,35 @@ and compile_aexpr
       in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALetRec([id, (CLambda (args, fun_body, tag) as lambda)], let_body, _) ->
+    (* Get two environments: that of the LetRec, and that of the bound function. *)
     let current_env = safe_find_opt env_name env_env in
-    []
+    let fun_env = safe_find_opt id env_env in
+    (* ==================== *)
+    let offset =
+      safe_find_opt id current_env
+        ~callee_tag:
+          (sprintf "COMPILE_AEXPR! Aletrec1. id: %s, env: %s" id (string_of_name_envt current_env))
+    in
+    let updated_env_env = update_envt_envt env_name id offset env_env in
+    let fun_offset =
+      safe_find_opt id fun_env
+        ~callee_tag:
+          (sprintf "COMPILE_AEXPR! Aletrec1: fun_env. id: %s, env: %s" id (string_of_name_envt fun_env))
+    in
+    let offset_in_fun_env = update_envt_envt id id fun_offset env_env in
+    let prelude =
+      (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
+      let free = StringSet.elements @@ free_vars (ACExpr lambda) in
+      let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
+      let fun_prelude, fun_body, fun_heap_bump = compile_fun id args fun_body offset_in_fun_env tag si free_locations in
+      fun_prelude @ fun_body @ fun_heap_bump
+    in 
+    let body = compile_aexpr let_body si updated_env_env num_args is_tail env_name in
+    [ILineComment "=== Compile ALetRec Aexpr ==="]
+      @ prelude
+      @ [IMov (offset, Reg RAX)]
+      @ body
+      @ [ILineComment "== End Compile ALetRec Aexpr =="]
   | ALetRec (bindings, body, _) ->
       let current_env = safe_find_opt env_name env_env in
       let bindings_instr =
@@ -2565,7 +2593,7 @@ let pick_alloc_strategy (strat : alloc_strategy) =
 ;;
 
 let compile_to_string
-    ?(no_builtins = false)
+    ?(no_builtins = true)
     (alloc_strat : alloc_strategy)
     (prog : sourcespan program pipeline) : string pipeline =
   prog
