@@ -155,22 +155,27 @@ let merge_envs env1 env2 = StringMap.union (fun _ first _ -> Some first) env1 en
 let prepend = merge_envs
 
 (* you can add any functions or data defined by the runtime here for future use *)
-let initial_val_env = assoc_to_map []
-(* [ ("nil", (dummy_span, None, None));
+let initial_val_env =
+  assoc_to_map
+    [ ("nil", (dummy_span, None, None));
       ("true", (dummy_span, None, None));
-      ("false", (dummy_span, None, None)) ] *)
+      ("false", (dummy_span, None, None)) ]
+;;
 
-let prim_bindings = assoc_to_map []
-(* [ ("isnum", (dummy_span, Some 1, Some 1));
+let prim_bindings =
+  assoc_to_map
+    [ ("isnum", (dummy_span, Some 1, Some 1));
       ("isbool", (dummy_span, Some 1, Some 1));
       ("istuple", (dummy_span, Some 1, Some 1));
       ("add1", (dummy_span, Some 1, Some 1));
       ("sub1", (dummy_span, Some 1, Some 1));
       ("print", (dummy_span, Some 1, Some 1));
-      ("printStack", (dummy_span, Some 0, Some 0)) ] *)
+      ("printStack", (dummy_span, Some 0, Some 0)) ]
+;;
 
-let native_fun_bindings = assoc_to_map []
-(* [("input", (dummy_span, Some 0, Some 0)); ("equal", (dummy_span, Some 2, Some 2))] *)
+let native_fun_bindings =
+  assoc_to_map [("input", (dummy_span, Some 0, Some 0)); ("equal", (dummy_span, Some 2, Some 2))]
+;;
 
 let initial_fun_env = merge_envs prim_bindings native_fun_bindings
 
@@ -317,7 +322,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         in
         let env2, errs = process_bindings bindings env in
         dupeIds @ errs @ wf_E body env2
-    | EApp (func, args, _, loc) ->
+    | EApp (func, args, call_type, loc) ->
         let rec_errors = List.concat (List.map (fun e -> wf_E e env) (func :: args)) in
         ( match func with
         | EId (funname, _) -> (
@@ -2302,7 +2307,26 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let compiled_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
       (ILineComment "~~~~~~~~~~" :: compiled_closure) @ call (Reg RAX) compiled_args
   (* | CApp (_, _, Snake, _) -> compile_call e si env_env num_args is_tail env_name *)
-  | CApp _ -> raise (NotYetImplemented "CApp for native")
+  | CApp (callee, args, Native, _) -> (
+    match callee with
+    | ImmId (id, _) -> (
+        let name = List.hd (String.split_on_char '_' id) in
+        match name with
+        | "input" -> [ICall (Label "?input")]
+        | "equal" ->
+            let comp_args = List.map (fun arg -> compile_imm arg env_env id) args in
+            native_call (Label "?equal") comp_args
+        | _ -> raise (InternalCompilerError (sprintf "Unsupported function: %s" name)) )
+    | _ ->
+        raise
+          (InternalCompilerError
+             (sprintf "Invariant violation: Native functions must be an ImmId but got: %s"
+                (string_of_immexpr callee) ) ) )
+  | CApp (_, _, call_type, _) ->
+      raise
+        (InternalCompilerError
+           (sprintf "CApp with non-Snake and non-Native call-type. Got: %s"
+              (string_of_call_type call_type) ) )
   | CTuple (items, tag) ->
       let n = List.length items in
       (* expected: (1, 2, 3, 5)
