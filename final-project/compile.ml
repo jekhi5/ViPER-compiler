@@ -1558,6 +1558,17 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         in
         let cur_envt = update_envt_envt env_name id offset body_offset in
         cur_envt
+    | ALetRec ([id, (CLambda _ as lambda)], body, _) ->
+        let add_base_env_for_lambda = StringMap.add id StringMap.empty env_env in
+        let lambda_color_map = color_graph (interfere e) (safe_find_opt env_name env_env) in
+        let lambda_offset = helpC lambda id add_base_env_for_lambda in
+        let body_offset = helpA body env_name lambda_offset in
+        let offset =
+          safe_find_opt id lambda_color_map
+            ~callee_tag:("ALet of lambda\n" ^ string_of_name_envt lambda_color_map)
+        in
+        let cur_envt = update_envt_envt env_name id offset body_offset in
+        cur_envt
     | ALet (id, bound, body, _) ->
         let cur_env = safe_find_opt env_name env_env in
         let colored = color_graph (interfere e) cur_env in
@@ -1959,7 +1970,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
           "Load the number of free vars into the 2nd offset of the heap (as a SNAKEVAL)" ) ]
   in
   (* TODO: what should the value be for SI? *)
-  let compiled_body = compile_aexpr body si new_env (List.length args) false name in
+  let compiled_body = compile_aexpr body si (if (List.mem name free_vars) then env_env else new_env) (List.length args) false name in
   let stack_cleanup =
     [ILineComment "=== Stack clean-up ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
   in
@@ -2121,30 +2132,21 @@ and compile_aexpr
       in
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALetRec([id, (CLambda (args, fun_body, tag) as lambda)], let_body, _) ->
-    (* Get two environments: that of the LetRec, and that of the bound function. *)
     let current_env = safe_find_opt env_name env_env in
     let fun_env = safe_find_opt id env_env in
-    (* ==================== *)
     let offset =
       safe_find_opt id current_env
         ~callee_tag:
           (sprintf "COMPILE_AEXPR! Aletrec1. id: %s, env: %s" id (string_of_name_envt current_env))
     in
-    let updated_env_env = update_envt_envt env_name id offset env_env in
-    let fun_offset =
-      safe_find_opt id fun_env
-        ~callee_tag:
-          (sprintf "COMPILE_AEXPR! Aletrec1: fun_env. id: %s, env: %s" id (string_of_name_envt fun_env))
-    in
-    let offset_in_fun_env = update_envt_envt id id fun_offset env_env in
     let prelude =
       (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
       let free = StringSet.elements @@ free_vars (ACExpr lambda) in
       let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
-      let fun_prelude, fun_body, fun_heap_bump = compile_fun id args fun_body offset_in_fun_env tag si free_locations in
+      let fun_prelude, fun_body, fun_heap_bump = compile_fun id args fun_body env_env tag si free_locations in
       fun_prelude @ fun_body @ fun_heap_bump
     in 
-    let body = compile_aexpr let_body si updated_env_env num_args is_tail env_name in
+    let body = compile_aexpr let_body si env_env num_args is_tail env_name in
     [ILineComment "=== Compile ALetRec Aexpr ==="]
       @ prelude
       @ [IMov (offset, Reg RAX)]
