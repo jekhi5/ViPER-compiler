@@ -123,10 +123,6 @@ binop_operand :
   | const { $1 }
   | id { $1 }
 
-decl :
-  | DEF ID LPARENNOSPACE RPAREN COLON expr { DFun($2, [], $6, full_span()) }
-  | DEF ID LPARENNOSPACE binds RPAREN COLON expr { DFun($2, $4, $7, full_span()) }
-
 binds :
   | bind { [$1] }
   | bind COMMA binds { $1::$3 }
@@ -143,6 +139,10 @@ blankbind :
 namebind :
   | ID %prec SEMI { BName($1, false, full_span()) }
   | SHADOW ID %prec SEMI { BName($2, true, full_span()) }
+
+decl :
+  | DEF ID LPARENNOSPACE RPAREN COLON expr { DFun($2, [], $6, full_span()) }
+  | DEF ID LPARENNOSPACE binds RPAREN COLON expr { DFun($2, $4, $7, full_span()) }
 
 declgroup :
   | decl { [$1] }
@@ -173,7 +173,7 @@ testblock :
   | CHECK COLON tests END { ECheck($3, full_span()) }
 
 testblocks :
-  | testblock { [$1] }
+  | { [] }
   | testblock testblocks { $1::$2 }
 
 program :

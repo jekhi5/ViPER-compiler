@@ -477,107 +477,83 @@ let run_with_ra =
     tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12" ]
 ;;
 
-let parse_check_spits = []
-  (* [ tparse "basic_check_spits" "check 1 spits 1"
-      (Program ([], ECheckSpits (ENumber (1L, ()), ENumber (1L, ()), ()), ()));
-    tparse "complex_result"
-      "check (\n\
-      \    let \n\
-      \      a = 1,\n\
-      \      b = add1(a + 3),\n\
-      \      c = let rec\n\
-      \            sum = (lambda(x): if x == 0: 0 else: x + sum(x - 1))\n\
-      \          in\n\
-      \            sum(b)\n\
-      \    in\n\
-      \      c) \n\
-      \      spits 15"
+let parse_checks =
+  [ tparse "single_check_spits" "1 check: 1 spits (lambda(x): 1) end"
       (Program
          ( [],
-           ECheckSpits
-             ( ELet
-                 ( [ (BName ("a", false, ()), ENumber (1L, ()), ());
-                     ( BName ("b", false, ()),
-                       EPrim1 (Add1, EPrim2 (Plus, EId ("a", ()), ENumber (3L, ()), ()), ()),
-                       () );
-                     ( BName ("c", false, ()),
-                       ELetRec
-                         ( [ ( BName ("sum", false, ()),
-                               ELambda
-                                 ( [BName ("x", false, ())],
-                                   EIf
-                                     ( EPrim2 (Eq, EId ("x", ()), ENumber (0L, ()), ()),
-                                       ENumber (0L, ()),
-                                       EPrim2
-                                         ( Plus,
-                                           EId ("x", ()),
-                                           EApp
-                                             ( EId ("?sum", ()),
-                                               [EPrim2 (Minus, EId ("x", ()), ENumber (1L, ()), ())],
-                                               Snake,
-                                               () ),
-                                           () ),
-                                       () ),
-                                   () ),
-                               () ) ],
-                           EApp (EId ("?sum", ()), [EId ("b", ())], Snake, ()),
-                           () ),
+           ENumber (1L, ()),
+           [ ECheck
+               ( [ ETestOp1
+                     ( ENumber (1L, ()),
+                       ELambda ([BName ("x", false, ())], ENumber (1L, ()), ()),
+                       false,
                        () ) ],
-                   EId ("c", ()),
-                   () ),
-               ENumber (15L, ()),
-               () ),
+                 () ) ],
            () ) );
-    tparse "complex_expected"
-      "check 15 spits (\n\
-      \    let \n\
-      \      a = 1,\n\
-      \      b = add1(a + 3),\n\
-      \      c = let rec\n\
-      \            sum = (lambda(x): if x == 0: 0 else: x + sum(x - 1))\n\
-      \          in\n\
-      \            sum(b)\n\
-      \    in\n\
-      \      c)"
+    tparse "complex_check"
+      "\n\
+      \      true \n\
+      \      \n\
+      \      check: \n\
+      \        let \n\
+      \          a = 1, \n\
+      \          b = 2 \n\
+      \        in (a, b) \n\
+      \        spits \n\
+      \        (1, 2),\n\
+      \        4 + true sheds RuntimeException,\n\
+      \        let foo = (lambda(x, y): (x, y)) in foo(1, 2) !bites (1, 2),\n\
+      \        \n\
+      \        1 !spits 5\n\
+      \      end\n\n\
+      \      check: 1 broods (lambda(x): 1) end"
       (Program
          ( [],
-           ECheckSpits
-             ( ENumber (15L, ()),
-               ELet
-                 ( [ (BName ("a", false, ()), ENumber (1L, ()), ());
-                     ( BName ("b", false, ()),
-                       EPrim1 (Add1, EPrim2 (Plus, EId ("a", ()), ENumber (3L, ()), ()), ()),
+           EBool (true, ()),
+           [ ECheck
+               ( [ ETestOp2
+                     ( ELet
+                         ( [ (BName ("a", false, ()), ENumber (1L, ()), ());
+                             (BName ("b", false, ()), ENumber (2L, ()), ()) ],
+                           ETuple ([EId ("a", ()); EId ("b", ())], ()),
+                           () ),
+                       ETuple ([ENumber (1L, ()); ENumber (2L, ())], ()),
+                       DeepEq,
+                       false,
                        () );
-                     ( BName ("c", false, ()),
-                       ELetRec
-                         ( [ ( BName ("sum", false, ()),
+                   ETestOp2
+                     ( EPrim2 (Plus, ENumber (4L, ()), EBool (true, ()), ()),
+                       EException (Runtime, ()),
+                       Raises,
+                       false,
+                       () );
+                   ETestOp2
+                     ( ELet
+                         ( [ ( BName ("foo", false, ()),
                                ELambda
-                                 ( [BName ("x", false, ())],
-                                   EIf
-                                     ( EPrim2 (Eq, EId ("x", ()), ENumber (0L, ()), ()),
-                                       ENumber (0L, ()),
-                                       EPrim2
-                                         ( Plus,
-                                           EId ("x", ()),
-                                           EApp
-                                             ( EId ("?sum", ()),
-                                               [EPrim2 (Minus, EId ("x", ()), ENumber (1L, ()), ())],
-                                               Snake,
-                                               () ),
-                                           () ),
-                                       () ),
+                                 ( [BName ("x", false, ()); BName ("y", false, ())],
+                                   ETuple ([EId ("x", ()); EId ("y", ())], ()),
                                    () ),
                                () ) ],
-                           EApp (EId ("?sum", ()), [EId ("b", ())], Snake, ()),
+                           ETuple ([EId ("a", ()); EId ("b", ())], ()),
                            () ),
+                       ETuple ([ENumber (1L, ()); ENumber (2L, ())], ()),
+                       ShallowEq,
+                       true,
+                       () );
+                   ETestOp1 (ENumber (1L, ()), ENumber (5L, ()), true, ()) ],
+                 () );
+             ECheck
+               ( [ ETestOp1
+                     ( ENumber (1L, ()),
+                       ELambda ([BName ("x", false, ())], ENumber (1L, ()), ()),
+                       false,
                        () ) ],
-                   EId ("c", ()),
-                   () ),
-               () ),
-           () ) ) ] *)
+                 () ) ],
+           () ) ) ]
 ;;
 
-let suite = "unit_tests" >::: parse_check_spits
+let suite = "unit_tests" >::: parse_checks
 (* fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra @  *)
 (*@ live_in @ live_out*)
 (*@ oom @ gc @ input*)
