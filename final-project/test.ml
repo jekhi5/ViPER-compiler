@@ -477,8 +477,8 @@ let run_with_ra =
     tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12" ]
 ;;
 
-let parse_check_spits =
-  [ tparse "basic_check_spits" "check 1 spits 1"
+let parse_check_spits = []
+  (* [ tparse "basic_check_spits" "check 1 spits 1"
       (Program ([], ECheckSpits (ENumber (1L, ()), ENumber (1L, ()), ()), ()));
     tparse "complex_result"
       "check (\n\
@@ -574,7 +574,7 @@ let parse_check_spits =
                    EId ("c", ()),
                    () ),
                () ),
-           () ) ) ]
+           () ) ) ] *)
 ;;
 
 let suite = "unit_tests" >::: parse_check_spits

@@ -93,15 +93,15 @@ let string_of_exception e =
   | Value -> "ValueException"
 ;;
 
-let string_of_test_type tt = 
+let string_of_test_type tt =
   match tt with
   | DeepEq -> "DeepEq"
   | ShallowEq -> "ShallowEq"
   | Pred -> "Prdicate"
   | Raises -> "Raises"
+;;
 
 let name_of_test_type = string_of_test_type
-
 
 let rec string_of_binding_with (depth : int) (print_a : 'a -> string) ((bind, expr, _) : 'a binding)
     : string =
@@ -149,28 +149,41 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         let binds_strs = List.map string_of_bind binds in
         let binds_str = List.fold_left ( ^ ) "" (intersperse binds_strs ", ") in
         sprintf "(lam(%s) %s)%s" binds_str (string_of_expr body) (print_a a)
-    | ECheckSpits (result, expected, a) ->
-        sprintf "(check %s spits %s)%s" (string_of_expr result) (string_of_expr expected)
-          (print_a a)
     | EException (ex, a) -> string_of_exception ex ^ print_a a
     | ETryCatch (t, bind, excptn, c, a) ->
         sprintf "(try (%s) catch %s as %s in (%s))%s" (string_of_expr t) (string_of_expr excptn)
           (string_of_bind bind) (string_of_expr c) (print_a a)
-    | ECheck (ops, a) -> "{" ^ ExtString.String.join ", " (List.map string_of_expr ops) ^ "}" ^ print_a a
-    | ETestOp1 (e1, e2, n, a) -> sprintf "(Test1 %s%s(%s))" (if n then "!" else "") (string_of_expr e2) (string_of_expr e1)
+    | ECheck (ops, a) ->
+        "{" ^ ExtString.String.join ", " (List.map string_of_expr ops) ^ "}" ^ print_a a
+    | ETestOp1 (e1, e2, n, a) ->
+        sprintf "(Test1 %s%s(%s))"
+          ( if n then
+              "!"
+            else
+              "" )
+          (string_of_expr e2) (string_of_expr e1)
     | ETestOp2 (e1, e2, tt, n, a) ->
-      let negate = (if n then "!" else "") in
-      let typ = string_of_test_type tt in
-      let se2 = (string_of_expr e2) in
-      let se1 = (string_of_expr e1) in
-      sprintf "(Test2: %s%s (%s, %s))" negate typ se1 se2   
-    | ETestOp2Pred(e1, e2, pred, n, a) -> 
-      let negate = (if n then "!" else "") in
-      let se2 = (string_of_expr e2) in
-      let se1 = (string_of_expr e1) in
-      let p = (string_of_expr pred) in
-      sprintf "(Test2: %s%s (%s, %s))" negate p se1 se2   
-    
+        let negate =
+          if n then
+            "!"
+          else
+            ""
+        in
+        let typ = string_of_test_type tt in
+        let se2 = string_of_expr e2 in
+        let se1 = string_of_expr e1 in
+        sprintf "(Test2: %s%s (%s, %s))" negate typ se1 se2
+    | ETestOp2Pred (e1, e2, pred, n, a) ->
+        let negate =
+          if n then
+            "!"
+          else
+            ""
+        in
+        let se2 = string_of_expr e2 in
+        let se1 = string_of_expr e1 in
+        let p = string_of_expr pred in
+        sprintf "(Test2: %s%s (%s, %s))" negate p se1 se2
 ;;
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
@@ -186,14 +199,6 @@ let string_of_decl_with (depth : int) (print_a : 'a -> string) (d : 'a decl) : s
 
 let string_of_decl (d : 'a decl) : string = string_of_decl_with 1000 (fun _ -> "") d
 
-let string_of_checkblock_with (depth : int) (print_a : 'a -> string) c : string =
-  match c with
-  | CheckBlock (ops, a) ->
-        (ExtString.String.join ", " (List.map (string_of_expr_with (depth - 1) print_a) ops)) ^
-        (print_a a)
-
-let string_of_checkblock c = string_of_checkblock_with 1000 (fun _ -> "") c
-
 let string_of_program_with (depth : int) (print_a : 'a -> string) (p : 'a program) : string =
   match p with
   | Program (decls, body, checks, a) ->
@@ -204,7 +209,6 @@ let string_of_program_with (depth : int) (print_a : 'a -> string) (p : 'a progra
       ^ "\n"
       ^ string_of_expr_with depth print_a body
       ^ "\n"
-      ^ (ExtString.String.join "\n\n" (List.map string_of_checkblock checks))
       ^ print_a a
 ;;
 
@@ -267,12 +271,34 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
         sprintf "(lam(%s) %s)%s" (ExtString.String.join ", " args) (string_of_aexpr body)
           (print_a a)
     | CImmExpr i -> string_of_immexpr i
-    | CCheckSpits (result, expected, a) ->
-        sprintf "(check %s spits %s)%s" (string_of_immexpr result) (string_of_immexpr expected)
-          (print_a a)
     | CTryCatch (t, except, c, a) ->
         sprintf "(try (%s) catch %s in (%s))%s" (string_of_aexpr t) (string_of_exception except)
           (string_of_aexpr c) (print_a a)
+    | CCheck (checks, a) ->
+        sprintf "(check:\n  %s\n)%s"
+          (List.fold_left (fun acc e -> acc ^ "\n" ^ string_of_immexpr e) "" checks)
+          (print_a a)
+    | CTestOp1 (e1, e2, negation, a) ->
+        sprintf "(TestOp1: %s(%s satisfies %s))%s"
+          ( if negation then
+              "!"
+            else
+              "" )
+          (string_of_immexpr e1) (string_of_immexpr e1) (print_a a)
+    | CTestOp2 (e1, e2, tt, negation, a) ->
+        sprintf "(TestOp2: %s(%s %s %s))%s"
+          ( if negation then
+              "!"
+            else
+              "" )
+          (string_of_immexpr e1) (string_of_test_type tt) (string_of_immexpr e1) (print_a a)
+    | CTestOp2Pred (e1, e2, pred, negation, a) ->
+        sprintf "(TestOp2Pred: %s(%s(%s, %s) is true))%s"
+          ( if negation then
+              "!"
+            else
+              "" )
+          (string_of_immexpr pred) (string_of_immexpr e1) (string_of_immexpr e1) (print_a a)
 
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
@@ -476,13 +502,6 @@ let rec format_expr (fmt : Format.formatter) (print_a : 'a -> string) (e : 'a ex
       pp_print_space fmt ();
       help body;
       close_paren fmt
-  | ECheckSpits (result, expected, a) ->
-      open_label fmt "ECheckSpits" (print_a a);
-      help result;
-      print_comma_sep fmt;
-      help expected;
-      print_comma_sep fmt;
-      close_paren fmt
   | EException (ex, a) ->
       open_label fmt "EException" (print_a a);
       pp_print_string fmt (string_of_exception ex);
@@ -504,32 +523,44 @@ let rec format_expr (fmt : Format.formatter) (print_a : 'a -> string) (e : 'a ex
       print_comma_sep fmt;
       close_paren fmt
   | ECheck (ops, a) ->
-    open_label fmt "ECheck" (print_a a);
+      open_label fmt "ECheck" (print_a a);
       print_list fmt (fun fmt -> format_expr fmt print_a) ops print_comma_sep;
       close_paren fmt
   | ETestOp1 (e1, e2, n, a) ->
-    open_label fmt "ETestOp1" (print_a a);
-    pp_print_string fmt (if n then "!" else "");
-    help e1;
-    print_comma_sep fmt;
-    help e2;
-    close_paren fmt
+      open_label fmt "ETestOp1" (print_a a);
+      pp_print_string fmt
+        ( if n then
+            "!"
+          else
+            "" );
+      help e1;
+      print_comma_sep fmt;
+      help e2;
+      close_paren fmt
   | ETestOp2 (e1, e2, tt, n, a) ->
-    open_label fmt "ETestOp1" (print_a a);
-    pp_print_string fmt (if n then "!" else "");
-    pp_print_string fmt ((string_of_test_type tt) ^ " ");
-    help e1;
-    print_comma_sep fmt;
-    help e2;
-    close_paren fmt
+      open_label fmt "ETestOp1" (print_a a);
+      pp_print_string fmt
+        ( if n then
+            "!"
+          else
+            "" );
+      pp_print_string fmt (string_of_test_type tt ^ " ");
+      help e1;
+      print_comma_sep fmt;
+      help e2;
+      close_paren fmt
   | ETestOp2Pred (e1, e2, pred, n, a) ->
-    open_label fmt "ETestOp1" (print_a a);
-    pp_print_string fmt (if n then "!" else "");
-    help pred;
-    help e1;
-    print_comma_sep fmt;
-    help e2;
-    close_paren fmt
+      open_label fmt "ETestOp1" (print_a a);
+      pp_print_string fmt
+        ( if n then
+            "!"
+          else
+            "" );
+      help pred;
+      help e1;
+      print_comma_sep fmt;
+      help e2;
+      close_paren fmt
 ;;
 
 let format_decl (fmt : Format.formatter) (print_a : 'a -> string) (d : 'a decl) : unit =
@@ -557,19 +588,12 @@ let format_declgroup (fmt : Format.formatter) (print_a : 'a -> string) (d : 'a d
     (fun fmt -> pp_print_break fmt 1 0; pp_print_string fmt "and ")
 ;;
 
-let format_checkblock fmt print_a c =
-  match c with
-  | CheckBlock (checks, a) ->
-    open_label fmt "Check" (print_a a);
-    open_paren fmt;
-    print_list fmt (fun fmt -> format_expr fmt print_a) checks print_comma_sep;
-    close_paren fmt
-
 let format_checkblocks fmt print_a c =
   print_list fmt
     (fun fmt -> format_expr fmt print_a)
     c
     (fun fmt -> pp_print_break fmt 1 0; pp_print_string fmt ", ")
+;;
 
 let format_program (fmt : Format.formatter) (print_a : 'a -> string) (p : 'a program) : unit =
   match p with
@@ -580,10 +604,7 @@ let format_program (fmt : Format.formatter) (print_a : 'a -> string) (p : 'a pro
         (fun fmt -> pp_print_break fmt 1 0);
       pp_print_break fmt 1 0;
       format_expr fmt print_a body;
-      print_list fmt
-        (fun fmt -> format_checkblock fmt print_a)
-        checks
-        (fun fmt -> pp_print_break fmt 1 0)
+      print_list fmt (fun fmt -> format_expr fmt print_a) checks (fun fmt -> pp_print_break fmt 1 0)
 ;;
 
 let ast_of_pos_expr (e : sourcespan expr) : string =

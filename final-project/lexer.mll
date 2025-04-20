@@ -96,6 +96,7 @@ rule token = parse
   | "spits" { SPITS }
   | "sheds" { SHEDS }
   | "broods" { BROODS }
+  | "bites" { BITES }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | eof { EOF }
   | _ as c { failwith (sprintf "Unrecognized character: %c" c) }

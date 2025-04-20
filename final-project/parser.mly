@@ -8,7 +8,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 
 %token <int64> NUM
 %token <string> ID
-%token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE TRY CATCH AS SPITS SHEDS BROODS
+%token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE TRY CATCH AS SHEDS BROODS BITES
 
 %right SEMI
 %left COLON COLONEQ
@@ -60,7 +60,6 @@ expr :
   | BEGIN expr END { $2 }
   | binop_expr SEMI expr { ESeq($1, $3, full_span()) }
   | binop_expr { $1 }
-  | CHECK expr SPITS expr { ECheckSpits($2, $4, full_span()) }
   // try () catch RuntimeExcexption as e in ()
   | TRY expr CATCH snakeexcept AS bind IN expr { ETryCatch($2, $6, $4, $8, full_span()) }
 
@@ -154,14 +153,17 @@ decls :
   | declgroup decls { $1::$2 }
 
 test :
-  | expr SPITS expr { ETestOp2($1, $3, DeepEq, false, full_span())}
-  | expr NOT SPITS expr { ETestOp2($1, $4, DeepEq, true, full_span())}
+  | expr SPITS expr { ETestOp2($1, $3, DeepEq, false, full_span()) }
+  | expr NOT SPITS expr { ETestOp2($1, $4, DeepEq, true, full_span()) }
 
-  | expr SHEDS snakeexcept { ETestOp2($1, $3, ShallowEq, false, full_span())}
-  | expr NOT SHEDS snakeexcept { ETestOp2($1, $4, ShallowEq, true, full_span())}
+  | expr SHEDS snakeexcept { ETestOp2($1, $3, Raises, false, full_span()) }
+  | expr NOT SHEDS snakeexcept { ETestOp2($1, $4, Raises, true, full_span()) }
 
-  | expr BROODS expr { ETestOp1($1, $3, false full_span())}
-  | expr NOT BROODS expr { ETestOp2($1, $4, true, full_span())}
+  | expr BROODS expr { ETestOp1($1, $3, false, full_span()) }
+  | expr NOT BROODS expr { ETestOp1($1, $4, true, full_span()) }
+  
+  | expr BITES expr { ETestOp2($1, $3, ShallowEq, false, full_span()) }
+  | expr NOT BITES expr { ETestOp2($1, $4, ShallowEq, true, full_span()) }
 
 tests :
   | test { [$1] }

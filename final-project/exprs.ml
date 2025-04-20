@@ -17,7 +17,7 @@ type except =
   | Runtime
   | Value
 
-type test_type = 
+type test_type =
   | DeepEq
   | ShallowEq
   | Pred
@@ -77,20 +77,17 @@ and 'a expr =
   | EApp of 'a expr * 'a expr list * call_type * 'a
   | ELambda of 'a bind list * 'a expr * 'a
   | ELetRec of 'a binding list * 'a expr * 'a
-  | ECheckSpits of 'a expr * 'a expr * 'a
   | EException of except * 'a
   (* try () catch RuntimeExcexption as e in () *)
   | ETryCatch of 'a expr * 'a bind * 'a expr * 'a expr * 'a
   | ECheck of 'a expr list * 'a
   | ETestOp1 of 'a expr * 'a expr * bool * 'a
-  | ETestOp2 of 'a expr * 'a expr * test_type * bool * 'a  
-  | ETestOp2Pred of 'a expr * 'a expr * 'a expr * bool * 'a  
-
-type 'a checkblock = CheckBlock of 'a expr list * 'a
+  | ETestOp2 of 'a expr * 'a expr * test_type * bool * 'a
+  | ETestOp2Pred of 'a expr * 'a expr * 'a expr * bool * 'a
 
 type 'a decl = DFun of string * 'a bind list * 'a expr * 'a
 
-type 'a program = Program of 'a decl list list * 'a expr * 'a checkblock list * 'a
+type 'a program = Program of 'a decl list list * 'a expr * 'a expr list * 'a
 
 type 'a immexpr =
   (* immediate expressions *)
@@ -111,9 +108,12 @@ and 'a cexpr =
   | CGetItem of 'a immexpr * 'a immexpr * 'a
   | CSetItem of 'a immexpr * 'a immexpr * 'a immexpr * 'a
   | CLambda of string list * 'a aexpr * 'a
-  | CCheckSpits of 'a immexpr * 'a immexpr * 'a
   (* The CTryCatch does not have a `bind` anymore because it was desugared away *)
   | CTryCatch of 'a aexpr * except * 'a aexpr * 'a
+  | CCheck of 'a immexpr list * 'a
+  | CTestOp1 of 'a immexpr * 'a immexpr * bool * 'a
+  | CTestOp2 of 'a immexpr * 'a immexpr * test_type * bool * 'a
+  | CTestOp2Pred of 'a immexpr * 'a immexpr * 'a immexpr * bool * 'a
 
 and 'a aexpr =
   (* anf expressions *)
@@ -122,7 +122,7 @@ and 'a aexpr =
   | ALetRec of (string * 'a cexpr) list * 'a aexpr * 'a
   | ACExpr of 'a cexpr
 
-and 'a aprogram = AProgram of 'a aexpr * 'a checkblock * 'a
+and 'a aprogram = AProgram of 'a aexpr * 'a
 
 type alloc_strategy =
   | Register
@@ -136,28 +136,27 @@ let map_opt f v =
 
 let get_tag_E e =
   match e with
-  | ELet (_, _, t) -> t
-  | ELetRec (_, _, t) -> t
-  | EPrim1 (_, _, t) -> t
-  | EPrim2 (_, _, _, t) -> t
-  | EIf (_, _, _, t) -> t
-  | ENil t -> t
-  | ENumber (_, t) -> t
-  | EBool (_, t) -> t
-  | EId (_, t) -> t
-  | EApp (_, _, _, t) -> t
-  | ETuple (_, t) -> t
-  | EGetItem (_, _, t) -> t
-  | ESetItem (_, _, _, t) -> t
-  | ESeq (_, _, t) -> t
-  | ELambda (_, _, t) -> t
-  | ECheckSpits (_, _, t) -> t
-  | EException (_, t) -> t
-  | ETryCatch (_, _, _, _, t) -> t
-  | ECheck (_, t) 
-  | ETestOp1 (_, _, _, t) 
-  | ETestOp2 (_, _, _, _, t)
-  | ETestOp2Pred (_, _, _, _, t) -> t
+  | ELet (_, _, t)
+   |ELetRec (_, _, t)
+   |EPrim1 (_, _, t)
+   |EPrim2 (_, _, _, t)
+   |EIf (_, _, _, t)
+   |ENil t
+   |ENumber (_, t)
+   |EBool (_, t)
+   |EId (_, t)
+   |EApp (_, _, _, t)
+   |ETuple (_, t)
+   |EGetItem (_, _, t)
+   |ESetItem (_, _, _, t)
+   |ESeq (_, _, t)
+   |ELambda (_, _, t)
+   |EException (_, t)
+   |ETryCatch (_, _, _, _, t)
+   |ECheck (_, t)
+   |ETestOp1 (_, _, _, t)
+   |ETestOp2 (_, _, _, _, t)
+   |ETestOp2Pred (_, _, _, _, t) -> t
 ;;
 
 let get_tag_D d =
@@ -218,10 +217,6 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
   | ELambda (binds, body, a) ->
       let tag_lam = f a in
       ELambda (List.map (map_tag_B f) binds, map_tag_E f body, tag_lam)
-  | ECheckSpits (result, expected, a) ->
-      let tag_result = map_tag_E f result in
-      let tag_expected = map_tag_E f expected in
-      ECheckSpits (tag_result, tag_expected, f a)
   | EException (e, a) -> EException (e, f a)
   | ETryCatch (t, bind, excptn, c, a) ->
       let tag_try_catch = f a in
@@ -230,10 +225,11 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_bind = map_tag_B f bind in
       let tag_exception = map_tag_E f excptn in
       ETryCatch (tag_try, tag_bind, tag_exception, tag_catch, tag_try_catch)
-  | ECheck (exprs, a) -> ECheck (List.map (map_tag_E f) exprs, f a) 
-  | ETestOp1 (e1, e2, n, a) -> ETestOp1 (map_tag_E f e1, map_tag_E f e2, n, f a) 
+  | ECheck (exprs, a) -> ECheck (List.map (map_tag_E f) exprs, f a)
+  | ETestOp1 (e1, e2, n, a) -> ETestOp1 (map_tag_E f e1, map_tag_E f e2, n, f a)
   | ETestOp2 (e1, e2, tt, n, a) -> ETestOp2 (map_tag_E f e1, map_tag_E f e2, tt, n, f a)
-  | ETestOp2Pred (e1, e2, e3, n, a) -> ETestOp2Pred (map_tag_E f e1, map_tag_E f e2, map_tag_E f e3, n, f a)
+  | ETestOp2Pred (e1, e2, e3, n, a) ->
+      ETestOp2Pred (map_tag_E f e1, map_tag_E f e2, map_tag_E f e3, n, f a)
 
 and map_tag_B (f : 'a -> 'b) b =
   match b with
@@ -253,20 +249,13 @@ and map_tag_D (f : 'a -> 'b) d =
       let tag_body = map_tag_E f body in
       DFun (name, tag_args, tag_body, tag_fun)
 
-and map_tag_C (f : 'a -> 'b) (c : 'a checkblock) =
-  match c with
-  | CheckBlock (ops, a) ->
-    let tag_ops = List.map (map_tag_E f) ops in
-    CheckBlock (tag_ops, f a)
-
-
 and map_tag_P (f : 'a -> 'b) p =
   match p with
   | Program (declgroups, body, checks, a) ->
       let tag_a = f a in
       let tag_decls = List.map (fun group -> List.map (map_tag_D f) group) declgroups in
       let tag_body = map_tag_E f body in
-      let tag_checks = List.map (map_tag_C f) checks in
+      let tag_checks = List.map (map_tag_E f) checks in
       Program (tag_decls, tag_body, tag_checks, tag_a)
 ;;
 
@@ -286,7 +275,11 @@ let combine_tags (f1 : 'a -> 'b) (f2 : 'a -> 'c) (p : 'a program) : ('b * 'c) pr
 let rec untagP (p : 'a program) : unit program =
   match p with
   | Program (decls, body, checks, _) ->
-      Program (List.map (fun group -> List.map untagD group) decls, untagE body, List.map untagC checks, ())
+      Program
+        ( List.map (fun group -> List.map untagD group) decls,
+          untagE body,
+          List.map untagE checks,
+          () )
 
 and untagE (e : 'a expr) =
   match e with
@@ -307,7 +300,6 @@ and untagE (e : 'a expr) =
   | ELetRec (binds, body, _) ->
       ELetRec (List.map (fun (b, e, _) -> (untagB b, untagE e, ())) binds, untagE body, ())
   | ELambda (binds, body, _) -> ELambda (List.map untagB binds, untagE body, ())
-  | ECheckSpits (result, expected, _) -> ECheckSpits (untagE result, untagE expected, ())
   | EException (ex, _) -> EException (ex, ())
   | ETryCatch (t, bind, excptn, c, _) ->
       ETryCatch (untagE t, untagB bind, untagE excptn, untagE c, ())
@@ -325,10 +317,6 @@ and untagB (b : 'a bind) =
 and untagD (d : 'a decl) =
   match d with
   | DFun (name, args, body, _) -> DFun (name, List.map untagB args, untagE body, ())
-
-and untagC (c : 'a checkblock) =
-  match c with
-  | CheckBlock (ops, a) -> CheckBlock (List.map untagE ops, ())
 ;;
 
 let atag (p : 'a aprogram) : tag aprogram =
@@ -376,12 +364,21 @@ let atag (p : 'a aprogram) : tag aprogram =
     | CLambda (args, body, _) ->
         let lam_tag = tag () in
         CLambda (args, helpA body, lam_tag)
-    | CCheckSpits (result, expected, _) ->
-        let check_tag = tag () in
-        CCheckSpits (helpI result, helpI expected, check_tag)
     | CTryCatch (t, except, c, _) ->
         let try_catch_tag = tag () in
         CTryCatch (helpA t, except, helpA c, try_catch_tag)
+    | CCheck (ops, _) ->
+        let catch_tag = tag () in
+        CCheck (List.map helpI ops, catch_tag)
+    | CTestOp1 (e1, e2, n, _) ->
+        let test_op_1_tag = tag () in
+        CTestOp1 (helpI e1, helpI e2, n, test_op_1_tag)
+    | CTestOp2 (e1, e2, tt, n, _) ->
+        let test_op_2_tag = tag () in
+        CTestOp2 (helpI e1, helpI e2, tt, n, test_op_2_tag)
+    | CTestOp2Pred (e1, e2, e3, n, _) ->
+        let test_op_2_pred_tag = tag () in
+        CTestOp2Pred (helpI e1, helpI e2, helpI e3, n, test_op_2_pred_tag)
   and helpI (i : 'a immexpr) : tag immexpr =
     match i with
     | ImmNil _ -> ImmNil (tag ())
@@ -389,10 +386,9 @@ let atag (p : 'a aprogram) : tag aprogram =
     | ImmNum (n, _) -> ImmNum (n, tag ())
     | ImmBool (b, _) -> ImmBool (b, tag ())
     | ImmExcept (e, _) -> ImmExcept (e, tag ())
-  and helpCh (c : 'a checkblock list) = raise (Invalid_argument "atag") 
   and helpP p =
     match p with
-    | AProgram (body, checks, _) -> AProgram (helpA body, helpCh checks, 0)
+    | AProgram (body, _) -> AProgram (helpA body, 0)
   in
   helpP p
 ;;
