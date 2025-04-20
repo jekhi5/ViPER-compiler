@@ -17,6 +17,12 @@ type except =
   | Runtime
   | Value
 
+type test_type = 
+  | DeepEq
+  | ShallowEq
+  | Pred
+  | Raises
+
 type prim1 =
   | Add1
   | Sub1
@@ -75,10 +81,16 @@ and 'a expr =
   | EException of except * 'a
   (* try () catch RuntimeExcexption as e in () *)
   | ETryCatch of 'a expr * 'a bind * 'a expr * 'a expr * 'a
+  | ECheck of 'a expr list * 'a
+  | ETestOp1 of 'a expr * 'a expr * bool * 'a
+  | ETestOp2 of 'a expr * 'a expr * test_type * bool * 'a  
+  | ETestOp2Pred of 'a expr * 'a expr * 'a expr * bool * 'a  
+
+type 'a checkblock = CheckBlock of 'a expr list * 'a
 
 type 'a decl = DFun of string * 'a bind list * 'a expr * 'a
 
-type 'a program = Program of 'a decl list list * 'a expr * 'a
+type 'a program = Program of 'a decl list list * 'a expr * 'a checkblock list * 'a
 
 type 'a immexpr =
   (* immediate expressions *)
@@ -110,7 +122,7 @@ and 'a aexpr =
   | ALetRec of (string * 'a cexpr) list * 'a aexpr * 'a
   | ACExpr of 'a cexpr
 
-and 'a aprogram = AProgram of 'a aexpr * 'a
+and 'a aprogram = AProgram of 'a aexpr * 'a checkblock * 'a
 
 type alloc_strategy =
   | Register
@@ -142,6 +154,10 @@ let get_tag_E e =
   | ECheckSpits (_, _, t) -> t
   | EException (_, t) -> t
   | ETryCatch (_, _, _, _, t) -> t
+  | ECheck (_, t) 
+  | ETestOp1 (_, _, _, t) 
+  | ETestOp2 (_, _, _, _, t)
+  | ETestOp2Pred (_, _, _, _, t) -> t
 ;;
 
 let get_tag_D d =
@@ -214,6 +230,10 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_bind = map_tag_B f bind in
       let tag_exception = map_tag_E f excptn in
       ETryCatch (tag_try, tag_bind, tag_exception, tag_catch, tag_try_catch)
+  | ECheck (exprs, a) -> ECheck (List.map (map_tag_E f) exprs, f a) 
+  | ETestOp1 (e1, e2, n, a) -> ETestOp1 (map_tag_E f e1, map_tag_E f e2, n, f a) 
+  | ETestOp2 (e1, e2, tt, n, a) -> ETestOp2 (map_tag_E f e1, map_tag_E f e2, tt, n, f a)
+  | ETestOp2Pred (e1, e2, e3, n, a) -> ETestOp2Pred (map_tag_E f e1, map_tag_E f e2, map_tag_E f e3, n, f a)
 
 and map_tag_B (f : 'a -> 'b) b =
   match b with
@@ -233,13 +253,21 @@ and map_tag_D (f : 'a -> 'b) d =
       let tag_body = map_tag_E f body in
       DFun (name, tag_args, tag_body, tag_fun)
 
+and map_tag_C (f : 'a -> 'b) (c : 'a checkblock) =
+  match c with
+  | CheckBlock (ops, a) ->
+    let tag_ops = List.map (map_tag_E f) ops in
+    CheckBlock (tag_ops, f a)
+
+
 and map_tag_P (f : 'a -> 'b) p =
   match p with
-  | Program (declgroups, body, a) ->
+  | Program (declgroups, body, checks, a) ->
       let tag_a = f a in
       let tag_decls = List.map (fun group -> List.map (map_tag_D f) group) declgroups in
       let tag_body = map_tag_E f body in
-      Program (tag_decls, tag_body, tag_a)
+      let tag_checks = List.map (map_tag_C f) checks in
+      Program (tag_decls, tag_body, tag_checks, tag_a)
 ;;
 
 let tag (p : 'a program) : tag program =
@@ -257,8 +285,8 @@ let combine_tags (f1 : 'a -> 'b) (f2 : 'a -> 'c) (p : 'a program) : ('b * 'c) pr
 
 let rec untagP (p : 'a program) : unit program =
   match p with
-  | Program (decls, body, _) ->
-      Program (List.map (fun group -> List.map untagD group) decls, untagE body, ())
+  | Program (decls, body, checks, _) ->
+      Program (List.map (fun group -> List.map untagD group) decls, untagE body, List.map untagC checks, ())
 
 and untagE (e : 'a expr) =
   match e with
@@ -283,6 +311,10 @@ and untagE (e : 'a expr) =
   | EException (ex, _) -> EException (ex, ())
   | ETryCatch (t, bind, excptn, c, _) ->
       ETryCatch (untagE t, untagB bind, untagE excptn, untagE c, ())
+  | ECheck (ops, _) -> ECheck (List.map untagE ops, ())
+  | ETestOp1 (e1, e2, n, _) -> ETestOp1 (untagE e1, untagE e2, n, ())
+  | ETestOp2 (e1, e2, tt, n, _) -> ETestOp2 (untagE e1, untagE e2, tt, n, ())
+  | ETestOp2Pred (e1, e2, e3, n, _) -> ETestOp2Pred (untagE e1, untagE e2, untagE e3, n, ())
 
 and untagB (b : 'a bind) =
   match b with
@@ -293,6 +325,10 @@ and untagB (b : 'a bind) =
 and untagD (d : 'a decl) =
   match d with
   | DFun (name, args, body, _) -> DFun (name, List.map untagB args, untagE body, ())
+
+and untagC (c : 'a checkblock) =
+  match c with
+  | CheckBlock (ops, a) -> CheckBlock (List.map untagE ops, ())
 ;;
 
 let atag (p : 'a aprogram) : tag aprogram =
@@ -353,9 +389,10 @@ let atag (p : 'a aprogram) : tag aprogram =
     | ImmNum (n, _) -> ImmNum (n, tag ())
     | ImmBool (b, _) -> ImmBool (b, tag ())
     | ImmExcept (e, _) -> ImmExcept (e, tag ())
+  and helpCh (c : 'a checkblock list) = raise (Invalid_argument "atag") 
   and helpP p =
     match p with
-    | AProgram (body, _) -> AProgram (helpA body, 0)
+    | AProgram (body, checks, _) -> AProgram (helpA body, helpCh checks, 0)
   in
   helpP p
 ;;

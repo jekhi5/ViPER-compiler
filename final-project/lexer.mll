@@ -81,13 +81,21 @@ rule token = parse
   | "end" { END }
   | "rec" { REC }
   | "shadow" { SHADOW }
-  | "check" { CHECK }
-  | "spits" { SPITS }
   | "RuntimeException" { EXRUNTIME }
   | "ValueException" { EXVALUE }
   | "try" { TRY }
   | "catch" { CATCH }
   | "as" { AS }
+  | "check" { CHECK }
+  (* 
+   * x spits y  -> equal(x, y)
+   * x bites y  -> x == y
+   * x sheds e  -> x raises exception e
+   * p broods x -> p(x) is true
+   *)
+  | "spits" { SPITS }
+  | "sheds" { SHEDS }
+  | "broods" { BROODS }
   | ident as x { if x = "_" then UNDERSCORE else ID x }
   | eof { EOF }
   | _ as c { failwith (sprintf "Unrecognized character: %c" c) }

@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "gc.h"
+#include "except.h"
 
 typedef uint64_t SNAKEVAL;
 

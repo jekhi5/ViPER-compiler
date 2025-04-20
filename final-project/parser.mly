@@ -8,7 +8,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 
 %token <int64> NUM
 %token <string> ID
-%token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE TRY CATCH AS
+%token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE TRY CATCH AS SPITS SHEDS BROODS
 
 %right SEMI
 %left COLON COLONEQ
@@ -153,8 +153,28 @@ decls :
   | { [] }
   | declgroup decls { $1::$2 }
 
+test :
+  | expr SPITS expr { ETestOp2($1, $3, DeepEq, false, full_span())}
+  | expr NOT SPITS expr { ETestOp2($1, $4, DeepEq, true, full_span())}
+
+  | expr SHEDS snakeexcept { ETestOp2($1, $3, ShallowEq, false, full_span())}
+  | expr NOT SHEDS snakeexcept { ETestOp2($1, $4, ShallowEq, true, full_span())}
+
+  | expr BROODS expr { ETestOp1($1, $3, false full_span())}
+  | expr NOT BROODS expr { ETestOp2($1, $4, true, full_span())}
+
+tests :
+  | test { [$1] }
+  | test COMMA tests { $1::$3 }
+
+testblock :
+  | CHECK COLON tests END { ECheck($3, full_span()) }
+
+testblocks :
+  | testblock { [$1] }
+  | testblock testblocks { $1::$2 }
 
 program :
-  | decls expr EOF { Program($1, $2, full_span()) }
+  | decls expr testblocks EOF { Program($1, $2, $3, full_span()) }
 
 %%

@@ -485,7 +485,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     (errs, env)
   in
   match p with
-  | Program (decls, body, _) -> (
+  | Program (decls, body, checks, _) -> (
       let initial_env = initial_val_env in
       let initial_env =
         StringMap.fold
@@ -535,7 +535,7 @@ let gensym =
 let desugar (p : sourcespan program) : sourcespan program =
   let rec helpP (p : sourcespan program) =
     match p with
-    | Program (decls, body, tag) ->
+    | Program (decls, body, checks, tag) ->
         (* This particular desugaring will convert declgroups into ELetRecs *)
         let merge_sourcespans ((s1, _) : sourcespan) ((_, s2) : sourcespan) : sourcespan =
           (s1, s2)
@@ -547,7 +547,7 @@ let desugar (p : sourcespan program) : sourcespan program =
               let span = List.fold_left merge_sourcespans (get_tag_D f) (List.map get_tag_D r) in
               ELetRec (helpG g, body, span)
         in
-        Program ([], List.fold_right wrap_G decls (helpE body), tag)
+        Program ([], List.fold_right wrap_G decls (helpE body), checks, tag)
   and helpG g = List.map helpD g
   and helpD d =
     match d with
@@ -647,8 +647,8 @@ let desugar (p : sourcespan program) : sourcespan program =
 let rename_and_tag (p : tag program) : tag program =
   let rec rename env p =
     match p with
-    | Program (decls, body, tag) ->
-        Program (List.map (fun group -> List.map (helpD env) group) decls, helpE env body, tag)
+    | Program (decls, body, checks, tag) ->
+        Program (List.map (fun group -> List.map (helpD env) group) decls, helpE env body, checks, tag)
   and helpD env decl =
     match decl with
     | DFun (name, args, body, tag) ->
@@ -742,7 +742,7 @@ type 'a anf_bind =
 let anf (p : tag program) : unit aprogram =
   let rec helpP (p : tag program) : unit aprogram =
     match p with
-    | Program ([], body, _) -> AProgram (helpA body, ())
+    | Program ([], body, checks, _) -> AProgram (helpA body, checks, ())
     | Program _ -> raise (InternalCompilerError "decls should have been desugared away")
   and processBinding (bind, rhs, _) =
     match bind with
@@ -2311,7 +2311,12 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             ILineComment "=== End Printing Stack ===" ]
       | Crash -> [IJmp (Label crash_label)]
       (* TODO: Once try-catch is implemented, update this functionality *)
-      | Raise -> [IMov (Reg RDI, e_reg); IJmp (Label crash_label)] )
+      | Raise -> 
+        [
+          ILineComment "== Raising an exception ==";
+          IMov (Reg RDI, e_reg);
+          ICall (Label "?ex_raise");
+          ILineComment "==========================";] )
   | CPrim2 (op, e1, e2, t) -> (
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
@@ -2466,7 +2471,11 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
   | CCheckSpits _ -> raise (NotYetImplemented "CheckSpits")
-  | CTryCatch _ -> raise (NotYetImplemented "TryCatch")
+  | CTryCatch (try_body, exception_type, catch_body, t) -> 
+    let catch_label = sprintf "try_catch#%d" t in
+    let done_label = sprintf "tc_done#%d" t in
+    
+    raise (NotYetImplemented "TryCatch")
 (*
  * 1. Setup closure for `try` block
  * 2. Setup exception handler:
@@ -2508,7 +2517,7 @@ let add_native_lambdas (p : sourcespan program) =
           dummy_span ) ]
   in
   match p with
-  | Program (declss, body, tag) ->
+  | Program (declss, body, checks, tag) ->
       Program
         ( StringMap.fold
             (fun name (_, arity, _) declss ->
