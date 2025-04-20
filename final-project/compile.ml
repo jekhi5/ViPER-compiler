@@ -1158,13 +1158,14 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
 
          * Actually, we add 3, to account for the implicit 'self' argument.
          *)
+        let num_free = StringSet.cardinal @@ free_vars (ACExpr cexp) in
         let args_locs = List.mapi (fun index id -> (id, RegOffset (index + 3, RBP))) ids in
         let args_env =
           List.fold_left
             (fun envt_envt (id, location) -> update_envt_envt env_name id location envt_envt)
             env args_locs
         in
-        helpA body args_env 1 env_name
+        helpA body args_env (num_free + 1) env_name
     | CTryCatch (t, except, c, _) ->
         let try_env = helpA t env (si + 1) env_name in
         helpA c try_env (si + 1) env_name
@@ -1197,8 +1198,13 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let lambda_offset = helpC lambda cur_envt si id in
         (* TODO: Think about this a little more. Is there too much indirection? *)
         let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
+        let without_self_reference =
+          StringMap.add id
+            (StringMap.remove id (StringMap.find id with_self_reference))
+            with_self_reference
+        in
         (* This is where we could put our mutual recursion code -- If we had any! *)
-        let rest_env = helpA (ALetRec (rest, body, tag)) with_self_reference (si + 1) env_name in
+        let rest_env = helpA (ALetRec (rest, body, tag)) without_self_reference (si + 1) env_name in
         rest_env
     | ALetRec ((id, bound) :: rest, body, tag) ->
         let offset = si_to_arg si in
@@ -1919,26 +1925,20 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
      *)
     List.fold_left
       (fun (i, j, acc_instrs, old_env) id ->
-        if name = id then
-          let offset =
-            let rec_env = safe_find_opt name env_env in
-            let rec_offset = safe_find_opt id rec_env in
-            rec_offset
-          in
-          (i, j, acc_instrs, old_env)
-        else
-          let offset = RegOffset (j, RBP) in
-          ( (* Advance to the next word in the closure *)
-            i + 1,
-            (* Move up to the next slot above RBP *)
-            j - 1,
-            (* At this point in time, the closure pointer
+        let offset = RegOffset (j, RBP) in
+        ( (* Advance to the next word in the closure *)
+          i + 1,
+          (* Move up to the next slot above RBP *)
+          j - 1,
+          (* At this point in time, the closure pointer
              * should be stored in the scratch register. *)
-             (* TODO; Lines 24 and 25 are these: *)
-            IMov (Reg RAX, RegOffset (i, scratch_reg)) (* Grab the closure ptr*)
-            :: IMov (offset, Reg RAX) (* Put it where it belongs*)
-            :: acc_instrs,
-            update_envt_envt name id offset old_env ) )
+          (* TODO; Lines 24 and 25 are these: *)
+          acc_instrs
+          @ [ IInstrComment (IMov (Reg RAX, RegOffset (i, scratch_reg)), sprintf "Moving `%s`" id);
+              (* Grab the closure ptr*)
+              IMov (offset, Reg RAX) ]
+          (* Put it where it belongs*),
+          update_envt_envt name id offset old_env ) )
       (* Start the index at 3 to skip the metadata words. *)
       (3, ~-1, [], env_env)
       free_vars
@@ -2151,7 +2151,9 @@ and compile_aexpr
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
         let free = StringSet.elements @@ free_vars (ACExpr lambda) in
+        printf "\n%s\n" (string_of_set (free_vars (ACExpr lambda)));
         let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
+        List.iter (fun a -> printf "%s, " (arg_to_asm a)) free_locations;
         let fun_prelude, fun_body, fun_heap_bump =
           compile_fun id args fun_body env_env tag si free_locations
         in

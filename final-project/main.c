@@ -350,7 +350,7 @@ void error(uint64_t code, SNAKEVAL val)
   printHelp(stderr, val);
   fprintf(stderr, "\n");
   fflush(stderr);
-  naive_print_heap(HEAP, HEAP_END);
+  naive_print_heap(stderr, HEAP, HEAP_END);
   fflush(stdout);
   free(HEAP);
   exit(code);
@@ -444,7 +444,8 @@ uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t bytes_needed, uint64_t *cur_frame
 
 int main(int argc, char **argv)
 {
-  HEAP_SIZE = 100000;
+  // TODO: Make this bigger :3
+  HEAP_SIZE = 20;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);
@@ -459,7 +460,7 @@ int main(int argc, char **argv)
   HEAP_END = aligned + HEAP_SIZE;
   /* printf("HEAP = %p, aligned = %p, HEAP_END = %p\n", HEAP, aligned, HEAP_END); */
   SNAKEVAL result = our_code_starts_here(aligned, HEAP_SIZE);
-  /* smarter_print_heap(aligned, HEAP_END, TO_S, TO_E); */
+  // smarter_print_heap(aligned, HEAP_END, TO_S, TO_E); 
   print(result);
 
   free(HEAP);

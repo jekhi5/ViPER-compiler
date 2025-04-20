@@ -11,7 +11,7 @@
     heap: the starting address of the heap
     heap_end: the first address after the heap
  */
-void naive_print_heap(uint64_t* heap, uint64_t* heap_end) asm("?naive_print_heap");
+void naive_print_heap(FILE *out, uint64_t* heap, uint64_t* heap_end) asm("?naive_print_heap");
 
 // IMPLEMENT THE FUNCTIONS BELOW
 

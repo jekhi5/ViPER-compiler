@@ -21,10 +21,10 @@ extern uint64_t* FROM_E;
 extern uint64_t* TO_S;
 extern uint64_t* TO_E;
 
-void naive_print_heap(uint64_t* heap, uint64_t* heap_end) {
-  printf("In naive_print_heap from %p to %p\n", heap, heap_end);
+void naive_print_heap(FILE *out, uint64_t* heap, uint64_t* heap_end) {
+  fprintf(out, "In naive_print_heap from %p to %p\n", heap, heap_end);
   for(uint64_t i = 0; i < (uint64_t)(heap_end - heap); i += 1) {
-    printf("  %ld/%p: %p (%ld)\n", i, (heap + i), (uint64_t*)(*(heap + i)), *(heap + i));
+    fprintf(out, "  %ld/%p: %p (%ld)\n", i, (heap + i), (uint64_t*)(*(heap + i)), *(heap + i));
   }
 }
 

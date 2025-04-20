@@ -1,5 +1,5 @@
 let 
-  a = 5 
+  a = 5
 in
   let rec
     sum = (lambda(x):
@@ -8,4 +8,4 @@ in
       else:
           x + sum(x - 1))
   in
-    sum(6)
+    sum(a)
