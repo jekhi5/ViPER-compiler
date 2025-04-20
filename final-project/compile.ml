@@ -782,7 +782,7 @@ let anf (p : tag program) : unit aprogram =
           | _ -> raise (InternalCompilerError "LetRec of non-lambda")
         in
         let body_ans, body_setup = helpC body in
-        (body_ans, (BLetRec [(name, lambda)]) :: body_setup)
+        (body_ans, BLetRec [(name, lambda)] :: body_setup)
     | ELetRec (bindings, body, _) -> raise (NotYetImplemented "Mutual recursion")
     | ELambda (args, body, tag) ->
         let processBind bind =
@@ -1558,7 +1558,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         in
         let cur_envt = update_envt_envt env_name id offset body_offset in
         cur_envt
-    | ALetRec ([id, (CLambda _ as lambda)], body, _) ->
+    | ALetRec ([(id, (CLambda _ as lambda))], body, _) ->
         let add_base_env_for_lambda = StringMap.add id StringMap.empty env_env in
         let lambda_color_map = color_graph (interfere e) (safe_find_opt env_name env_env) in
         let lambda_offset = helpC lambda id add_base_env_for_lambda in
@@ -1919,17 +1919,26 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
      *)
     List.fold_left
       (fun (i, j, acc_instrs, old_env) id ->
-        let offset = RegOffset (j, RBP) in
-        ( (* Advance to the next word in the closure *)
-          i + 1,
-          (* Move up to the next slot above RBP *)
-          j - 1,
-          (* At this point in time, the closure pointer
-           * should be stored in the scratch register. *)
-          IMov (Reg RAX, RegOffset (i, scratch_reg)) (* Grab the closure ptr*)
-          :: IMov (offset, Reg RAX) (* Put it where it belongs*)
-          :: acc_instrs,
-          update_envt_envt name id offset old_env ) )
+        if name = id then
+          let offset =
+            let rec_env = safe_find_opt name env_env in
+            let rec_offset = safe_find_opt id rec_env in
+            rec_offset
+          in
+          (i, j, acc_instrs, old_env)
+        else
+          let offset = RegOffset (j, RBP) in
+          ( (* Advance to the next word in the closure *)
+            i + 1,
+            (* Move up to the next slot above RBP *)
+            j - 1,
+            (* At this point in time, the closure pointer
+             * should be stored in the scratch register. *)
+             (* TODO; Lines 24 and 25 are these: *)
+            IMov (Reg RAX, RegOffset (i, scratch_reg)) (* Grab the closure ptr*)
+            :: IMov (offset, Reg RAX) (* Put it where it belongs*)
+            :: acc_instrs,
+            update_envt_envt name id offset old_env ) )
       (* Start the index at 3 to skip the metadata words. *)
       (3, ~-1, [], env_env)
       free_vars
@@ -1970,7 +1979,7 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
           "Load the number of free vars into the 2nd offset of the heap (as a SNAKEVAL)" ) ]
   in
   (* TODO: what should the value be for SI? *)
-  let compiled_body = compile_aexpr body si (if (List.mem name free_vars) then env_env else new_env) (List.length args) false name in
+  let compiled_body = compile_aexpr body si new_env (List.length args) false name in
   let stack_cleanup =
     [ILineComment "=== Stack clean-up ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
   in
@@ -2131,23 +2140,25 @@ and compile_aexpr
             (sprintf "COMPILE_AEXPR! Alet2. id: %s, env: %s" id (string_of_name_envt cur_env))
       in
       prelude @ [IMov (offset, Reg RAX)] @ body
-  | ALetRec([id, (CLambda (args, fun_body, tag) as lambda)], let_body, _) ->
-    let current_env = safe_find_opt env_name env_env in
-    let fun_env = safe_find_opt id env_env in
-    let offset =
-      safe_find_opt id current_env
-        ~callee_tag:
-          (sprintf "COMPILE_AEXPR! Aletrec1. id: %s, env: %s" id (string_of_name_envt current_env))
-    in
-    let prelude =
-      (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-      let free = StringSet.elements @@ free_vars (ACExpr lambda) in
-      let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
-      let fun_prelude, fun_body, fun_heap_bump = compile_fun id args fun_body env_env tag si free_locations in
-      fun_prelude @ fun_body @ fun_heap_bump
-    in 
-    let body = compile_aexpr let_body si env_env num_args is_tail env_name in
-    [ILineComment "=== Compile ALetRec Aexpr ==="]
+  | ALetRec ([(id, (CLambda (args, fun_body, tag) as lambda))], let_body, _) ->
+      let current_env = safe_find_opt env_name env_env in
+      let fun_env = safe_find_opt id env_env in
+      let offset =
+        safe_find_opt id current_env
+          ~callee_tag:
+            (sprintf "COMPILE_AEXPR! Aletrec1. id: %s, env: %s" id (string_of_name_envt current_env))
+      in
+      let prelude =
+        (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
+        let free = StringSet.elements @@ free_vars (ACExpr lambda) in
+        let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
+        let fun_prelude, fun_body, fun_heap_bump =
+          compile_fun id args fun_body env_env tag si free_locations
+        in
+        fun_prelude @ fun_body @ fun_heap_bump
+      in
+      let body = compile_aexpr let_body si env_env num_args is_tail env_name in
+      [ILineComment "=== Compile ALetRec Aexpr ==="]
       @ prelude
       @ [IMov (offset, Reg RAX)]
       @ body
