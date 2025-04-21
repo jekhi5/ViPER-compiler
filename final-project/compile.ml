@@ -1288,13 +1288,13 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let lambda_offset = helpC lambda cur_envt si id in
         (* TODO: Think about this a little more. Is there too much indirection? *)
         let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
-        let without_self_reference =
+        (* let without_self_reference =
           StringMap.add id
             (StringMap.remove id (StringMap.find id with_self_reference))
             with_self_reference
-        in
+        in *)
         (* This is where we could put our mutual recursion code -- If we had any! *)
-        let rest_env = helpA (ALetRec (rest, body, tag)) without_self_reference (si + 1) env_name in
+        let rest_env = helpA (ALetRec (rest, body, tag)) with_self_reference (si + 1) env_name in
         rest_env
     | ALetRec ((id, bound) :: rest, body, tag) ->
         let offset = si_to_arg si in
@@ -1834,8 +1834,9 @@ let check_exception (goto : string) : instruction list =
 
 (* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
 let check_num (goto : string) : instruction list =
-  [ IMov (Reg scratch_reg, HexConst num_tag_mask);
-    ITest (Reg RAX, Reg scratch_reg);
+  [ IMov (Reg scratch_reg, Reg RAX);
+    IMov (Reg scratch_reg2, HexConst num_tag_mask);
+    ITest (Reg scratch_reg, Reg scratch_reg2);
     IJnz (Label goto) ]
 ;;
 
@@ -2070,20 +2071,29 @@ and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_v
      *)
     List.fold_left
       (fun (i, j, acc_instrs, old_env) id ->
-        let offset = RegOffset (j, RBP) in
-        ( (* Advance to the next word in the closure *)
-          i + 1,
-          (* Move up to the next slot above RBP *)
-          j - 1,
-          (* At this point in time, the closure pointer
+        if name = id then
+          let offset =
+            let rec_env = safe_find_opt name env_env in
+            let rec_offset = safe_find_opt id rec_env in
+            rec_offset
+          in
+          (i, j, acc_instrs, old_env)
+        else
+          let offset = RegOffset (j, RBP) in
+          ( (* Advance to the next word in the closure *)
+            i + 1,
+            (* Move up to the next slot above RBP *)
+            j - 1,
+            (* At this point in time, the closure pointer
+
              * should be stored in the scratch register. *)
-          (* TODO; Lines 24 and 25 are these: *)
-          acc_instrs
-          @ [ IInstrComment (IMov (Reg RAX, RegOffset (i, scratch_reg)), sprintf "Moving `%s`" id);
-              (* Grab the closure ptr*)
-              IMov (offset, Reg RAX) ]
-          (* Put it where it belongs*),
-          update_envt_envt name id offset old_env ) )
+
+            (* TODO; Lines 24 and 25 are these: *)
+            IInstrComment (IMov (Reg RAX, RegOffset (i, scratch_reg)), sprintf "moving: %s" id)
+            (* Grab the closure ptr*)
+            :: IMov (offset, Reg RAX) (* Put it where it belongs*)
+            :: acc_instrs,
+            update_envt_envt name id offset old_env ) )
       (* Start the index at 3 to skip the metadata words. *)
       (3, ~-1, [], env_env)
       free_vars
@@ -2306,6 +2316,8 @@ and compile_aexpr
       in
       let body = compile_aexpr let_body si env_env num_args is_tail env_name in
       [ILineComment "=== Compile ALetRec Aexpr ==="]
+      @ [ IMov (Sized (QWORD_PTR, offset), Reg heap_reg);
+          IAdd (Sized (QWORD_PTR, offset), Const closure_tag) ]
       @ prelude
       @ [IMov (offset, Reg RAX)]
       @ body
