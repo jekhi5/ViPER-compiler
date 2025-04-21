@@ -631,15 +631,17 @@ let desugar (p : sourcespan program) : sourcespan program =
         ELambda (params, newbody, tag)
     | EException _ -> e
     | ETryCatch (t, bind, excptn, c, tag) ->
-        (* This wraps the catch block in a let of the form:
-         * let `bind` = `except` in c
-         * which ensures that the environment will include the binding when we compile the
-         * catch block. This is only useful because exceptions are just constants. If the
-         * exception had a user defined value, this would no longer be possible because
-         * the exception could be modified at runtime
-         *)
-        let new_catch_let = ELet ([(bind, excptn, tag)], helpE c, tag) in
-        ETryCatch (helpE t, bind, excptn, new_catch_let, tag)
+        let try_fun = ELambda ([], t, tag) in
+        let excptn_id =
+          match bind with
+          | BName (name, _, _) -> EId (name, tag)
+          | _ -> raise (InternalCompilerError "Found non-bname in a try catch")
+        in
+        let excptn_check =
+          EIf (EPrim2 (Eq, excptn, excptn_id, tag), c, EPrim1 (Raise, excptn_id, tag), tag)
+        in
+        let catch_fun = ELambda ([bind], excptn_check, tag) in
+        ETryCatch (helpE try_fun, bind, excptn, helpE catch_fun, tag)
     | ECheck (checks, tag) -> ECheck (List.map helpE checks, tag)
     | ETestOp1 (e1, e2, negation, tag) -> ETestOp1 (helpE e1, helpE e2, negation, tag)
     | ETestOp2 (e1, e2, tt, negation, tag) -> ETestOp2 (helpE e1, helpE e2, tt, negation, tag)
@@ -2625,9 +2627,23 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
-  | CTryCatch (try_body, exception_type, catch_body, t) ->
+  | CTryCatch (try_fun, _, catch_fun, t) ->
       let catch_label = sprintf "try_catch#%d" t in
       let done_label = sprintf "tc_done#%d" t in
+      (* 1. Add the exception handler *)
+      (* 2. Call the try function *)
+      (*    - CASE 1: Smooth Exit *)
+      (*        3. Pop the exception handler *)
+      (*        4. Jump to the end label *)
+      (*    - CASE 2: Non-smooth Exit *)
+      (*        3. We have a raise call and it will check if there is any handler left on the 
+       *           stack, if so, it will RETURN the exception, if not, it will THROW the exception *)
+      (*        4. We will jump to the catch label. NOTE: the above will have returned the exception,
+       *           and as such, it will be in RAX for the equality check within the catch block *)
+
+       let compiled_try_fun = compile_aexpr try_fun (si + 1) env_env 0 is_tail env_name in
+       let compiled_catch_fun = compile_aexpr catch_fun (si + 1) env_env 1 is_tail env_name in
+
       raise (NotYetImplemented "TryCatch")
   | CCheck _ -> raise (NotYetImplemented "Check")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")

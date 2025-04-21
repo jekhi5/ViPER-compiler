@@ -457,6 +457,12 @@ typedef struct ExStackEntry
 // Global exception stack
 ExStackEntry *global_exception_stack = NULL;
 
+// Add an exception handler to the exception handler stack
+void add_handler() {
+  
+}
+
+
 // Raise an exception
 void ex_raise(SNAKEVAL ex)
 {
