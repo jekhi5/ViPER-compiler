@@ -85,6 +85,7 @@ rule token = parse
   | "ValueException" { EXVALUE }
   | "try" { TRY }
   | "catch" { CATCH }
+  | "raise" { RAISE }
   | "as" { AS }
   | "check" { CHECK }
   (* 

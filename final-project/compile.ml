@@ -2305,9 +2305,9 @@ and compile_aexpr
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
         let free = StringSet.elements @@ free_vars (ACExpr lambda) in
-        printf "\n%s\n" (string_of_set (free_vars (ACExpr lambda)));
+        (* printf "\n%s\n" (string_of_set (free_vars (ACExpr lambda))); *)
         let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
-        List.iter (fun a -> printf "%s, " (arg_to_asm a)) free_locations;
+        (* List.iter (fun a -> printf "%s, " (arg_to_asm a)) free_locations; *)
         let fun_prelude, fun_body, fun_heap_bump =
           compile_fun id args fun_body env_env tag si free_locations
         in
@@ -2729,6 +2729,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
      extern ?naive_print_heap\n\
      extern ?HEAP\n\
      extern ?HEAP_END\n\
+     extern ?ex_raise\n\
      extern ?set_stack_bottom\n\
      global " ^ ocsh_name
   in

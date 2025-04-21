@@ -3,7 +3,8 @@
 #include <stdint.h>
 #include <string.h>
 #include "gc.h"
-#include "except.h"
+#include <setjmp.h>
+// #include "except.h"
 
 typedef uint64_t SNAKEVAL;
 
@@ -17,6 +18,7 @@ extern SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2) asm("?equal");
 extern uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t amount_needed, uint64_t *first_frame, uint64_t *stack_top) asm("?try_gc");
 extern uint64_t *HEAP_END asm("?HEAP_END");
 extern uint64_t *HEAP asm("?HEAP");
+extern void ex_raise() asm("?ex_raise");
 
 const uint64_t NUM_TAG_MASK = 0x0000000000000001;
 const uint64_t BOOL_TAG_MASK = 0x0000000000000007;
@@ -443,6 +445,44 @@ uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t bytes_needed, uint64_t *cur_frame
   }
 }
 
+// Exception stack entry
+typedef struct ExStackEntry
+{
+  struct ExStackEntry *prev; // Link to previous entry
+  jmp_buf context;           // Saved execution context
+  SNAKEVAL exception_type;
+  void *exception_data; // Storage for caught exception
+} ExStackEntry;
+
+// Global exception stack
+ExStackEntry *global_exception_stack = NULL;
+
+// Raise an exception
+void ex_raise(SNAKEVAL ex)
+{
+  ExStackEntry *entry = global_exception_stack;
+
+  // Find a handler that can handle this exception
+  while (entry != NULL)
+  {
+    if (entry->exception_type == ex)
+    {
+      // Save exception data for the handler
+      entry->exception_data = ex;
+
+      // Unwind the stack and jump to the handler
+      global_exception_stack = entry->prev;
+      longjmp(entry->context, ex);
+    }
+    entry = entry->prev;
+  }
+
+  // No handler found
+  fprintf(stderr, "Unhandled exception: ");
+  printHelp(stderr, ex);
+  exit(1);
+}
+
 int main(int argc, char **argv)
 {
   // TODO: Make this bigger :3
@@ -461,7 +501,7 @@ int main(int argc, char **argv)
   HEAP_END = aligned + HEAP_SIZE;
   /* printf("HEAP = %p, aligned = %p, HEAP_END = %p\n", HEAP, aligned, HEAP_END); */
   SNAKEVAL result = our_code_starts_here(aligned, HEAP_SIZE);
-  // smarter_print_heap(aligned, HEAP_END, TO_S, TO_E); 
+  // smarter_print_heap(aligned, HEAP_END, TO_S, TO_E);
   print(result);
 
   free(HEAP);

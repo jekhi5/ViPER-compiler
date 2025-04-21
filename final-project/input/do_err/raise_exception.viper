@@ -1,4 +1,4 @@
 def err():
-  (raise ValueException)
+  raise(ValueException)
 
 err()
