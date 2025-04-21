@@ -174,8 +174,7 @@ let prim_bindings =
 ;;
 
 let native_fun_bindings =
-  (* assoc_to_map [("input", (dummy_span, Some 0, Some 0)); ("equal", (dummy_span, Some 2, Some 2))] *)
-  assoc_to_map []
+  assoc_to_map [("input", (dummy_span, Some 0, Some 0)); ("equal", (dummy_span, Some 2, Some 2))]
 ;;
 
 let initial_fun_env = merge_envs prim_bindings native_fun_bindings

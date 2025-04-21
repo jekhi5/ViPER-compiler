@@ -446,7 +446,7 @@ uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t bytes_needed, uint64_t *cur_frame
 int main(int argc, char **argv)
 {
   // TODO: Make this bigger :3
-  HEAP_SIZE = 20;
+  HEAP_SIZE = 1000;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);
