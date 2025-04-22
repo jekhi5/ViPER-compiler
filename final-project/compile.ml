@@ -663,11 +663,11 @@ let rename_and_tag (p : tag program) : tag program =
     | DFun (name, args, body, tag) ->
         let newArgs, env' = helpBS env args in
         DFun (name, newArgs, helpE env' body, tag)
-  and helpB env b =
+  and helpB env (b : tag bind) =
     match b with
     | BBlank _ -> (b, env)
     | BName (name, allow_shadow, tag) ->
-        let name' = sprintf "%s_%d" name tag in
+        let name' = sprintf "%s_%d" name (fst tag) in
         (BName (name', allow_shadow, tag), (name, name') :: env)
     | BTuple (binds, tag) ->
         let binds', env' = helpBS env binds in
@@ -753,10 +753,10 @@ type 'a anf_bind =
   | BLet of string * 'a cexpr
   | BLetRec of (string * 'a cexpr) list
 
-let anf (p : tag program) : unit aprogram =
-  let rec helpP (p : tag program) : unit aprogram =
+let anf (p : tag program) : sourcespan aprogram =
+  let rec helpP (p : tag program) : sourcespan aprogram =
     match p with
-    | Program ([], body, checks, _) -> AProgram (helpA body, ())
+    | Program ([], body, checks, (_, s)) -> AProgram (helpA body, s)
     | Program _ -> raise (InternalCompilerError "decls should have been desugared away")
   and processBinding (bind, rhs, _) =
     match bind with
@@ -766,28 +766,28 @@ let anf (p : tag program) : unit aprogram =
           (InternalCompilerError
              (sprintf "Encountered a non-simple binding in ANFing a let-rec: %s"
                 (string_of_bind bind) ) )
-  and helpC (e : tag expr) : unit cexpr * unit anf_bind list =
+  and helpC (e : tag expr) : sourcespan cexpr * sourcespan anf_bind list =
     match e with
-    | EPrim1 (op, arg, _) ->
+    | EPrim1 (op, arg, (_, s)) ->
         let arg_imm, arg_setup = helpI arg in
-        (CPrim1 (op, arg_imm, ()), arg_setup)
-    | EPrim2 (op, left, right, _) ->
+        (CPrim1 (op, arg_imm, s), arg_setup)
+    | EPrim2 (op, left, right, (_, s)) ->
         let left_imm, left_setup = helpI left in
         let right_imm, right_setup = helpI right in
-        (CPrim2 (op, left_imm, right_imm, ()), left_setup @ right_setup)
-    | EIf (cond, _then, _else, _) ->
+        (CPrim2 (op, left_imm, right_imm, s), left_setup @ right_setup)
+    | EIf (cond, _then, _else, (_, s)) ->
         let cond_imm, cond_setup = helpI cond in
-        (CIf (cond_imm, helpA _then, helpA _else, ()), cond_setup)
-    | ELet ([], body, _) -> helpC body
-    | ELet ((BBlank _, exp, _) :: rest, body, pos) ->
+        (CIf (cond_imm, helpA _then, helpA _else, s), cond_setup)
+    | ELet ([], body, (_, s)) -> helpC body
+    | ELet ((BBlank _, exp, (_, s)) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BSeq exp_ans] @ body_setup)
-    | ELet ((BName (bind, _, _), exp, _) :: rest, body, pos) ->
+    | ELet ((BName (bind, _, (_, s)), exp, (_, s2)) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
-    | ELetRec ([binding], body, _) ->
+    | ELetRec ([binding], body, (_, s)) ->
         let name, new_bind_setup = processBinding binding in
         let _, bound_setup = new_bind_setup in
         let lambda =
@@ -797,8 +797,8 @@ let anf (p : tag program) : unit aprogram =
         in
         let body_ans, body_setup = helpC body in
         (body_ans, BLetRec [(name, lambda)] :: body_setup)
-    | ELetRec (bindings, body, _) -> raise (NotYetImplemented "Mutual recursion")
-    | ELambda (args, body, tag) ->
+    | ELetRec (bindings, body, (_, s)) -> raise (NotYetImplemented "Mutual recursion")
+    | ELambda (args, body, (a, s)) ->
         let processBind bind =
           match bind with
           | BName (name, _, _) -> name
@@ -808,109 +808,109 @@ let anf (p : tag program) : unit aprogram =
                    (sprintf "Encountered a non-simple binding in ANFing a lambda: %s"
                       (string_of_bind bind) ) )
         in
-        let new_clambda = CLambda (List.map processBind args, helpA body, ()) in
-        let name = sprintf "lam_%d" tag in
-        let imm_id = ImmId (name, ()) in
+        let new_clambda = CLambda (List.map processBind args, helpA body, s) in
+        let name = sprintf "lam_%d" a in
+        let imm_id = ImmId (name, s) in
         (CImmExpr imm_id, [BLet (name, new_clambda)])
     | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
-    | EApp (func, args, native, _) ->
+    | EApp (func, args, native, (_, s)) ->
         let func_ans, func_setup = helpI func in
         let new_args, new_setup = List.split (List.map helpI args) in
-        (CApp (func_ans, new_args, native, ()), func_setup @ List.concat new_setup)
+        (CApp (func_ans, new_args, native, s), func_setup @ List.concat new_setup)
     | ESeq (e1, e2, _) ->
         let e1_ans, e1_setup = helpC e1 in
         let e2_ans, e2_setup = helpC e2 in
         (e2_ans, e1_setup @ [BSeq e1_ans] @ e2_setup)
-    | ETuple (args, _) ->
+    | ETuple (args, (_, s)) ->
         let new_args, new_setup = List.split (List.map helpI args) in
-        (CTuple (new_args, ()), List.concat new_setup)
-    | EGetItem (tup, idx, _) ->
+        (CTuple (new_args, s), List.concat new_setup)
+    | EGetItem (tup, idx, (_, s)) ->
         let tup_imm, tup_setup = helpI tup in
         let idx_imm, idx_setup = helpI idx in
-        (CGetItem (tup_imm, idx_imm, ()), tup_setup @ idx_setup)
-    | ESetItem (tup, idx, newval, _) ->
+        (CGetItem (tup_imm, idx_imm, s), tup_setup @ idx_setup)
+    | ESetItem (tup, idx, newval, (_, s)) ->
         let tup_imm, tup_setup = helpI tup in
         let idx_imm, idx_setup = helpI idx in
         let new_imm, new_setup = helpI newval in
-        (CSetItem (tup_imm, idx_imm, new_imm, ()), tup_setup @ idx_setup @ new_setup)
-    | ETryCatch (t, bind, EException (except, _), c, _) ->
-        (CTryCatch (helpA t, except, helpA c, ()), [])
+        (CSetItem (tup_imm, idx_imm, new_imm, s), tup_setup @ idx_setup @ new_setup)
+    | ETryCatch (t, bind, EException (except, _), c, (_, s)) ->
+        (CTryCatch (helpA t, except, helpA c, s), [])
     | ETryCatch _ ->
         raise (InternalCompilerError "Violated invatiant: Tried to catch a non-exception")
-    | ECheck (checks, tag) ->
+    | ECheck (checks, (_, s)) ->
         let new_checks, checks_setup = List.split (List.map helpI checks) in
-        (CCheck (new_checks, ()), List.concat checks_setup)
-    | ETestOp1 (e1, e2, negation, tag) ->
+        (CCheck (new_checks, s), List.concat checks_setup)
+    | ETestOp1 (e1, e2, negation, (_, s)) ->
         let e1_imm, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
-        (CTestOp1 (e1_imm, e2_imm, negation, ()), e1_setup @ e2_setup)
-    | ETestOp2 (e1, e2, tt, negation, tag) ->
+        (CTestOp1 (e1_imm, e2_imm, negation, s), e1_setup @ e2_setup)
+    | ETestOp2 (e1, e2, tt, negation, (_, s)) ->
         let e1_imm, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
-        (CTestOp2 (e1_imm, e2_imm, tt, negation, ()), e1_setup @ e2_setup)
-    | ETestOp2Pred (e1, e2, pred, negation, tag) ->
+        (CTestOp2 (e1_imm, e2_imm, tt, negation, s), e1_setup @ e2_setup)
+    | ETestOp2Pred (e1, e2, pred, negation, (_, s)) ->
         let e1_imm, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         let pred_imm, pred_setup = helpI pred in
-        (CTestOp2Pred (e1_imm, e2_imm, pred_imm, negation, ()), e1_setup @ e2_setup @ pred_setup)
+        (CTestOp2Pred (e1_imm, e2_imm, pred_imm, negation, s), e1_setup @ e2_setup @ pred_setup)
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
-  and helpI (e : tag expr) : unit immexpr * unit anf_bind list =
+  and helpI (e : tag expr) : sourcespan immexpr * sourcespan anf_bind list =
     match e with
-    | ENumber (n, _) -> (ImmNum (n, ()), [])
-    | EBool (b, _) -> (ImmBool (b, ()), [])
-    | EId (name, _) -> (ImmId (name, ()), [])
-    | ENil _ -> (ImmNil (), [])
-    | ESeq (e1, e2, _) ->
+    | ENumber (n, (_, s)) -> (ImmNum (n, s), [])
+    | EBool (b, (_, s)) -> (ImmBool (b, s), [])
+    | EId (name, (_, s)) -> (ImmId (name, s), [])
+    | ENil (_, s) -> (ImmNil s, [])
+    | ESeq (e1, e2, (_, s)) ->
         let _, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
-    | ETuple (args, tag) ->
+    | ETuple (args, (tag, s)) ->
         let tmp = sprintf "tup_%d" tag in
         let new_args, new_setup = List.split (List.map helpI args) in
-        (ImmId (tmp, ()), List.concat new_setup @ [BLet (tmp, CTuple (new_args, ()))])
-    | EGetItem (tup, idx, tag) ->
+        (ImmId (tmp, s), List.concat new_setup @ [BLet (tmp, CTuple (new_args, s))])
+    | EGetItem (tup, idx, (tag, s)) ->
         let tmp = sprintf "get_%d" tag in
         let tup_imm, tup_setup = helpI tup in
         let idx_imm, idx_setup = helpI idx in
-        (ImmId (tmp, ()), tup_setup @ idx_setup @ [BLet (tmp, CGetItem (tup_imm, idx_imm, ()))])
-    | ESetItem (tup, idx, newval, tag) ->
+        (ImmId (tmp, s), tup_setup @ idx_setup @ [BLet (tmp, CGetItem (tup_imm, idx_imm, s))])
+    | ESetItem (tup, idx, newval, (tag, s)) ->
         let tmp = sprintf "set_%d" tag in
         let tup_imm, tup_setup = helpI tup in
         let idx_imm, idx_setup = helpI idx in
         let new_imm, new_setup = helpI newval in
-        ( ImmId (tmp, ()),
-          tup_setup @ idx_setup @ new_setup @ [BLet (tmp, CSetItem (tup_imm, idx_imm, new_imm, ()))]
+        ( ImmId (tmp, s),
+          tup_setup @ idx_setup @ new_setup @ [BLet (tmp, CSetItem (tup_imm, idx_imm, new_imm, s))]
         )
-    | EPrim1 (op, arg, tag) ->
+    | EPrim1 (op, arg, (tag, s)) ->
         let tmp = sprintf "unary_%d" tag in
         let arg_imm, arg_setup = helpI arg in
-        (ImmId (tmp, ()), arg_setup @ [BLet (tmp, CPrim1 (op, arg_imm, ()))])
-    | EPrim2 (op, left, right, tag) ->
+        (ImmId (tmp, s), arg_setup @ [BLet (tmp, CPrim1 (op, arg_imm, s))])
+    | EPrim2 (op, left, right, (tag, s)) ->
         let tmp = sprintf "binop_%d" tag in
         let left_imm, left_setup = helpI left in
         let right_imm, right_setup = helpI right in
-        ( ImmId (tmp, ()),
-          left_setup @ right_setup @ [BLet (tmp, CPrim2 (op, left_imm, right_imm, ()))] )
-    | EIf (cond, _then, _else, tag) ->
+        ( ImmId (tmp, s),
+          left_setup @ right_setup @ [BLet (tmp, CPrim2 (op, left_imm, right_imm, s))] )
+    | EIf (cond, _then, _else, (tag, s)) ->
         let tmp = sprintf "if_%d" tag in
         let cond_imm, cond_setup = helpI cond in
-        (ImmId (tmp, ()), cond_setup @ [BLet (tmp, CIf (cond_imm, helpA _then, helpA _else, ()))])
-    | EApp (func, args, native, tag) ->
+        (ImmId (tmp, s), cond_setup @ [BLet (tmp, CIf (cond_imm, helpA _then, helpA _else, s))])
+    | EApp (func, args, native, (tag, s)) ->
         let tmp = sprintf "app_%d" tag in
         let new_func, func_setup = helpI func in
         let new_args, new_setup = List.split (List.map helpI args) in
-        ( ImmId (tmp, ()),
-          func_setup @ List.concat new_setup @ [BLet (tmp, CApp (new_func, new_args, native, ()))]
+        ( ImmId (tmp, s),
+          func_setup @ List.concat new_setup @ [BLet (tmp, CApp (new_func, new_args, native, s))]
         )
     | ELet ([], body, _) -> helpI body
     | ELet ((BBlank _, exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BSeq exp_ans] @ body_setup)
-    | ELetRec (binds, body, tag) ->
+    | ELetRec (binds, body, (tag, s)) ->
         let tmp = sprintf "lam_%d" tag in
         let processBind (bind, rhs, _) =
           match bind with
@@ -924,12 +924,12 @@ let anf (p : tag program) : unit aprogram =
         let names, new_binds_setup = List.split (List.map processBind binds) in
         let new_binds, new_setup = List.split new_binds_setup in
         let body_ans, body_setup = helpC body in
-        ( ImmId (tmp, ()),
+        ( ImmId (tmp, s),
           List.concat new_setup
           @ [BLetRec (List.combine names new_binds)]
           @ body_setup
           @ [BLet (tmp, body_ans)] )
-    | ELambda (args, body, tag) ->
+    | ELambda (args, body, (tag, s)) ->
         let tmp = sprintf "lam_%d" tag in
         let processBind bind =
           match bind with
@@ -940,51 +940,54 @@ let anf (p : tag program) : unit aprogram =
                    (sprintf "Encountered a non-simple binding in ANFing a lambda: %s"
                       (string_of_bind bind) ) )
         in
-        (ImmId (tmp, ()), [BLet (tmp, CLambda (List.map processBind args, helpA body, ()))])
+        (ImmId (tmp, s), [BLet (tmp, CLambda (List.map processBind args, helpA body, s))])
     | ELet ((BName (bind, _, _), exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpI (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
     | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
-    | EException (ex, _) -> (ImmExcept (ex, ()), [])
-    | ETryCatch (t, bind, EException (except, _), c, tag) ->
+    | EException (ex, (_, s)) -> (ImmExcept (ex, s), [])
+    | ETryCatch (t, bind, EException (except, _), c, (tag, s)) ->
         let tmp = sprintf "try_catch_%d" tag in
-        (ImmId (tmp, ()), [BLet (tmp, CTryCatch (helpA t, except, helpA c, ()))])
+        (ImmId (tmp, s), [BLet (tmp, CTryCatch (helpA t, except, helpA c, s))])
     | ETryCatch _ ->
         raise (InternalCompilerError "Violated invariant. Tried to catch a non-exception")
-    | ECheck (checks, tag) ->
+    | ECheck (checks, (tag, s)) ->
         let tmp = sprintf "check_%d" tag in
         let new_checks, new_setup = List.split (List.map helpI checks) in
-        (ImmId (tmp, ()), List.concat new_setup @ [BLet (tmp, CCheck (new_checks, ()))])
-    | ETestOp1 (e1, e2, negation, tag) ->
+        (ImmId (tmp, s), List.concat new_setup @ [BLet (tmp, CCheck (new_checks, s))])
+    | ETestOp1 (e1, e2, negation, (tag, s)) ->
         let tmp = sprintf "testop1_%d" tag in
         let e1_ans, e1_setup = helpI e1 in
         let e2_ans, e2_setup = helpI e2 in
-        ( ImmId (tmp, ()),
-          e1_setup @ e2_setup @ [BLet (tmp, CTestOp1 (e1_ans, e2_ans, negation, ()))] )
-    | ETestOp2 (e1, e2, tt, negation, tag) ->
+        ( ImmId (tmp, s),
+          e1_setup @ e2_setup @ [BLet (tmp, CTestOp1 (e1_ans, e2_ans, negation, s))] )
+    | ETestOp2 (e1, e2, tt, negation, (tag, s)) ->
         let tmp = sprintf "testop2_%d" tag in
         let e1_ans, e1_setup = helpI e1 in
         let e2_ans, e2_setup = helpI e2 in
-        ( ImmId (tmp, ()),
-          e1_setup @ e2_setup @ [BLet (tmp, CTestOp2 (e1_ans, e2_ans, tt, negation, ()))] )
-    | ETestOp2Pred (e1, e2, pred, negation, tag) ->
+        ( ImmId (tmp, s),
+          e1_setup @ e2_setup @ [BLet (tmp, CTestOp2 (e1_ans, e2_ans, tt, negation, s))] )
+    | ETestOp2Pred (e1, e2, pred, negation, (tag, s)) ->
         let tmp = sprintf "testop2pred_%d" tag in
         let e1_ans, e1_setup = helpI e1 in
         let e2_ans, e2_setup = helpI e2 in
         let pred_ans, pred_setup = helpI pred in
-        ( ImmId (tmp, ()),
+        ( ImmId (tmp, s),
           e1_setup @ e2_setup @ pred_setup
-          @ [BLet (tmp, CTestOp2Pred (e1_ans, e2_ans, pred_ans, negation, ()))] )
-  and helpA e : unit aexpr =
+          @ [BLet (tmp, CTestOp2Pred (e1_ans, e2_ans, pred_ans, negation, s))] )
+  and helpA (e : tag expr) : sourcespan aexpr =
     let ans, ans_setup = helpC e in
+    let tags = List.map (fun a -> a) ans_setup in
+
+    
     List.fold_right
       (fun bind body ->
         match bind with
-        | BSeq exp -> ASeq (exp, body, ())
-        | BLet (name, exp) -> ALet (name, exp, body, ())
-        | BLetRec names -> ALetRec (names, body, ()) )
+        | BSeq exp -> ASeq (exp, body, get_tag_A body)
+        | BLet (name, exp) -> ALet (name, exp, body, get_tag_A body)
+        | BLetRec names -> ALetRec (names, body, get_tag_A body) )
       ans_setup (ACExpr ans)
   in
   helpP p
@@ -1874,7 +1877,7 @@ let check_function =
 ;;
 
 (* Helper for numeric comparisons *)
-let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
   (* Move the first arg into RAX so we can type-check it. *)
   let string_op = "comparison_label" in
   let comp_label = sprintf "%s#%d" string_op t in
@@ -1936,7 +1939,7 @@ let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
 ;;
 
 (* Helper for boolean and *)
-let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+let and_prim2 (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
   let true_label = sprintf "true#%d" t in
   let false_label = sprintf "false#%d" t in
   let logic_done_label = sprintf "and_done#%d" t in
@@ -1966,7 +1969,7 @@ let and_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
 ;;
 
 (* Helper for boolean or *)
-let or_prim2 (e1 : arg) (e2 : arg) (t : tag) : instruction list =
+let or_prim2 (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
   let true_label = sprintf "true#%d" t in
   let false_label = sprintf "false#%d" t in
   let logic_done_label = sprintf "or_done#%d" t in
@@ -2028,13 +2031,13 @@ and reserve size tag =
 (* Additionally, you are provided an initial environment of values that you may want to
    assume should take up the first few stack slots.  See the compiliation of Programs
    below for one way to use this ability... *)
-and compile_fun name args body (env_env : arg name_envt name_envt) tag si free_var_offsets :
+and compile_fun name args (body : tag aexpr) (env_env : arg name_envt name_envt) tag si free_var_offsets :
     instruction list * instruction list * instruction list =
   (* Debug instruction that terminates the program *)
   let env = safe_find_opt name env_env ~callee_tag:(sprintf "COMPILE_FUN! id: %s" name) in
   let fun_label = name in
   let after_label = name ^ "_end" in
-  let acexp = ACExpr (CLambda (args, body, 0)) in
+  let acexp = ACExpr (CLambda (args, body, get_tag_A body)) in
   (* let acexp = body in  *)
   let vars = deepest_stack env in
   let arity = List.length args in
@@ -2257,7 +2260,7 @@ and compile_aexpr
     (is_tail : bool)
     (env_name : string) : instruction list =
   match e with
-  | ALet (id, (CLambda (args, fun_body, tag) as lambda), let_body, _) ->
+  | ALet (id, (CLambda (args, fun_body, ((tag, _) : tag)) as lambda), let_body, _) ->
       let cur_env =
         safe_find_opt env_name env_env
           ~callee_tag:(sprintf "COMPILE_AEXPR! ALet1. env_name: %s" env_name)
@@ -2296,7 +2299,7 @@ and compile_aexpr
             (sprintf "COMPILE_AEXPR! Alet2. id: %s, env: %s" id (string_of_name_envt cur_env))
       in
       prelude @ [IMov (offset, Reg RAX)] @ body
-  | ALetRec ([(id, (CLambda (args, fun_body, tag) as lambda))], let_body, _) ->
+  | ALetRec ([(id, (CLambda (args, fun_body, ((tag, _) : tag)) as lambda))], let_body, _) ->
       let current_env = safe_find_opt env_name env_env in
       let fun_env = safe_find_opt id env_env in
       let offset =
@@ -2391,7 +2394,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           ( IMov (Reg scratch_reg, compiled_immexp),
             "" (*sprintf "%s" (string_of_name_envt_envt env_env)*) );
         IMov (Reg RAX, Reg scratch_reg) ]
-  | CIf (cond, thn, els, t) ->
+  | CIf (cond, thn, els, ((t, _) : tag)) ->
       let else_label = sprintf "if_else#%d" t in
       let done_label = sprintf "if_done#%d" t in
       (let cond_reg = compile_imm cond env_env env_name in
@@ -2405,7 +2408,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
        @ [IJmp (Label done_label); ILineComment "  Else case:"; ILabel else_label]
        @ compile_aexpr els si env_env num_args is_tail env_name )
       @ [ILabel done_label; ILineComment (sprintf "END conditional#%d     -------------" t)]
-  | CPrim1 (op, e, t) -> (
+  | CPrim1 (op, e, ((t, _) : tag)) -> (
       let e_reg = compile_imm e env_env env_name in
       match op with
       | Add1 ->
@@ -2483,8 +2486,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       | And -> and_prim2 e1_reg e2_reg t
       | Or -> or_prim2 e1_reg e2_reg t
       | Eq ->
-          let true_label = sprintf "equal#%d" t in
-          let done_label = sprintf "equal_done#%d" t in
+          let true_label = sprintf "equal#%d" (fst t) in
+          let done_label = sprintf "equal_done#%d" (fst t) in
           (* No typechecking for Eq. We can just see if the two values are equivalent. *)
           [ IMov (Reg RAX, e1_reg);
             IMov (Reg scratch_reg, e2_reg);
@@ -2537,7 +2540,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
         (InternalCompilerError
            (sprintf "CApp with non-Snake and non-Native call-type. Got: %s"
               (string_of_call_type call_type) ) )
-  | CTuple (items, tag) ->
+  | CTuple (items, ((tag, _) : tag)) ->
       let n = List.length items in
       (* expected: (1, 2, 3, 5)
        * but got: forwarding to 0x4
@@ -2627,7 +2630,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
-  | CTryCatch (try_fun, _, catch_fun, t) ->
+  | CTryCatch (try_fun, _, catch_fun, ((t, _) : tag)) ->
       let catch_label = sprintf "try_catch#%d" t in
       let done_label = sprintf "tc_done#%d" t in
       (* 1. Add the exception handler *)
@@ -2647,7 +2650,13 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       raise (NotYetImplemented "TryCatch")
   | CCheck _ -> raise (NotYetImplemented "Check")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
-  | CTestOp2 _ -> raise (NotYetImplemented "TestOp2")
+  | CTestOp2 (given, expected, test_type, neg, tag) -> 
+    (* Naive implementation! No error checking *)
+    let given_reg = compile_imm given in
+    let expected_reg = compile_imm expected in
+
+
+    raise (NotYetImplemented "TestOp2")
   | CTestOp2Pred _ -> raise (NotYetImplemented "TestOp2Pred")
 (*
  * 1. Setup closure for `try` block
@@ -2751,7 +2760,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
   in
   let suffix = error_suffix in
   match anfed with
-  | AProgram (body, tag) ->
+  | AProgram (body, ((tag, _) : tag)) ->
       (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
       let prologue, comp_main, epilogue =
         compile_fun ocsh_name ["$heap"; "$size"] body env tag 0 []

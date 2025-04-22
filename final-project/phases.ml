@@ -146,10 +146,10 @@ let print_trace (trace : phase list) : string list =
     | Renamed p -> string_of_program p
     | Desugared p -> string_of_program p
     | AddedNatives p -> string_of_program p
-    | Tagged p -> string_of_program_with 1000 (fun tag -> sprintf "@%d" tag) p
-    | ANFed p -> string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
+    | Tagged p -> string_of_program_with 1000 (fun (tag, _) -> sprintf "@%d" tag) p
+    | ANFed p -> string_of_aprogram_with 1000 (fun (tag, _) -> sprintf "@%d" tag) p
     | Located (p, e) ->
-      string_of_aprogram_with 1000 (fun tag -> sprintf "@%d" tag) p
+      string_of_aprogram_with 1000 (fun (tag, _) -> sprintf "@%d" tag) p
       ^ "\nEnvs:\n"
       ^ (string_of_name_envt_envt e)
     | Result s -> s

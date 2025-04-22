@@ -9,9 +9,9 @@ let debug_printf fmt =
     ifprintf stdout fmt
 ;;
 
-type tag = int
-
 type sourcespan = Lexing.position * Lexing.position
+
+type tag = int * sourcespan
 
 type except =
   | Runtime
@@ -159,34 +159,64 @@ let get_tag_E e =
    |ETestOp2Pred (_, _, _, _, t) -> t
 ;;
 
+let get_tag_I (e : 'a immexpr) =
+  match e with
+  | ImmBool (_, t) | ImmNil t | ImmExcept (_, t) | ImmId (_, t) | ImmNum (_, t) -> t
+;;
+
+let get_tag_C (e : 'a cexpr) =
+  match e with
+  | CImmExpr i -> get_tag_I i
+  | CApp (_, _, _, t)
+   |CCheck (_, t)
+   |CGetItem (_, _, t)
+   |CIf (_, _, _, t)
+   |CLambda (_, _, t)
+   |CPrim1 (_, _, t)
+   |CPrim2 (_, _, _, t)
+   |CSetItem (_, _, _, t)
+   |CTestOp1 (_, _, _, t)
+   |CTestOp2 (_, _, _, _, t)
+   |CTestOp2Pred (_, _, _, _, t)
+   |CTryCatch (_, _, _, t)
+   |CTuple (_, t) -> t
+;;
+
+let get_tag_A (e : 'a aexpr) =
+  match e with
+  | ACExpr c -> get_tag_C c
+  | ALet (_, _, _, t)
+  | ALetRec (_, _, t)
+  | ASeq (_, _, t) -> t
+
 let get_tag_D d =
   match d with
   | DFun (_, _, _, t) -> t
 ;;
 
-let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
+let rec map_tag_E (f : 'a -> 'b) (e : sourcespan expr) : ('b * 'c) expr =
   match e with
-  | ESeq (e1, e2, a) -> ESeq (map_tag_E f e1, map_tag_E f e2, f a)
-  | ETuple (exprs, a) -> ETuple (List.map (map_tag_E f) exprs, f a)
-  | EGetItem (e, idx, a) -> EGetItem (map_tag_E f e, map_tag_E f idx, f a)
-  | ESetItem (e, idx, newval, a) ->
-      ESetItem (map_tag_E f e, map_tag_E f idx, map_tag_E f newval, f a)
-  | EId (x, a) -> EId (x, f a)
-  | ENumber (n, a) -> ENumber (n, f a)
-  | EBool (b, a) -> EBool (b, f a)
-  | ENil a -> ENil (f a)
-  | EPrim1 (op, e, a) ->
-      let tag_prim = f a in
+  | ESeq (e1, e2, s) -> ESeq (map_tag_E f e1, map_tag_E f e2, (f s, s))
+  | ETuple (exprs, s) -> ETuple (List.map (map_tag_E f) exprs, (f s, s))
+  | EGetItem (e, idx, s) -> EGetItem (map_tag_E f e, map_tag_E f idx, (f s, s))
+  | ESetItem (e, idx, newval, s) ->
+      ESetItem (map_tag_E f e, map_tag_E f idx, map_tag_E f newval, (f s, s))
+  | EId (x, s) -> EId (x, (f s, s))
+  | ENumber (n, s) -> ENumber (n, (f s, s))
+  | EBool (b, s) -> EBool (b, (f s, s))
+  | ENil s -> ENil (f s, s)
+  | EPrim1 (op, e, s) ->
+      let tag_prim = (f s, s) in
       EPrim1 (op, map_tag_E f e, tag_prim)
-  | EPrim2 (op, e1, e2, a) ->
-      let tag_prim = f a in
+  | EPrim2 (op, e1, e2, s) ->
+      let tag_prim = (f s, s) in
       let tag_e1 = map_tag_E f e1 in
       let tag_e2 = map_tag_E f e2 in
       EPrim2 (op, tag_e1, tag_e2, tag_prim)
-  | ELet (binds, body, a) ->
-      let tag_let = f a in
-      let tag_binding (b, e, t) =
-        let tag_bind = f t in
+  | ELet (binds, body, s) ->
+      let tag_let = (f s, s) in
+      let tag_binding (b, e, s2) =
+        let tag_bind = (f s2, s2) in
         let tag_b = map_tag_B f b in
         let tag_e = map_tag_E f e in
         (tag_b, tag_e, tag_bind)
@@ -194,10 +224,10 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_binds = List.map tag_binding binds in
       let tag_body = map_tag_E f body in
       ELet (tag_binds, tag_body, tag_let)
-  | ELetRec (binds, body, a) ->
-      let tag_let = f a in
-      let tag_binding (b, e, t) =
-        let tag_bind = f t in
+  | ELetRec (binds, body, s) ->
+      let tag_let = (f s, s) in
+      let tag_binding (b, e, s2) =
+        let tag_bind = (f s2, s2) in
         let tag_b = map_tag_B f b in
         let tag_e = map_tag_E f e in
         (tag_b, tag_e, tag_bind)
@@ -205,61 +235,61 @@ let rec map_tag_E (f : 'a -> 'b) (e : 'a expr) =
       let tag_binds = List.map tag_binding binds in
       let tag_body = map_tag_E f body in
       ELetRec (tag_binds, tag_body, tag_let)
-  | EIf (cond, thn, els, a) ->
-      let tag_if = f a in
+  | EIf (cond, thn, els, s) ->
+      let tag_if = (f s, s) in
       let tag_cond = map_tag_E f cond in
       let tag_thn = map_tag_E f thn in
       let tag_els = map_tag_E f els in
       EIf (tag_cond, tag_thn, tag_els, tag_if)
-  | EApp (func, args, native, a) ->
-      let tag_app = f a in
+  | EApp (func, args, native, s) ->
+      let tag_app = (f s, s) in
       EApp (map_tag_E f func, List.map (map_tag_E f) args, native, tag_app)
-  | ELambda (binds, body, a) ->
-      let tag_lam = f a in
+  | ELambda (binds, body, s) ->
+      let tag_lam = (f s, s) in
       ELambda (List.map (map_tag_B f) binds, map_tag_E f body, tag_lam)
-  | EException (e, a) -> EException (e, f a)
-  | ETryCatch (t, bind, excptn, c, a) ->
-      let tag_try_catch = f a in
+  | EException (e, s) -> EException (e, (f s, s))
+  | ETryCatch (t, bind, excptn, c, s) ->
+      let tag_try_catch = (f s, s) in
       let tag_try = map_tag_E f t in
       let tag_catch = map_tag_E f c in
       let tag_bind = map_tag_B f bind in
       let tag_exception = map_tag_E f excptn in
       ETryCatch (tag_try, tag_bind, tag_exception, tag_catch, tag_try_catch)
-  | ECheck (exprs, a) -> ECheck (List.map (map_tag_E f) exprs, f a)
-  | ETestOp1 (e1, e2, n, a) -> ETestOp1 (map_tag_E f e1, map_tag_E f e2, n, f a)
-  | ETestOp2 (e1, e2, tt, n, a) -> ETestOp2 (map_tag_E f e1, map_tag_E f e2, tt, n, f a)
-  | ETestOp2Pred (e1, e2, e3, n, a) ->
-      ETestOp2Pred (map_tag_E f e1, map_tag_E f e2, map_tag_E f e3, n, f a)
+  | ECheck (exprs, s) -> ECheck (List.map (map_tag_E f) exprs, (f s, s))
+  | ETestOp1 (e1, e2, n, s) -> ETestOp1 (map_tag_E f e1, map_tag_E f e2, n, (f s, s))
+  | ETestOp2 (e1, e2, tt, n, s) -> ETestOp2 (map_tag_E f e1, map_tag_E f e2, tt, n, (f s, s))
+  | ETestOp2Pred (e1, e2, e3, n, s) ->
+      ETestOp2Pred (map_tag_E f e1, map_tag_E f e2, map_tag_E f e3, n, (f s, s))
 
-and map_tag_B (f : 'a -> 'b) b =
+and map_tag_B (f : 'a -> int) (b : sourcespan bind) : tag bind =
   match b with
-  | BBlank tag -> BBlank (f tag)
-  | BName (x, allow_shadow, ax) ->
-      let tag_ax = f ax in
+  | BBlank s -> BBlank (f s, s)
+  | BName (x, allow_shadow, s) ->
+      let tag_ax = (f s, s) in
       BName (x, allow_shadow, tag_ax)
-  | BTuple (binds, t) ->
-      let tag_tup = f t in
+  | BTuple (binds, s) ->
+      let tag_tup = (f s, s) in
       BTuple (List.map (map_tag_B f) binds, tag_tup)
 
-and map_tag_D (f : 'a -> 'b) d =
+and map_tag_D (f : 'a -> 'b) d : ('b * 'c) decl =
   match d with
-  | DFun (name, args, body, a) ->
-      let tag_fun = f a in
+  | DFun (name, args, body, s) ->
+      let tag_fun = (f s, s) in
       let tag_args = List.map (map_tag_B f) args in
       let tag_body = map_tag_E f body in
       DFun (name, tag_args, tag_body, tag_fun)
 
-and map_tag_P (f : 'a -> 'b) p =
+and map_tag_P (f : 'a -> 'b) (p : sourcespan program)  : tag program=
   match p with
-  | Program (declgroups, body, checks, a) ->
-      let tag_a = f a in
+  | Program (declgroups, body, checks, s) ->
+      let tag_a = f s, s in
       let tag_decls = List.map (fun group -> List.map (map_tag_D f) group) declgroups in
       let tag_body = map_tag_E f body in
       let tag_checks = List.map (map_tag_E f) checks in
       Program (tag_decls, tag_body, tag_checks, tag_a)
 ;;
 
-let tag (p : 'a program) : tag program =
+let tag (p : sourcespan program) : tag program =
   let next = ref 0 in
   let tag _ =
     next := !next + 1;
@@ -268,9 +298,9 @@ let tag (p : 'a program) : tag program =
   map_tag_P tag p
 ;;
 
-let combine_tags (f1 : 'a -> 'b) (f2 : 'a -> 'c) (p : 'a program) : ('b * 'c) program =
-  map_tag_P (fun a -> (f1 a, f2 a)) p
-;;
+(* let combine_tags (f1 : 'a -> 'b) (f2 : 'a -> 'c) (p : 'a program) : ('b * 'c) program =
+  map_tag_P (fun (a, b) -> ((f1 a), f2 a)) p
+;; *)
 
 let rec untagP (p : 'a program) : unit program =
   match p with
@@ -319,7 +349,7 @@ and untagD (d : 'a decl) =
   | DFun (name, args, body, _) -> DFun (name, List.map untagB args, untagE body, ())
 ;;
 
-let atag (p : 'a aprogram) : tag aprogram =
+let atag (p : sourcespan aprogram) : tag aprogram =
   let next = ref 0 in
   let tag () =
     next := !next + 1;
@@ -327,68 +357,68 @@ let atag (p : 'a aprogram) : tag aprogram =
   in
   let rec helpA (e : 'a aexpr) : tag aexpr =
     match e with
-    | ASeq (e1, e2, _) ->
+    | ASeq (e1, e2, s) ->
         let seq_tag = tag () in
-        ASeq (helpC e1, helpA e2, seq_tag)
-    | ALet (x, c, b, _) ->
+        ASeq (helpC e1, helpA e2, (seq_tag, s))
+    | ALet (x, c, b, s) ->
         let let_tag = tag () in
-        ALet (x, helpC c, helpA b, let_tag)
-    | ALetRec (xcs, b, _) ->
+        ALet (x, helpC c, helpA b, (let_tag, s))
+    | ALetRec (xcs, b, s) ->
         let let_tag = tag () in
-        ALetRec (List.map (fun (x, c) -> (x, helpC c)) xcs, helpA b, let_tag)
+        ALetRec (List.map (fun (x, c) -> (x, helpC c)) xcs, helpA b, (let_tag, s))
     | ACExpr c -> ACExpr (helpC c)
-  and helpC (c : 'a cexpr) : tag cexpr =
+  and helpC (c : sourcespan cexpr) : tag cexpr =
     match c with
-    | CPrim1 (op, e, _) ->
+    | CPrim1 (op, e, s) ->
         let prim_tag = tag () in
-        CPrim1 (op, helpI e, prim_tag)
-    | CPrim2 (op, e1, e2, _) ->
+        CPrim1 (op, helpI e, (prim_tag, s))
+    | CPrim2 (op, e1, e2, s) ->
         let prim_tag = tag () in
-        CPrim2 (op, helpI e1, helpI e2, prim_tag)
-    | CIf (cond, thn, els, _) ->
+        CPrim2 (op, helpI e1, helpI e2, (prim_tag, s))
+    | CIf (cond, thn, els, s) ->
         let if_tag = tag () in
-        CIf (helpI cond, helpA thn, helpA els, if_tag)
-    | CApp (func, args, native, _) ->
+        CIf (helpI cond, helpA thn, helpA els, (if_tag, s))
+    | CApp (func, args, native, s) ->
         let app_tag = tag () in
-        CApp (helpI func, List.map helpI args, native, app_tag)
+        CApp (helpI func, List.map helpI args, native, (app_tag, s))
     | CImmExpr i -> CImmExpr (helpI i)
-    | CTuple (es, _) ->
+    | CTuple (es, s) ->
         let tup_tag = tag () in
-        CTuple (List.map helpI es, tup_tag)
-    | CGetItem (e, idx, _) ->
+        CTuple (List.map helpI es, (tup_tag, s))
+    | CGetItem (e, idx, s) ->
         let get_tag = tag () in
-        CGetItem (helpI e, helpI idx, get_tag)
-    | CSetItem (e, idx, newval, _) ->
+        CGetItem (helpI e, helpI idx, (get_tag, s))
+    | CSetItem (e, idx, newval, s) ->
         let set_tag = tag () in
-        CSetItem (helpI e, helpI idx, helpI newval, set_tag)
-    | CLambda (args, body, _) ->
+        CSetItem (helpI e, helpI idx, helpI newval, (set_tag, s))
+    | CLambda (args, body, s) ->
         let lam_tag = tag () in
-        CLambda (args, helpA body, lam_tag)
-    | CTryCatch (t, except, c, _) ->
+        CLambda (args, helpA body, (lam_tag, s))
+    | CTryCatch (t, except, c, s) ->
         let try_catch_tag = tag () in
-        CTryCatch (helpA t, except, helpA c, try_catch_tag)
-    | CCheck (ops, _) ->
+        CTryCatch (helpA t, except, helpA c, (try_catch_tag, s))
+    | CCheck (ops, s) ->
         let catch_tag = tag () in
-        CCheck (List.map helpI ops, catch_tag)
-    | CTestOp1 (e1, e2, n, _) ->
+        CCheck (List.map helpI ops, (catch_tag, s))
+    | CTestOp1 (e1, e2, n, s) ->
         let test_op_1_tag = tag () in
-        CTestOp1 (helpI e1, helpI e2, n, test_op_1_tag)
-    | CTestOp2 (e1, e2, tt, n, _) ->
+        CTestOp1 (helpI e1, helpI e2, n, (test_op_1_tag, s))
+    | CTestOp2 (e1, e2, tt, n, s) ->
         let test_op_2_tag = tag () in
-        CTestOp2 (helpI e1, helpI e2, tt, n, test_op_2_tag)
-    | CTestOp2Pred (e1, e2, e3, n, _) ->
+        CTestOp2 (helpI e1, helpI e2, tt, n, (test_op_2_tag, s))
+    | CTestOp2Pred (e1, e2, e3, n, s) ->
         let test_op_2_pred_tag = tag () in
-        CTestOp2Pred (helpI e1, helpI e2, helpI e3, n, test_op_2_pred_tag)
+        CTestOp2Pred (helpI e1, helpI e2, helpI e3, n, (test_op_2_pred_tag, s))
   and helpI (i : 'a immexpr) : tag immexpr =
     match i with
-    | ImmNil _ -> ImmNil (tag ())
-    | ImmId (x, _) -> ImmId (x, tag ())
-    | ImmNum (n, _) -> ImmNum (n, tag ())
-    | ImmBool (b, _) -> ImmBool (b, tag ())
-    | ImmExcept (e, _) -> ImmExcept (e, tag ())
+    | ImmNil s -> ImmNil (tag (), s)
+    | ImmId (x, s) -> ImmId (x, (tag (), s))
+    | ImmNum (n, s) -> ImmNum (n, (tag (), s))
+    | ImmBool (b, s) -> ImmBool (b, (tag (), s))
+    | ImmExcept (e, s) -> ImmExcept (e, (tag (), s))
   and helpP p =
     match p with
-    | AProgram (body, _) -> AProgram (helpA body, 0)
+    | AProgram (body, s) -> AProgram (helpA body, (0, s))
   in
   helpP p
 ;;

@@ -489,6 +489,34 @@ void ex_raise(SNAKEVAL ex)
   exit(1);
 }
 
+void setup_test() {
+  // TODO: Add a handler for this test.
+  exit(1);
+}
+
+SNAKEVAL call_snake(SNAKEVAL snake_closure) {
+  if ((snake_closure & CLOSURE_TAG) != CLOSURE_TAG) {
+    fprintf(stderr, "Invalid data in call_snake: %lld\n", snake_closure);
+    printHelp(stderr, snake_closure);
+    fprintf(stderr, "\n");
+    return NIL;
+  } else {
+    
+  }
+
+
+}
+
+
+// Raise an exception
+void ex_raise_test(SNAKEVAL ex, uint64_t *return_addr)
+{
+  // No handler found
+  fprintf(stderr, "Failure! Test raised exception: ");
+  printHelp(stderr, ex);
+
+}
+
 int main(int argc, char **argv)
 {
   // TODO: Make this bigger :3
