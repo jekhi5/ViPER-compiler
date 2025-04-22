@@ -549,7 +549,15 @@ let desugar (p : sourcespan program) : sourcespan program =
               let span = List.fold_left merge_sourcespans (get_tag_D f) (List.map get_tag_D r) in
               ELetRec (helpG g, body, span)
         in
-        Program ([], List.fold_right wrap_G decls (helpE body), checks, tag)
+        Program ([], List.fold_right wrap_G decls (helpCh checks (helpE body)), [] , tag)
+  (* Condense all checkblocks into a single sequence. Prepend this to the body. *)
+  and helpCh checkblocks next =
+    (* 
+     * let decls in (t1; t2; t3; nil); (t4; t5; nil); body
+     *
+     * TODO: Foldr or foldl?
+     *)
+   List.fold_right (fun e acc -> ESeq (helpE e, acc, get_tag_E e)) checkblocks next
   and helpG g = List.map helpD g
   and helpD d =
     match d with
@@ -642,7 +650,11 @@ let desugar (p : sourcespan program) : sourcespan program =
         in
         let catch_fun = ELambda ([bind], excptn_check, tag) in
         ETryCatch (helpE try_fun, bind, excptn, helpE catch_fun, tag)
-    | ECheck (checks, tag) -> ECheck (List.map helpE checks, tag)
+    (* Unroll a check block into a bunch of concurrent tests *)
+    | ECheck ([], tag) -> ENil tag (* Dummy value *)
+    | ECheck (test :: rest, tag) -> 
+      ESeq (helpE test, helpE (ECheck (rest, tag)), tag)
+    
     | ETestOp1 (e1, e2, negation, tag) -> ETestOp1 (helpE e1, helpE e2, negation, tag)
     | ETestOp2 (e1, e2, tt, negation, tag) -> ETestOp2 (helpE e1, helpE e2, tt, negation, tag)
     | ETestOp2Pred (e1, e2, pred, negation, tag) ->
@@ -2648,15 +2660,19 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
        let compiled_catch_fun = compile_aexpr catch_fun (si + 1) env_env 1 is_tail env_name in
 
       raise (NotYetImplemented "TryCatch")
-  | CCheck _ -> raise (NotYetImplemented "Check")
+  | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
   | CTestOp2 (given, expected, test_type, neg, tag) -> 
     (* Naive implementation! No error checking *)
-    let given_reg = compile_imm given in
-    let expected_reg = compile_imm expected in
-
-
-    raise (NotYetImplemented "TestOp2")
+    let given_reg = compile_imm given env_env env_name in
+    let expected_reg = compile_imm expected env_env env_name in
+    [
+      IMov (Reg RSI, given_reg);
+      IMov (Reg RDI, expected_reg);
+      ICall (Label "?equal");
+      ICmp (Sized (QWORD_PTR, Reg RAX), const_true);
+      this line is broken as a reminder
+    ]
   | CTestOp2Pred _ -> raise (NotYetImplemented "TestOp2Pred")
 (*
  * 1. Setup closure for `try` block
