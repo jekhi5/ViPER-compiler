@@ -470,9 +470,9 @@ uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t bytes_needed, uint64_t *cur_frame
 SNAKEVAL call0(SNAKEVAL val)
 {
 
-  fprintf(stderr, "Closure value for call0: \n");
-  printHelp(stderr, val);
-  fprintf(stderr, "\n");
+  // fprintf(stderr, "Closure value for call0: \n");
+  // printHelp(stderr, val);
+  // fprintf(stderr, "\n");
 
   if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
   {
@@ -504,16 +504,16 @@ SNAKEVAL call0(SNAKEVAL val)
 SNAKEVAL call1(SNAKEVAL val, SNAKEVAL arg)
 {
 
-  fprintf(stderr, "Closure value for call1: \n");
-  printHelp(stderr, val);
-  fprintf(stderr, "\nArgument for call1 (given exception): ");
-  printHelp(stderr, arg);
-  fprintf(stderr, "\n");
+  // fprintf(stderr, "Closure value for call1: \n");
+  // printHelp(stderr, val);
+  // fprintf(stderr, "\nArgument for call1 (given exception): ");
+  // printHelp(stderr, arg);
+  // fprintf(stderr, "\n");
 
   if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
   {
 
-    fprintf(stderr, "\nMATCHED IN call1()!\n\n");
+    // fprintf(stderr, "\nMATCHED IN call1()!\n\n");
 
     // 1) Untag
     uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
@@ -538,25 +538,25 @@ void ex_raise(SNAKEVAL ex)
 {
   ExStackEntry *entry = global_exception_stack;
 
-  fprintf(stderr, "Exception raised: ");
-  printHelp(stderr, ex);
-  fprintf(stderr, "\n");
+  // fprintf(stderr, "Exception raised: ");
+  // printHelp(stderr, ex);
+  // fprintf(stderr, "\n");
 
   while (entry != NULL)
   {
-    fprintf(stderr, "Expected exception: ");
-    printHelp(stderr, entry->exception_type);
-    fprintf(stderr, "\n");
+    // fprintf(stderr, "Expected exception: ");
+    // printHelp(stderr, entry->exception_type);
+    // fprintf(stderr, "\n");
 
     if (entry->exception_type == ex)
     {
-      fprintf(stderr, "\nMATCHED IN ex_raise!\n\n");
+      // fprintf(stderr, "\nMATCHED IN ex_raise!\n\n");
       // stash the real exception payload
       entry->exception_data = ex;
 
-      fprintf(stderr, "Exception data: ");
-      printHelp(stderr, entry->exception_data);
-      fprintf(stderr, "\n");
+      // fprintf(stderr, "Exception data: ");
+      // printHelp(stderr, entry->exception_data);
+      // fprintf(stderr, "\n");
 
       // pop this handler and jump into it
       global_exception_stack = entry->prev;
@@ -579,9 +579,9 @@ SNAKEVAL try_catch(SNAKEVAL try_closure,
                    SNAKEVAL exception_type)
 {
 
-  fprintf(stderr, "Binding exception: ");
-  printHelp(stderr, exception_type);
-  fprintf(stderr, "\n");
+  // fprintf(stderr, "Binding exception: ");
+  // printHelp(stderr, exception_type);
+  // fprintf(stderr, "\n");
 
   ExStackEntry entry;
 
@@ -637,7 +637,7 @@ typedef enum
 
 typedef struct
 {
-  char test_name[MAX_STRING_LENGTH];
+  char test_location[MAX_STRING_LENGTH];
   FailType type;
   SNAKEVAL given;    // only used if type == FAIL_TYPE_MISMATCH
   SNAKEVAL expected; // only used if type == FAIL_TYPE_MISMATCH
@@ -654,7 +654,7 @@ void initialize_tests()
 
   for (int i = 0; i < MAX_TESTS; i++)
   {
-    failures[i].test_name[0] = '\0';
+    failures[i].test_location[0] = '\0';
     failures[i].given = NIL;
     failures[i].expected = NIL;
     failures[i].type = 0;
@@ -674,8 +674,8 @@ void report_fail(SNAKEVAL given_val, SNAKEVAL expected_val, uint64_t start_line,
   {
     TestFailure *f = &failures[total_failures++];
     f->type = FAIL_TYPE_MISMATCH;
-    snprintf(f->test_name, MAX_STRING_LENGTH,
-             "tessssst at line %ld, col %ld to line %ld, col %ld failed.",
+    snprintf(f->test_location, MAX_STRING_LENGTH,
+             "(ln %ld, col %ld) to (ln %ld, col %ld)",
              start_line, start_col, end_line, end_col);
     f->given = given_val;
     f->expected = expected_val;
@@ -690,8 +690,8 @@ void report_fail_exception(uint64_t start_line, uint64_t start_col, uint64_t end
   {
     TestFailure *f = &failures[total_failures++];
     f->type = FAIL_TYPE_EXCEPTION;
-    snprintf(f->test_name, MAX_STRING_LENGTH,
-             "tessssst at line %ld, col %ld to line %ld, col %ld",
+    snprintf(f->test_location, MAX_STRING_LENGTH,
+             "(ln %ld, col %ld) to (ln %ld, col %ld)",
              start_line, start_col, end_line, end_col);
     f->given = NIL;
     f->expected = NIL;
@@ -700,11 +700,23 @@ void report_fail_exception(uint64_t start_line, uint64_t start_col, uint64_t end
 
 void print_tests()
 {
-  printf("Ran %d tessstsss...\n", total_tests_run);
+
+  if (total_tests_run == 0)
+  {
+    return;
+  }
+  else if (total_tests_run == 1)
+  {
+    printf("Ran 1 tessst...\n");
+  }
+  else
+  {
+    printf("Ran %d tessstsss...\n", total_tests_run);
+  }
 
   if (total_failures == 0)
   {
-    printf("All passsssed.\n");
+    printf("Every tessssst passsssed.\n");
     return;
   }
 
@@ -714,16 +726,20 @@ void print_tests()
     TestFailure *f = &failures[i];
     if (f->type == FAIL_TYPE_MISMATCH)
     {
-      printf("Tessst '%s' failed -- Expected:\n\t", f->test_name);
+      printf("Tesssst from %s failed -- Expected:\n\t", f->test_location);
       printHelp(stdout, f->expected);
-      printf("But received:\n\t");
+      printf("\n   But received:\n\t");
       printHelp(stdout, f->given);
     }
     else if (f->type == FAIL_TYPE_EXCEPTION)
     {
-      printf("Tessst '%s' failed due to exceptional behvaior.\n", f->test_name);
+      printf("Tesssst from %s failed due to exceptional behvaior...\n", f->test_location);
     }
+
+    printf("\n\n");
   }
+
+  printf("==================== Tests Complete ====================\n\n");
 }
 
 int main(int argc, char **argv)
@@ -747,8 +763,8 @@ int main(int argc, char **argv)
   /* printf("HEAP = %p, aligned = %p, HEAP_END = %p\n", HEAP, aligned, HEAP_END); */
   SNAKEVAL result = our_code_starts_here(aligned, HEAP_SIZE);
   // smarter_print_heap(aligned, HEAP_END, TO_S, TO_E);
+  print_tests();
   print(result);
-
   free(HEAP);
   return 0;
 }
