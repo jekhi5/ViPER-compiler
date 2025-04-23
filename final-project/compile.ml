@@ -675,7 +675,7 @@ let desugar (p : sourcespan program) : sourcespan program =
         let applied_id = EId ("_applied", tag) in
         let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
         let report_result_fail_mismatch =
-          EPrim2 (ReportTestFailMismatch, given_id, negated (EBool (true, tag)), tag)
+          EPrim2 (ReportTestFailMismatch, applied_id, negated (EBool (true, tag)), tag)
         in
         let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
         helpE
@@ -687,7 +687,7 @@ let desugar (p : sourcespan program) : sourcespan program =
                          (applied, EApp (predicate_id, [given_id], Snake, tag), tag) ],
                        EIf
                          ( EPrim1 (IsBool, applied_id, tag),
-                           EIf (applied_id, report_result_pass, report_result_fail_mismatch, tag),
+                           EIf (negated (applied_id), report_result_pass, report_result_fail_mismatch, tag),
                            (* TODO: Augment this with a fail due to not a predicate *)
                            report_result_fail_exception,
                            tag ),
@@ -718,7 +718,7 @@ let desugar (p : sourcespan program) : sourcespan program =
         let expected_id = EId (expected_name, tag) in
         let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
         let report_result_fail_mismatch =
-          EPrim2 (ReportTestFailMismatch, given_id, expected_id, tag)
+          EPrim2 (ReportTestFailMismatch, given_id, excptn, tag)
         in
         let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
         let caught = EException (Runtime, tag) in
@@ -732,18 +732,18 @@ let desugar (p : sourcespan program) : sourcespan program =
           (ETryCatch
              ( ETryCatch
                  ( ETryCatch
-                     ( ELet ([(given, e1, tag)], report_result_fail_mismatch, tag),
+                     ( ELet ([(given, e1, tag)],  report_result_fail_exception, tag),
                        BBlank tag,
                        excptn,
                        report_result_pass,
                        tag ),
                    BBlank tag,
                    EException (Runtime, tag),
-                   report_result_fail_mismatch,
+                   EPrim2 (ReportTestFailMismatch, EException (Runtime, tag), EException (Value, tag), tag),
                    tag ),
                BBlank tag,
                EException (Value, tag),
-               report_result_fail_mismatch,
+               EPrim2 (ReportTestFailMismatch, EException (Runtime, tag), EException (Value, tag), tag),
                tag ) )
     | ETestOp2 (e1, e2, tt, negation, tag) ->
         let given_name = "_given" in

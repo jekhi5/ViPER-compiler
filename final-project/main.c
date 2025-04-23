@@ -743,7 +743,7 @@ void print_tests()
     }
     else if (f->type == FAIL_TYPE_EXCEPTION)
     {
-      printf("Tesssst from %s failed due to exceptional behvaior...\n", f->test_location);
+      printf("Tesssst from %s failed due to exceptional behvaior (or lack thereof)...\n", f->test_location);
     }
 
     printf("\n\n");
