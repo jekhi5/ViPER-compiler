@@ -162,12 +162,12 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
     | ECheck (ops, a) ->
         "{" ^ ExtString.String.join ", " (List.map string_of_expr ops) ^ "}" ^ print_a a
     | ETestOp1 (e1, e2, n, a) ->
-        sprintf "(Test1 %s%s(%s))"
+        sprintf "(Test1 %s%s(%s))%s"
           ( if n then
               "!"
             else
               "" )
-          (string_of_expr e2) (string_of_expr e1)
+          (string_of_expr e2) (string_of_expr e1) (print_a a)
     | ETestOp2 (e1, e2, tt, n, a) ->
         let negate =
           if n then
@@ -178,7 +178,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         let typ = string_of_test_type tt in
         let se2 = string_of_expr e2 in
         let se1 = string_of_expr e1 in
-        sprintf "(Test2: %s%s (%s, %s))" negate typ se1 se2
+        sprintf "(Test2: %s%s (%s, %s))%s" negate typ se1 se2 (print_a a)
     | ETestOp2Pred (e1, e2, pred, n, a) ->
         let negate =
           if n then
@@ -189,7 +189,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         let se2 = string_of_expr e2 in
         let se1 = string_of_expr e1 in
         let p = string_of_expr pred in
-        sprintf "(Test2: %s%s (%s, %s))" negate p se1 se2
+        sprintf "(Test2: %s%s (%s, %s))%s" negate p se1 se2 (print_a a)
 ;;
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
@@ -215,6 +215,9 @@ let string_of_program_with (depth : int) (print_a : 'a -> string) (p : 'a progra
       ^ "\n"
       ^ string_of_expr_with depth print_a body
       ^ "\n"
+      ^ List.fold_left
+          (fun acc check -> acc ^ "\n" ^ string_of_expr_with depth print_a check)
+          "" checks
       ^ print_a a
 ;;
 
@@ -290,21 +293,21 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
               "!"
             else
               "" )
-          (string_of_immexpr e1) (string_of_immexpr e1) (print_a a)
+          (string_of_immexpr e1) (string_of_immexpr e2) (print_a a)
     | CTestOp2 (e1, e2, tt, negation, a) ->
         sprintf "(TestOp2: %s(%s %s %s))%s"
           ( if negation then
               "!"
             else
               "" )
-          (string_of_immexpr e1) (string_of_test_type tt) (string_of_immexpr e1) (print_a a)
+          (string_of_immexpr e1) (string_of_test_type tt) (string_of_immexpr e2) (print_a a)
     | CTestOp2Pred (e1, e2, pred, negation, a) ->
         sprintf "(TestOp2Pred: %s(%s(%s, %s) is true))%s"
           ( if negation then
               "!"
             else
               "" )
-          (string_of_immexpr pred) (string_of_immexpr e1) (string_of_immexpr e1) (print_a a)
+          (string_of_immexpr pred) (string_of_immexpr e1) (string_of_immexpr e2) (print_a a)
 
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with

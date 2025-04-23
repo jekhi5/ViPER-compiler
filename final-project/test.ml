@@ -3,7 +3,6 @@ open Runner
 open OUnit2
 open Pretty
 open Exprs
-open Errors
 open Phases
 open Graph
 open Assembly
@@ -483,9 +482,10 @@ let parse_checks =
          ( [],
            ENumber (1L, ()),
            [ ECheck
-               ( [ ETestOp1
+               ( [ ETestOp2
                      ( ENumber (1L, ()),
                        ELambda ([BName ("x", false, ())], ENumber (1L, ()), ()),
+                       DeepEq,
                        false,
                        () ) ],
                  () ) ],
@@ -535,13 +535,13 @@ let parse_checks =
                                    ETuple ([EId ("x", ()); EId ("y", ())], ()),
                                    () ),
                                () ) ],
-                           ETuple ([EId ("a", ()); EId ("b", ())], ()),
+                           EApp (EId ("?foo", ()), [ENumber (1L, ()); ENumber (2L, ())], Snake, ()),
                            () ),
                        ETuple ([ENumber (1L, ()); ENumber (2L, ())], ()),
                        ShallowEq,
                        true,
                        () );
-                   ETestOp1 (ENumber (1L, ()), ENumber (5L, ()), true, ()) ],
+                   ETestOp2 (ENumber (1L, ()), ENumber (5L, ()), DeepEq, true, ()) ],
                  () );
              ECheck
                ( [ ETestOp1

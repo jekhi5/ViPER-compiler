@@ -191,30 +191,6 @@ let rec find ls x =
         find rest x
 ;;
 
-let count_vars e =
-  let rec helpA e =
-    match e with
-    | ASeq (e1, e2, _) -> max (helpC e1) (helpA e2)
-    | ALet (_, bind, body, _) -> 1 + max (helpC bind) (helpA body)
-    | ALetRec (binds, body, _) ->
-        List.length binds
-        + List.fold_left max (helpA body) (List.map (fun (_, rhs) -> helpC rhs) binds)
-    | ACExpr e -> helpC e
-  and helpC e =
-    match e with
-    | CIf (_, t, f, _) -> max (helpA t) (helpA f)
-    | _ -> 0
-  in
-  helpA e
-;;
-
-let rec replicate x i =
-  if i = 0 then
-    []
-  else
-    x :: replicate x (i - 1)
-;;
-
 let rec find_decl (ds : 'a decl list) (name : string) : 'a decl option =
   match ds with
   | [] -> None
@@ -241,7 +217,7 @@ let rec find_dup (l : 'a list) : 'a option =
         find_dup xs
 ;;
 
-let rec find_opt (env : 'a name_envt) (elt : string) : 'a option = StringMap.find_opt elt env
+let find_opt (env : 'a name_envt) (elt : string) : 'a option = StringMap.find_opt elt env
 
 let env_keys (e : 'a name_envt) : string list = List.map fst (StringMap.bindings e)
 
@@ -322,7 +298,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         in
         let env2, errs = process_bindings bindings env in
         dupeIds @ errs @ wf_E body env2
-    | EApp (func, args, call_type, loc) ->
+    | EApp (func, args, _, loc) ->
         let rec_errors = List.concat (List.map (fun e -> wf_E e env) (func :: args)) in
         ( match func with
         | EId (funname, _) -> (
@@ -434,7 +410,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         let catch_errs =
           match bind with
           | BBlank _ -> wf_E c env
-          | BName (id, shadowable, loc) -> wf_E c (StringMap.add id (loc, None, None) env)
+          | BName (id, _, loc) -> wf_E c (StringMap.add id (loc, None, None) env)
           | BTuple (_, loc) -> [Unsupported ("Tuple binding in try-catch is unsupported", loc)]
         in
         let error_expr_err =
@@ -445,6 +421,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         wf_E t env @ catch_errs @ error_expr_err
     | ECheck (checks, _) -> List.fold_left (fun acc check -> wf_E check env @ acc) [] checks
     | ETestOp1 (e1, e2, _, _) -> wf_E e1 env @ wf_E e2 env
+    | ETestOp2 (e1, e2, Raises, _, loc) ->
+        let e2_err =
+          match e2 with
+          | EException _ -> []
+          | _ -> [Unsupported ("A `shed` test can only expect exceptions", loc)]
+        in
+        wf_E e1 env @ wf_E e2 env @ e2_err
     | ETestOp2 (e1, e2, _, _, _) -> wf_E e1 env @ wf_E e2 env
     | ETestOp2Pred (e1, e2, pred, _, _) -> wf_E e1 env @ wf_E e2 env @ wf_E pred env
   and wf_D d (env : scope_info name_envt) =
@@ -487,7 +470,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     (errs, env)
   in
   match p with
-  | Program (decls, body, checks, _) -> (
+  | Program (decls, body, _, _) -> (
       let initial_env = initial_val_env in
       let initial_env =
         StringMap.fold
@@ -700,33 +683,15 @@ let desugar (p : sourcespan program) : sourcespan program =
                EException (Value, tag),
                report_result_fail_exception,
                tag ) )
-    | ETestOp2 (e1, excptn, Raises, negation, tag) ->
+    | ETestOp2 (e1, excptn, Raises, _, tag) ->
         let given_name = "_given" in
         let expected_name = "_expected" in
-        let exception_type =
-          match excptn with
-          | EException (expn, _) -> excptn
-          | _ ->
-              raise
-                (InternalCompilerError
-                   (sprintf "TestOp2 Raises expects an exception but found: %s"
-                      (string_of_expr excptn) ) )
-        in
         let given = BName (given_name, false, tag) in
         let given_id = EId (given_name, tag) in
-        let expected = BName (expected_name, false, tag) in
         let expected_id = EId (expected_name, tag) in
         let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
         let report_result_fail_mismatch =
           EPrim2 (ReportTestFailMismatch, given_id, excptn, tag)
-        in
-        let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
-        let caught = EException (Runtime, tag) in
-        let negated x =
-          if negation then
-            EPrim1 (Not, x, tag)
-          else
-            x
         in
         helpE
           (ETryCatch
@@ -757,8 +722,6 @@ let desugar (p : sourcespan program) : sourcespan program =
           EPrim2 (ReportTestFailMismatch, given_id, expected_id, tag)
         in
         let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
-        (* TODO: FIX ME! *)
-        let caught = EException (Runtime, tag) in
         let negated x =
           if negation then
             EPrim1 (Not, x, tag)
@@ -850,7 +813,7 @@ let rename_and_tag (p : tag program) : tag program =
     | EBool _ -> e
     | ENil _ -> e
     | EId (name, tag) -> ( try EId (find env name, tag) with InternalCompilerError _ -> e )
-    | EApp (func, args, call_type, tag) ->
+    | EApp (func, args, _, tag) ->
         let call_type' =
           match func with
           | EId (name, _) when StringMap.mem name initial_fun_env -> Native
@@ -906,7 +869,7 @@ type 'a anf_bind =
 let anf (p : tag program) : sourcespan aprogram =
   let rec helpP (p : tag program) : sourcespan aprogram =
     match p with
-    | Program ([], body, checks, (_, s)) -> AProgram (helpA body, s)
+    | Program ([], body, _, (_, s)) -> AProgram (helpA body, s)
     | Program _ -> raise (InternalCompilerError "decls should have been desugared away")
   and processBinding (bind, rhs, _) =
     match bind with
@@ -928,16 +891,16 @@ let anf (p : tag program) : sourcespan aprogram =
     | EIf (cond, _then, _else, (_, s)) ->
         let cond_imm, cond_setup = helpI cond in
         (CIf (cond_imm, helpA _then, helpA _else, s), cond_setup)
-    | ELet ([], body, (_, s)) -> helpC body
-    | ELet ((BBlank _, exp, (_, s)) :: rest, body, pos) ->
+    | ELet ([], body, _) -> helpC body
+    | ELet ((BBlank _, exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BSeq exp_ans] @ body_setup)
-    | ELet ((BName (bind, _, (_, s)), exp, (_, s2)) :: rest, body, pos) ->
+    | ELet ((BName (bind, _, _), exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
         let body_ans, body_setup = helpC (ELet (rest, body, pos)) in
         (body_ans, exp_setup @ [BLet (bind, exp_ans)] @ body_setup)
-    | ELetRec ([binding], body, (_, s)) ->
+    | ELetRec ([binding], body, _) ->
         let name, new_bind_setup = processBinding binding in
         let _, bound_setup = new_bind_setup in
         let lambda =
@@ -947,7 +910,7 @@ let anf (p : tag program) : sourcespan aprogram =
         in
         let body_ans, body_setup = helpC body in
         (body_ans, BLetRec [(name, lambda)] :: body_setup)
-    | ELetRec (bindings, body, (_, s)) -> raise (NotYetImplemented "Mutual recursion")
+    | ELetRec _ -> raise (NotYetImplemented "Mutual recursion")
     | ELambda (args, body, (a, s)) ->
         let processBind bind =
           match bind with
@@ -984,7 +947,7 @@ let anf (p : tag program) : sourcespan aprogram =
         let idx_imm, idx_setup = helpI idx in
         let new_imm, new_setup = helpI newval in
         (CSetItem (tup_imm, idx_imm, new_imm, s), tup_setup @ idx_setup @ new_setup)
-    | ETryCatch (t, bind, EException (except, _), c, (_, s)) ->
+    | ETryCatch (t, _, EException (except, _), c, (_, s)) ->
         let t_imm, t_setup = helpI t in
         let c_imm, c_setup = helpI c in
         (CTryCatch (t_imm, except, c_imm, s), t_setup @ c_setup)
@@ -1015,7 +978,7 @@ let anf (p : tag program) : sourcespan aprogram =
     | EBool (b, (_, s)) -> (ImmBool (b, s), [])
     | EId (name, (_, s)) -> (ImmId (name, s), [])
     | ENil (_, s) -> (ImmNil s, [])
-    | ESeq (e1, e2, (_, s)) ->
+    | ESeq (e1, e2, _) ->
         let _, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (e2_imm, e1_setup @ e2_setup)
@@ -1099,7 +1062,7 @@ let anf (p : tag program) : sourcespan aprogram =
     | ELet ((BTuple (_, _), _, _) :: _, _, _) ->
         raise (InternalCompilerError "Tuple bindings should have been desugared away")
     | EException (ex, (_, s)) -> (ImmExcept (ex, s), [])
-    | ETryCatch (t, bind, EException (except, _), c, (tag, s)) ->
+    | ETryCatch (t, _, EException (except, _), c, (tag, s)) ->
         let tmp = sprintf "try_catch_%d" tag in
         let new_t, t_setup = helpI t in
         let new_c, c_setup = helpI c in
@@ -1131,7 +1094,6 @@ let anf (p : tag program) : sourcespan aprogram =
           @ [BLet (tmp, CTestOp2Pred (e1_ans, e2_ans, pred_ans, negation, s))] )
   and helpA (e : tag expr) : sourcespan aexpr =
     let ans, ans_setup = helpC e in
-    let tags = List.map (fun a -> a) ans_setup in
     List.fold_right
       (fun bind body ->
         match bind with
@@ -1173,7 +1135,7 @@ let free_vars (e : 'a aexpr) : StringSet.t =
     | CSetItem (tup, idx, new_elem, _) ->
         helpI tup bound_ids |> u (helpI idx bound_ids) |> u (helpI new_elem bound_ids)
     | CLambda (ids, body, _) -> helpA body (StringSet.of_list ids |> u bound_ids)
-    | CTryCatch (t, except, c, _) -> helpI t bound_ids |> u (helpI c bound_ids)
+    | CTryCatch (t, _, c, _) -> helpI t bound_ids |> u (helpI c bound_ids)
     | CCheck (checks, _) ->
         List.fold_left (fun set check -> helpI check bound_ids |> u set) StringSet.empty checks
     | CTestOp1 (e1, e2, _, _) -> helpI e1 bound_ids |> u (helpI e2 bound_ids)
@@ -1198,7 +1160,7 @@ let free_vars (e : 'a aexpr) : StringSet.t =
   helpA e StringSet.empty
 ;;
 
-let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : freevars aprogram =
+let free_vars_cache (AProgram (body, _) : 'a aprogram) : freevars aprogram =
   let empty = StringSet.empty in
   let rec helpI (e : 'a immexpr) : StringSet.t immexpr * StringSet.t =
     match e with
@@ -1805,7 +1767,7 @@ let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg
     | None -> RegOffset (next_offset, RBP)
     | Some arg -> arg
   in
-  let rec color_nodes (stack : string list) (mapping : arg name_envt) : arg name_envt =
+  let color_nodes (stack : string list) (mapping : arg name_envt) : arg name_envt =
     List.fold_right
       (fun node mapping' ->
         let neighbors = Graph.find node g in
@@ -1872,7 +1834,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         in
         let cur_envt = update_envt_envt env_name id offset body_offset in
         cur_envt
-    | ALet (id, bound, body, _) ->
+    | ALet (_, bound, body, _) ->
         let cur_env = safe_find_opt env_name env_env in
         let colored = color_graph (interfere e) cur_env in
         let env_new = StringMap.add env_name colored env_env in
@@ -1880,9 +1842,6 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         helpA body env_name assign_env
     | ALetRec ([(_, bound)], body, _) ->
         (* LetRec is not yet truly implemented, since we can't handle mutual recursion. *)
-        let cur_env = safe_find_opt env_name env_env in
-        let colored = color_graph (interfere e) cur_env in
-        let env_new = StringMap.add env_name colored env_env in
         let bound_env = helpC bound env_name env_env in
         helpA body env_name bound_env
     | ASeq (first, next, _) ->
@@ -1916,7 +1875,7 @@ let count_vars e =
   helpA e
 ;;
 
-let rec deepest_stack (env : arg name_envt) : int =
+let deepest_stack (env : arg name_envt) : int =
   StringMap.fold
     (fun _ value acc ->
       match value with
@@ -2257,11 +2216,6 @@ and compile_fun
     List.fold_left
       (fun (i, j, acc_instrs, old_env) id ->
         if name = id then
-          let offset =
-            let rec_env = safe_find_opt name env_env in
-            let rec_offset = safe_find_opt id rec_env in
-            rec_offset
-          in
           (i, j, acc_instrs, old_env)
         else
           let offset = RegOffset (j, RBP) in
@@ -2498,7 +2452,6 @@ and compile_aexpr
       prelude @ [IMov (offset, Reg RAX)] @ body
   | ALetRec ([(id, (CLambda (args, fun_body, ((tag, _) : tag)) as lambda))], let_body, _) ->
       let current_env = safe_find_opt env_name env_env in
-      let fun_env = safe_find_opt id env_env in
       let offset =
         safe_find_opt id current_env
           ~callee_tag:
@@ -2837,7 +2790,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
-  | CTryCatch (try_block, except, catch_block, ((t, _) as tag : tag)) ->
+  | CTryCatch (try_block, except, catch_block, tag) ->
       (* 1. Add the exception handler *)
       (* 2. Call the try function *)
       (*    - CASE 1: Smooth Exit *)
@@ -2912,7 +2865,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let compiled_catch = pre_catch @ body_catch @ alloc_catch in *)
   | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
-  | CTestOp2 (given, expected, test_type, neg, tag) ->
+  | CTestOp2 (given, expected, _, _, _) ->
       (* Naive implementation! No error checking *)
       let given_reg = compile_imm given env_env env_name in
       let expected_reg = compile_imm expected env_env env_name in
