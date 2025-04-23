@@ -34,6 +34,8 @@ type prim1 =
   | PrintStack
   | Crash
   | Raise
+  | ReportTestPass
+  | ReportTestFailException
 
 type prim2 =
   | Plus
@@ -47,6 +49,7 @@ type prim2 =
   | LessEq
   | Eq
   | CheckSize
+  | ReportTestFailMismatch
 
 and 'a bind =
   | BBlank of 'a

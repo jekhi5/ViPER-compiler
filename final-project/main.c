@@ -22,6 +22,10 @@ extern SNAKEVAL try_catch(SNAKEVAL try_closure, SNAKEVAL catch_closure, SNAKEVAL
 extern uint64_t *HEAP_END asm("?HEAP_END");
 extern uint64_t *HEAP asm("?HEAP");
 
+extern void report_pass() asm("?report_pass");
+extern void report_fail() asm("?report_fail");
+extern void report_fail_exception() asm("?report_fail_exception");
+
 const uint64_t NUM_TAG_MASK = 0x0000000000000001;
 const uint64_t BOOL_TAG_MASK = 0x0000000000000007;
 const uint64_t TUPLE_TAG_MASK = 0x0000000000000007;
@@ -588,8 +592,99 @@ void ex_raise_test(SNAKEVAL ex, uint64_t *return_addr)
   printHelp(stderr, ex);
 }
 
+// =================================================================================
+// ==       Tests                                                                 ==
+// =================================================================================
+
+#define MAX_TESTS 256
+#define MAX_STRING_LENGTH 256
+
+typedef enum {
+    FAIL_TYPE_MISMATCH,
+    FAIL_TYPE_EXCEPTION
+} FailType;
+
+typedef struct {
+    char test_name[MAX_STRING_LENGTH];
+    FailType type;
+    SNAKEVAL given;     // only used if type == FAIL_TYPE_MISMATCH
+    SNAKEVAL expected;  // only used if type == FAIL_TYPE_MISMATCH
+} TestFailure;
+
+
+static int total_tests_run = 0;
+static int total_failures = 0;
+static TestFailure failures[MAX_TESTS];
+
+void initialize_tests() {
+  total_tests_run = 0;
+  total_failures = 0;
+
+  for (int i = 0; i < MAX_TESTS; i++) {
+    failures[i].test_name[0] = '\0';
+    failures[i].given = NIL;
+    failures[i].expected = NIL;
+    failures[i].type = 0; 
+}
+}
+
+void report_pass() {
+  total_tests_run++;
+}
+
+void report_fail(SNAKEVAL given_val, SNAKEVAL expected_val, const char* test_name) {
+  total_tests_run++;
+
+  if (total_failures < MAX_TESTS) {
+      TestFailure* f = &failures[total_failures++];
+      f->type = FAIL_TYPE_MISMATCH;
+      strncpy(f->test_name, test_name, MAX_STRING_LENGTH - 1);
+      f->given = given_val;
+      f->expected = expected_val;
+  }
+}
+
+void report_fail_exception(uint64_t start_line, uint64_t start_col, uint64_t end_line, uint64_t end_col) {
+  total_tests_run++;
+
+
+  if (total_failures < MAX_TESTS) {
+      TestFailure* f = &failures[total_failures++];
+      f->type = FAIL_TYPE_EXCEPTION;
+      snprintf(f->test_name, MAX_STRING_LENGTH,
+                 "tessst at line %ld, col %ld to line %ld, col %ld",
+                 start_line, start_col, end_line, end_col);
+      f->given = NIL;
+      f->expected = NIL;
+  }
+}
+
+void print_tests() {
+  printf("Ran %d tessstsss...\n", total_tests_run);
+
+  if (total_failures == 0) {
+      printf("All passsssed.\n");
+      return;
+  }
+
+  printf("Failuresss (%d):\n", total_failures);
+  for (int i = 0; i < total_failures; i++) {
+      TestFailure* f = &failures[i];
+      if (f->type == FAIL_TYPE_MISMATCH) {
+          printf("Tessst '%s' failed -- Expected:\n\t", f->test_name);
+          printHelp(stdout, f->expected);
+          printf("But received:\n\t");
+          printHelp(stdout, f->given);
+      } else if (f->type == FAIL_TYPE_EXCEPTION) {
+          printf("Tessst '%s' failed due to exceptional behvaior.\n", f->test_name);
+      }
+  }
+}
+
 int main(int argc, char **argv)
 {
+  initialize_tests();
+
   // TODO: Make this bigger :3
   HEAP_SIZE = 20;
   if (argc > 1)

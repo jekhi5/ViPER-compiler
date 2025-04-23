@@ -653,8 +653,111 @@ let desugar (p : sourcespan program) : sourcespan program =
     (* Unroll a check block into a bunch of concurrent tests *)
     | ECheck ([], tag) -> ENil tag (* Dummy value *)
     | ECheck (test :: rest, tag) -> ESeq (helpE test, helpE (ECheck (rest, tag)), tag)
-    | ETestOp1 (e1, e2, negation, tag) -> ETestOp1 (helpE e1, helpE e2, negation, tag)
-    | ETestOp2 (e1, e2, tt, negation, tag) -> ETestOp2 (helpE e1, helpE e2, tt, negation, tag)
+    | ETestOp1 (e1, pred, negation, tag) ->
+        let negated x =
+          if negation then
+            EPrim1 (Not, x, tag)
+          else
+            x
+        in
+        let e1_closure = ELambda ([], helpE e1, tag) in
+        let pred_closure = ELambda ([], helpE pred, tag) in
+        let given = BName ("given", false, tag) in
+        let given_id = EId ("given", tag) in
+        let predicate = BName ("pred", false, tag) in
+        let predicate_id = EId ("pred", tag) in
+        let applied = BName ("applied", false, tag) in
+        let applied_id = EId ("applied", tag) in
+        let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
+        let report_result_fail_mismatch =
+          EPrim2 (ReportTestFailMismatch, given_id, negated (EBool (true, tag)), tag)
+        in
+        let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
+        (* TODO: FIX ME! *)
+        let caught = EException (Runtime, tag) in
+        let test_operator =
+          ELambda ([given; predicate], negated (EPrim2 (Eq, given_id, predicate_id, tag)), tag)
+        in
+        ETryCatch
+          ( ELet
+              ( [(given, EApp (e1_closure, [], Snake, tag), tag)],
+                ETryCatch
+                  ( ELet
+                      ( [(predicate, EApp (pred_closure, [], Snake, tag), tag)],
+                        ETryCatch
+                          ( ELet
+                              ( [(applied, EApp (predicate_id, [given_id], Snake, tag), tag)],
+                                EIf
+                                  ( EPrim1 (IsBool, applied_id, tag),
+                                    EIf
+                                      ( applied_id,
+                                        report_result_pass,
+                                        report_result_fail_mismatch,
+                                        tag ),
+                                    report_result_fail_exception,
+                                    tag ),
+                                tag ),
+                            BBlank tag,
+                            caught,
+                            report_result_fail_exception,
+                            tag ),
+                        tag ),
+                    BBlank tag,
+                    caught,
+                    report_result_fail_exception,
+                    tag ),
+                tag ),
+            BBlank tag,
+            caught,
+            report_result_fail_exception,
+            tag )
+    | ETestOp2 (e1, e2, tt, negation, tag) ->
+        let e1_closure = ELambda ([], helpE e1, tag) in
+        let e2_closure = ELambda ([], helpE e2, tag) in
+        let given = BName ("given", false, tag) in
+        let given_id = EId ("given", tag) in
+        let expected = BName ("expected", false, tag) in
+        let expected_id = EId ("expected", tag) in
+        let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
+        let report_result_fail_mismatch =
+          EPrim2 (ReportTestFailMismatch, given_id, expected_id, tag)
+        in
+        let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
+        (* TODO: FIX ME! *)
+        let caught = EException (Runtime, tag) in
+        let negated x =
+          if negation then
+            EPrim1 (Not, x, tag)
+          else
+            x
+        in
+        let test_operator =
+          match tt with
+          | ShallowEq ->
+              ELambda ([given; expected], negated (EPrim2 (Eq, given_id, expected_id, tag)), tag)
+          | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
+        in
+        ETryCatch
+          ( ELet
+              ( [(given, EApp (e1_closure, [], Snake, tag), tag)],
+                ETryCatch
+                  ( ELet
+                      ( [(expected, EApp (e2_closure, [], Snake, tag), tag)],
+                        EIf
+                          ( EApp (test_operator, [given_id; expected_id], Snake, tag),
+                            report_result_pass,
+                            report_result_fail_mismatch,
+                            tag ),
+                        tag ),
+                    BBlank tag,
+                    caught,
+                    report_result_fail_exception,
+                    tag ),
+                tag ),
+            BBlank tag,
+            caught,
+            report_result_fail_exception,
+            tag )
     | ETestOp2Pred (e1, e2, pred, negation, tag) ->
         ETestOp2Pred (helpE e1, helpE e2, helpE pred, negation, tag)
   in
@@ -1787,6 +1890,12 @@ let rec deepest_stack (env : arg name_envt) : int =
 (*  Code-gen utilities *)
 (*  ==================================================================================== *)
 
+let decompose_sourcespan ((pstart, pend) : sourcespan) : (int * int * int * int) =
+  pstart.pos_lnum,
+  (pstart.pos_cnum - pstart.pos_bol),
+  pend.pos_lnum, (pend.pos_cnum - pend.pos_bol) 
+
+
 let check_memory size =
   [ IMov (Reg scratch_reg, Const size);
     IAdd (Reg scratch_reg, Reg heap_reg);
@@ -2488,7 +2597,13 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           [ ILineComment "== Raising an exception ==";
             IMov (Reg RDI, e_reg);
             ICall (Label "?ex_raise");
-            ILineComment "==========================" ] )
+            ILineComment "==========================" ] 
+      | ReportTestPass -> [
+        ICall (Label "?report_pass")
+      ]
+      | ReportTestFailException -> []
+  )
+      
   | CPrim2 (op, e1, e2, t) -> (
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
@@ -2701,7 +2816,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       [ IMov (Reg RSI, given_reg);
         IMov (Reg RDI, expected_reg);
         ICall (Label "?equal");
-        ICmp (Sized (QWORD_PTR, Reg RAX), const_true) (* this line is broken as a reminder *) ]
+        ICmp (Sized (QWORD_PTR, Reg RAX), const_true) (* TODO *) ]
   | CTestOp2Pred _ -> raise (NotYetImplemented "TestOp2Pred")
 (*
  * 1. Setup closure for `try` block
@@ -2801,6 +2916,9 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
      extern ?HEAP_END\n\
      extern ?ex_raise\n\
      extern ?set_stack_bottom\n\
+     extern ?report_pass\n\
+     extern ?report_fail\n\
+     extern ?report_fail_exception\n\
      extern ?try_catch\n\
      global " ^ ocsh_name
   in
