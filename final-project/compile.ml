@@ -2298,6 +2298,13 @@ and compile_fun
       IInstrComment (IAdd (Reg heap_reg, Const (Int64.of_int heap_padding)), "Pad the heap");
       ILineComment "====== End Bump Heap ======" ]
   in
+  let rsi_push_done_label = sprintf "rsi_push_done#%d" tag in
+  let rsi_push =
+    [ ICmp (Reg RSI, Const 0L);
+      IJe (Label rsi_push_done_label);
+      IMov (RegOffset (3, RBP), Reg RSI);
+      ILabel rsi_push_done_label ]
+  in
   ( prelude,
     [ ILineComment "=== Unpacking closure ===";
       (* Boost RSP to make room for closed vars *)
@@ -2311,8 +2318,9 @@ and compile_fun
     @ unpack_closure_instrs
     @ [ ILineComment "=====================";
         ISub (Reg RSP, Const stack_size);
-        IMov (RegOffset (0, RSP), Reg RDI);
-        ILineComment "=== Function call ===" ]
+        IMov (RegOffset (0, RSP), Reg RDI) ]
+    @ rsi_push
+    @ [ILineComment "=== Function call ==="]
     @ compiled_body
     @ stack_cleanup
     @ [ILabel after_label]
@@ -2394,6 +2402,7 @@ and call (closure : arg) args =
             sprintf "Popping %d arguments" call_arity ) ]
   in
   [ILineComment "=== Begin func call ==="]
+  @ [IMov (Reg RSI, Const 0L)]
   @ closure_to_rax (* Move closure into RAX*) @ closure_check (* Don't change RAX *)
   @ arity_check (* Untags RAX *) @ push_args (* *)
   @ push_closure (* Push thre original, TAGGED, closure val. *)

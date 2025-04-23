@@ -512,10 +512,16 @@ SNAKEVAL call1(SNAKEVAL val, SNAKEVAL arg)
 
   if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
   {
+
+    fprintf(stderr, "\nMATCHED IN call1()!\n\n");
+
+    // 1) Untag
     uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
+    // 2) Get the code pointer (second thing in the closure)
+    uint64_t raw_code = addr[1];
 
     typedef SNAKEVAL (*fun1_t)(void *, SNAKEVAL);
-    fun1_t code_ptr = (fun1_t)addr[1];
+    fun1_t code_ptr = (fun1_t)raw_code;
 
     return code_ptr((void *)addr, arg);
   }
@@ -544,7 +550,7 @@ void ex_raise(SNAKEVAL ex)
 
     if (entry->exception_type == ex)
     {
-      fprintf(stderr, "\nMATCHED!\n\n");
+      fprintf(stderr, "\nMATCHED IN ex_raise!\n\n");
       // stash the real exception payload
       entry->exception_data = ex;
 
@@ -723,7 +729,7 @@ int main(int argc, char **argv)
   initialize_tests();
 
   // TODO: Make this bigger :3
-  HEAP_SIZE = 20;
+  HEAP_SIZE = 1000;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);
