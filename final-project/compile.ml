@@ -720,8 +720,8 @@ let desugar (p : sourcespan program) : sourcespan program =
     | ETestOp2 (e1, e2, tt, negation, tag) ->
       let e1' = helpE e1 in
       let e2'_closure' = helpE e2 in
-      let given_name = gensym "given" in
-      let expected_name = gensym "expected" in
+      let given_name = "given" in
+      let expected_name = "expected" in
       let given = BName (given_name, false, tag) in
       let given_id = EId (given_name, tag) in
       let expected = BName (expected_name, false, tag) in
@@ -2803,7 +2803,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               safe_find_opt tmp_try env_env
                 ~callee_tag:("Compiling try in TryCatch\n" ^ string_of_name_envt_envt env_env)
             in
-            let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
+            let free_locations = List.map (fun v -> safe_find_opt v current_env ~callee_tag:"A") free in
             compile_fun tmp_try [] try_body env_env try_tag si free_locations
         | _ -> raise (InternalCompilerError "Found non-lambda in try block")
       in
@@ -2823,7 +2823,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             let fun_env' = StringMap.add catch_arg arg_offset fun_env in
             let env_env' = StringMap.add tmp_catch fun_env' env_env in
             let free = StringSet.elements @@ free_vars (ACExpr catch_fun) in
-            let free_locations = List.map (fun v -> safe_find_opt v fun_env') free in
+            let free_locations = List.map (fun v -> safe_find_opt v fun_env' ~callee_tag:"B") free in
             compile_fun tmp_catch [catch_arg] catch_body env_env' catch_tag si free_locations
         | _ -> raise (InternalCompilerError "Found non-lambda in catch block")
       in
