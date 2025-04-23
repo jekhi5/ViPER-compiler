@@ -5,8 +5,6 @@
 ### Professor Benjamin Lerner
 #### 04/2025
 
-TODO: IMPLEMENT SYNTAX HIGHLIGHTING AND USE IT IN THE MARKDOWN CODE CELLS
-
 # Syntax
 
 For this implementation, we begin with the syntax of the proposed changes. The syntax that will be
@@ -17,12 +15,13 @@ def fact(n):
   if n == 1: 1
   else: n * fact(n - 1)
 
-
-check fact(1) spits 1
-check fact(4) spits 24
-check 24 spits fact(4)
-check 9 spits true # False!
-check (lambda(x): add1(x) - 5)(2) spits -2
+check:
+  check fact(1) spits 1
+  check fact(4) spits 24
+  check 24 spits fact(4)
+  check 9 spits true # False!
+  check (lambda(x): add1(x) - 5)(2) spits -2
+end
 
 fact(2)
 

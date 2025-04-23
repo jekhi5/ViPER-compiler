@@ -693,6 +693,9 @@ let desugar (p : sourcespan program) : sourcespan program =
         let report_result_fail_mismatch =
           EPrim2 (ReportTestFailMismatch, given_id, excptn, tag)
         in
+        let report_result_fail_exception =
+          EPrim1 (ReportTestFailException, given_id, tag)
+        in
         helpE
           (ETryCatch
              ( ETryCatch
