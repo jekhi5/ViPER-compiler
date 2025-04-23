@@ -824,14 +824,14 @@ let rename_and_tag (p : tag program) : tag program =
     | EBool _ -> e
     | ENil _ -> e
     | EId (name, tag) -> ( try EId (find env name, tag) with InternalCompilerError _ -> e )
-    | EApp (func, args, _, tag) ->
-        let func = helpE env func in
-        let call_type =
-          (* TODO: If you want, try to determine whether func is a known function name, and if so,
-             whether it's a Snake function or a Native function *)
-          Snake
+    | EApp (func, args, call_type, tag) ->
+        let call_type' =
+          match func with
+          | EId (name, _) when StringMap.mem name initial_fun_env -> Native
+          | _ -> Snake
         in
-        EApp (func, List.map (helpE env) args, call_type, tag)
+        let func = helpE env func in
+        EApp (func, List.map (helpE env) args, call_type', tag)
     | ELet (bindings, body, tag) ->
         let bindings', env' = helpBG env bindings in
         let body' = helpE env' body in
@@ -3024,7 +3024,7 @@ let compile_to_string
     (prog : sourcespan program pipeline) : string pipeline =
   prog
   |> add_err_phase well_formed is_well_formed
-  (* |> run_if (not no_builtins) (add_phase add_natives add_native_lambdas) *)
+  |> run_if (not no_builtins) (add_phase add_natives add_native_lambdas)
   |> add_phase desugared desugar
   |> add_phase tagged tag
   |> add_phase renamed rename_and_tag
