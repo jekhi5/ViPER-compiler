@@ -726,10 +726,20 @@ void print_tests()
     TestFailure *f = &failures[i];
     if (f->type == FAIL_TYPE_MISMATCH)
     {
-      printf("Tesssst from %s failed -- Expected:\n\t", f->test_location);
-      printHelp(stdout, f->expected);
-      printf("\n   But received:\n\t");
-      printHelp(stdout, f->given);
+      if ((i % 2) == 0)
+      {
+        printf("> Tesssst from %s failed -- Expected:\n>   ", f->test_location);
+        printHelp(stdout, f->expected);
+        printf("\n> But received:\n>   ");
+        printHelp(stdout, f->given);
+      }
+      else
+      {
+        printf("< Tesssst from %s failed -- Expected:\n<   ", f->test_location);
+        printHelp(stdout, f->expected);
+        printf("\n< But received:\n<   ");
+        printHelp(stdout, f->given);
+      }
     }
     else if (f->type == FAIL_TYPE_EXCEPTION)
     {
