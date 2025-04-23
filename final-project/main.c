@@ -544,9 +544,13 @@ void ex_raise(SNAKEVAL ex)
 
     if (entry->exception_type == ex)
     {
-      fprintf(stderr, "\nMATCHED!\n");
+      fprintf(stderr, "\nMATCHED!\n\n");
       // stash the real exception payload
       entry->exception_data = ex;
+
+      fprintf(stderr, "Exception data: ");
+      printHelp(stderr, entry->exception_data);
+      fprintf(stderr, "\n");
 
       // pop this handler and jump into it
       global_exception_stack = entry->prev;
@@ -719,7 +723,7 @@ int main(int argc, char **argv)
   initialize_tests();
 
   // TODO: Make this bigger :3
-  HEAP_SIZE = 1000;
+  HEAP_SIZE = 20;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);

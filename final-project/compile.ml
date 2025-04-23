@@ -2799,7 +2799,16 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
        *           stack, if so, it will RETURN the exception, if not, it will THROW the exception *)
       (*        4. We will jump to the catch label. NOTE: the above will have returned the exception,
        *           and as such, it will be in RAX for the equality check within the catch block *)
-      (* let pre_try, body_try, alloc_try =
+      let compiled_try = compile_imm try_block env_env env_name in
+      let compiled_catch = compile_imm catch_block env_env env_name in
+      let excptn = ImmExcept (except, tag) in
+      let exception_arg = compile_imm excptn env_env env_name in
+      native_call (Label "?try_catch") [compiled_try; compiled_catch; exception_arg]
+      (* 
+      
+      NO LONGER USED:
+      
+      let pre_try, body_try, alloc_try =
         match try_block with
         | ALet
             ( tmp_try,
@@ -2824,8 +2833,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             raise
               (InternalCompilerError "Found an ALet in a catch whose body was not solely an ImmExpr")
         | _ -> raise (InternalCompilerError "Found non-lambda in try block")
-      in *)
-      (* let pre_catch, body_catch, alloc_catch =
+      in
+      let pre_catch, body_catch, alloc_catch =
         match catch_block with
         | ALet
             ( tmp_catch,
@@ -2849,14 +2858,9 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             raise
               (InternalCompilerError "Found an ALet in a catch whose body was not solely an ImmExpr")
         | _ -> raise (InternalCompilerError "Found non-lambda in catch block")
-      in *)
-      let compiled_try = compile_imm try_block env_env env_name in
-      let compiled_catch = compile_imm catch_block env_env env_name in
-      (* let compiled_try = pre_try @ body_try @ alloc_try in
+      in
+      let compiled_try = pre_try @ body_try @ alloc_try in
       let compiled_catch = pre_catch @ body_catch @ alloc_catch in *)
-      let excptn = ImmExcept (except, tag) in
-      let exception_arg = compile_imm excptn env_env env_name in
-      native_call (Label "?try_catch") [compiled_try; compiled_catch; exception_arg]
   | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
   | CTestOp2 (given, expected, test_type, neg, tag) ->
