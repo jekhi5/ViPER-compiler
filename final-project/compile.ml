@@ -667,56 +667,39 @@ let desugar (p : sourcespan program) : sourcespan program =
           else
             x
         in
-        let given = BName ("given", false, tag) in
-        let given_id = EId ("given", tag) in
-        let predicate = BName ("pred", false, tag) in
-        let predicate_id = EId ("pred", tag) in
-        let applied = BName ("applied", false, tag) in
-        let applied_id = EId ("applied", tag) in
+        let given = BName ("_given", false, tag) in
+        let given_id = EId ("_given", tag) in
+        let predicate = BName ("_pred", false, tag) in
+        let predicate_id = EId ("_pred", tag) in
+        let applied = BName ("_applied", false, tag) in
+        let applied_id = EId ("_applied", tag) in
         let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
         let report_result_fail_mismatch =
           EPrim2 (ReportTestFailMismatch, given_id, negated (EBool (true, tag)), tag)
         in
         let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
-        (* TODO: FIX ME! *)
-        let caught = EException (Runtime, tag) in
-        let test_operator =
-          ELambda ([given; predicate], negated (EPrim2 (Eq, given_id, predicate_id, tag)), tag)
-        in
         helpE
-        @@ ETryCatch
-             ( ELet
-                 ( [(given, e1, tag)],
-                   ETryCatch
-                     ( ELet
-                         ( [(predicate, pred, tag)],
-                           ETryCatch
-                             ( ELet
-                                 ( [(applied, EApp (predicate_id, [given_id], Snake, tag), tag)],
-                                   EIf
-                                     ( EPrim1 (IsBool, applied_id, tag),
-                                       EIf
-                                         ( applied_id,
-                                           report_result_pass,
-                                           report_result_fail_mismatch,
-                                           tag ),
-                                       report_result_fail_exception,
-                                       tag ),
-                                   tag ),
-                               BBlank tag,
-                               caught,
-                               report_result_fail_exception,
-                               tag ),
+          (ETryCatch
+             ( ETryCatch
+                 ( ELet
+                     ( [ (given, e1, tag);
+                         (predicate, pred, tag);
+                         (applied, EApp (predicate_id, [given_id], Snake, tag), tag) ],
+                       EIf
+                         ( EPrim1 (IsBool, applied_id, tag),
+                           EIf (applied_id, report_result_pass, report_result_fail_mismatch, tag),
+                           (* TODO: Augment this with a fail due to not a predicate *)
+                           report_result_fail_exception,
                            tag ),
-                       BBlank tag,
-                       caught,
-                       report_result_fail_exception,
                        tag ),
+                   BBlank tag,
+                   EException (Runtime, tag),
+                   report_result_fail_exception,
                    tag ),
                BBlank tag,
-               caught,
+               EException (Value, tag),
                report_result_fail_exception,
-               tag )
+               tag ) )
     (* | ETestOp2 (e1, e2, Raises, negation, tag) ->
         let e1' = helpE e1 in
         let e2'_closure' = helpE e2 in
@@ -762,10 +745,8 @@ let desugar (p : sourcespan program) : sourcespan program =
                report_result_fail_exception,
                tag ) *)
     | ETestOp2 (e1, e2, tt, negation, tag) ->
-        let e1' = helpE e1 in
-        let e2'_closure' = helpE e2 in
-        let given_name = "given" in
-        let expected_name = "expected" in
+        let given_name = "_given" in
+        let expected_name = "_expected" in
         let given = BName (given_name, false, tag) in
         let given_id = EId (given_name, tag) in
         let expected = BName (expected_name, false, tag) in
@@ -790,32 +771,29 @@ let desugar (p : sourcespan program) : sourcespan program =
           | DeepEq ->
               ELambda
                 ( [given; expected],
-                  negated (EApp (EId ("equal", tag), [given_id; expected_id], Snake, tag)),
+                  negated (EApp (EId ("equal", tag), [given_id; expected_id], Native, tag)),
                   tag )
           | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
         in
         helpE
-        @@ ETryCatch
-             ( ELet
-                 ( [(given, e1, tag)],
-                   ETryCatch
-                     ( ELet
-                         ( [(expected, e2, tag)],
-                           EIf
-                             ( EApp (test_operator, [given_id; expected_id], Snake, tag),
-                               report_result_pass,
-                               report_result_fail_mismatch,
-                               tag ),
+          (ETryCatch
+             ( ETryCatch
+                 ( ELet
+                     ( [(given, e1, tag); (expected, e2, tag)],
+                       EIf
+                         ( EApp (test_operator, [given_id; expected_id], Snake, tag),
+                           report_result_pass,
+                           report_result_fail_mismatch,
                            tag ),
-                       BBlank tag,
-                       caught,
-                       report_result_fail_exception,
                        tag ),
+                   BBlank tag,
+                   EException (Runtime, tag),
+                   report_result_fail_exception,
                    tag ),
                BBlank tag,
-               caught,
+               EException (Value, tag),
                report_result_fail_exception,
-               tag )
+               tag ) )
     | ETestOp2Pred (e1, e2, pred, negation, tag) ->
         ETestOp2Pred (helpE e1, helpE e2, helpE pred, negation, tag)
   in
@@ -1956,9 +1934,16 @@ let decompose_sourcespan ((pstart, pend) : sourcespan) : int * int * int * int =
 
 let rec take xs n =
   match (xs, n) with
-  | l, 0 -> []
+  | _, 0 -> []
   | [], _ -> []
   | car :: cdr, v -> car :: take cdr (v - 1)
+;;
+
+let rec drop xs n =
+  match (xs, n) with
+  | l, 0 -> l
+  | [], _ -> []
+  | _ :: cdr, n -> drop cdr (n - 1)
 ;;
 
 let load_sourcespan s regs =
@@ -2729,7 +2714,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       | ReportTestFailMismatch ->
           let first = List.nth first_six_args_registers 0 in
           let second = List.nth first_six_args_registers 1 in
-          let rest = List.tl @@ List.tl first_six_args_registers in
+          let rest = drop first_six_args_registers 2 in
           [IMov (Sized (QWORD_PTR, Reg first), e1_reg); IMov (Sized (QWORD_PTR, Reg second), e2_reg)]
           @ load_sourcespan s rest
           @ [ICall (Label "?report_fail")] )

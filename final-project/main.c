@@ -666,7 +666,7 @@ void report_pass()
   total_tests_run++;
 }
 
-void report_fail(SNAKEVAL given_val, SNAKEVAL expected_val, const char *test_name)
+void report_fail(SNAKEVAL given_val, SNAKEVAL expected_val, uint64_t start_line, uint64_t start_col, uint64_t end_line, uint64_t end_col)
 {
   total_tests_run++;
 
@@ -674,7 +674,9 @@ void report_fail(SNAKEVAL given_val, SNAKEVAL expected_val, const char *test_nam
   {
     TestFailure *f = &failures[total_failures++];
     f->type = FAIL_TYPE_MISMATCH;
-    strncpy(f->test_name, test_name, MAX_STRING_LENGTH - 1);
+    snprintf(f->test_name, MAX_STRING_LENGTH,
+             "tessssst at line %ld, col %ld to line %ld, col %ld failed.",
+             start_line, start_col, end_line, end_col);
     f->given = given_val;
     f->expected = expected_val;
   }
@@ -689,7 +691,7 @@ void report_fail_exception(uint64_t start_line, uint64_t start_col, uint64_t end
     TestFailure *f = &failures[total_failures++];
     f->type = FAIL_TYPE_EXCEPTION;
     snprintf(f->test_name, MAX_STRING_LENGTH,
-             "tessst at line %ld, col %ld to line %ld, col %ld",
+             "tessssst at line %ld, col %ld to line %ld, col %ld",
              start_line, start_col, end_line, end_col);
     f->given = NIL;
     f->expected = NIL;
