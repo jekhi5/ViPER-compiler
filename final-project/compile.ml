@@ -2420,8 +2420,6 @@ and compile_aexpr
         let a, b, c = compile_fun id args fun_body env_env tag si free_locations in
         a @ b @ c
       in
-      (* TODO: THIS IS WHERE THE LETREC FIX WAS HOPING TO GO *)
-      (* WAS TRYING TO UPDATE THE ENVIRONMENT TO HAVE THE NEW OFFSET *)
       let offset =
         safe_find_opt id cur_env
           ~callee_tag:

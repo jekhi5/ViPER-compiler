@@ -149,7 +149,7 @@ void printHelp(FILE *out, SNAKEVAL val)
   {
     uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
     fprintf(out, "[%p - 5] ==> <function arity %ld, closed %ld, fn-ptr %p>",
-            (uint64_t *)val, addr[0] / 2, addr[1] / 2, (uint64_t *)addr[2]);
+            (uint64_t *)val, addr[0] / 2, addr[2] / 2, (uint64_t *)addr[1]);
     // some of this commented-out code may be useful for debugging purposes
 
     /* fprintf(out, "\nClosed-over values:\n"); */
