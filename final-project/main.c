@@ -5,6 +5,7 @@
 #include "gc.h"
 #include <setjmp.h>
 // #include "except.h"
+// #include "except.c"
 
 typedef uint64_t SNAKEVAL;
 
@@ -16,9 +17,10 @@ extern SNAKEVAL input() asm("?input");
 extern SNAKEVAL printStack(SNAKEVAL val, uint64_t *rsp, uint64_t *rbp, uint64_t args) asm("?print_stack");
 extern SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2) asm("?equal");
 extern uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t amount_needed, uint64_t *first_frame, uint64_t *stack_top) asm("?try_gc");
+extern void ex_raise() asm("?ex_raise");
+extern SNAKEVAL try_catch(SNAKEVAL try_closure, SNAKEVAL catch_closure, SNAKEVAL exception_type) asm("?try_catch");
 extern uint64_t *HEAP_END asm("?HEAP_END");
 extern uint64_t *HEAP asm("?HEAP");
-extern void ex_raise() asm("?ex_raise");
 
 const uint64_t NUM_TAG_MASK = 0x0000000000000001;
 const uint64_t BOOL_TAG_MASK = 0x0000000000000007;
@@ -52,6 +54,20 @@ const uint64_t ERR_SET_HIGH_INDEX = 13;
 const uint64_t ERR_CALL_NOT_CLOSURE = 14;
 const uint64_t ERR_CALL_ARITY_ERR = 15;
 const uint64_t ERR_CRASH = 99;
+
+// One entry per nested try/catch
+typedef struct ExStackEntry
+{
+  jmp_buf context;           // where to jump back on exn
+  SNAKEVAL exception_type;   // which type this handler catches
+  SNAKEVAL exception_data;   // the actual thrown value
+  struct ExStackEntry *prev; // previous handler
+} ExStackEntry;
+
+// Top of the stack of active handlers
+extern ExStackEntry *global_exception_stack;
+
+ExStackEntry *global_exception_stack = NULL;
 
 size_t HEAP_SIZE;
 uint64_t *STACK_BOTTOM;
@@ -445,68 +461,124 @@ uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t bytes_needed, uint64_t *cur_frame
   }
 }
 
-// Exception stack entry
-typedef struct ExStackEntry
+// Zero‑arg closure call:
+//   layout at raw = [ arity; code_ptr; num_free; ...free_vars ]
+SNAKEVAL call0(SNAKEVAL val)
 {
-  struct ExStackEntry *prev; // Link to previous entry
-  jmp_buf context;           // Saved execution context
-  SNAKEVAL exception_type;
-  void *exception_data; // Storage for caught exception
-} ExStackEntry;
+  if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
+  {
+    // 1) Untag
+    uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
+    // 2) Get the code pointer (second thing in the closure)
+    uint64_t raw_code = addr[1];
 
-// Global exception stack
-ExStackEntry *global_exception_stack = NULL;
+    // 3) This is a definition of fun0_t, which is a function pointer that returns a SNAKEVAL
+    //    and takes in one argument of type (void*)
+    //      rtn type    name     arg
+    //      |------|  |-----|  |-----|
+    typedef SNAKEVAL (*fun0_t)(void *);
 
-// Add an exception handler to the exception handler stack
-void add_handler() {
-  
+    // Convert the code pointer to a type that is callable (fun0_t)
+    fun0_t code_ptr = (fun0_t)raw_code;
+
+    // Call the function with the
+    return code_ptr((void *)addr);
+  }
+  else
+  {
+    error(ERR_CALL_NOT_CLOSURE, val);
+  }
 }
 
+// One‑arg closure call (for the catch‐block):
+//   same layout, but code_ptr expects (env, arg)
+SNAKEVAL call1(SNAKEVAL val, SNAKEVAL arg)
+{
+  if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
+  {
+    uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
 
-// Raise an exception
+    typedef SNAKEVAL (*fun1_t)(void *, SNAKEVAL);
+    fun1_t code_ptr = (fun1_t)addr[1];
+
+    return code_ptr((void *)addr, arg);
+  }
+  else
+  {
+    error(ERR_CALL_NOT_CLOSURE, val);
+  }
+}
+
+// Raise an exception `ex`.  Unwind until we find a handler
+// whose .exception_type equals ex, then longjmp into it.
+// If none match, crash.
 void ex_raise(SNAKEVAL ex)
 {
   ExStackEntry *entry = global_exception_stack;
 
-  // Find a handler that can handle this exception
+  fprintf(stderr, "GIVEN EXCEPTION: ");
+  printHelp(stderr, ex);
+
   while (entry != NULL)
   {
+    fprintf(stderr, "HANDLER EXCEPTION: ");
+    printHelp(stderr, entry->exception_type);
     if (entry->exception_type == ex)
     {
-      // Save exception data for the handler
+      fprintf(stderr, " MATCHED! ");
+      // stash the real exception payload
       entry->exception_data = ex;
 
-      // Unwind the stack and jump to the handler
+      // pop this handler and jump into it
       global_exception_stack = entry->prev;
-      longjmp(entry->context, ex);
+      longjmp(entry->context, 1);
+      // (never returns)
     }
     entry = entry->prev;
   }
 
-  // No handler found
+  // no matching handler
   fprintf(stderr, "Unhandled exception: ");
   printHelp(stderr, ex);
   exit(1);
 }
 
-void setup_test() {
-  // TODO: Add a handler for this test.
-  exit(1);
-}
+// try_catch installs a new handler, runs `try_closure`, and if
+// ex_raise is called with a matching type, will run `catch_closure`.
+SNAKEVAL try_catch(SNAKEVAL try_closure,
+                   SNAKEVAL catch_closure,
+                   SNAKEVAL exception_type)
+{
+  ExStackEntry entry;
 
-SNAKEVAL call_snake(SNAKEVAL snake_closure) {
-  if ((snake_closure & CLOSURE_TAG) != CLOSURE_TAG) {
-    fprintf(stderr, "Invalid data in call_snake: %lld\n", snake_closure);
-    printHelp(stderr, snake_closure);
-    fprintf(stderr, "\n");
-    return NIL;
-  } else {
-    
+  // link into the global stack
+  entry.prev = global_exception_stack;
+  entry.exception_type = exception_type;
+  entry.exception_data = 0;
+  global_exception_stack = &entry;
+
+  // save point: setjmp returns 0 initially, 1 on longjmp
+  if (setjmp(entry.context) == 0)
+  {
+    // Normal path: invoke the try‐closure (0‐arg)
+    SNAKEVAL result = call0(try_closure);
+
+    // pop our handler and return the result
+    global_exception_stack = entry.prev;
+    return result;
   }
+  else
+  {
+    // We got here via ex_raise → longjmp
+    SNAKEVAL ex = entry.exception_data;
 
+    // pop the handler (ex_raise already popped, but safe to do again)
+    global_exception_stack = entry.prev;
 
+    // invoke the catch‐closure with the exception value
+    return call1(catch_closure, ex);
+  }
 }
-
 
 // Raise an exception
 void ex_raise_test(SNAKEVAL ex, uint64_t *return_addr)
@@ -514,13 +586,12 @@ void ex_raise_test(SNAKEVAL ex, uint64_t *return_addr)
   // No handler found
   fprintf(stderr, "Failure! Test raised exception: ");
   printHelp(stderr, ex);
-
 }
 
 int main(int argc, char **argv)
 {
   // TODO: Make this bigger :3
-  HEAP_SIZE = 1000;
+  HEAP_SIZE = 20;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);

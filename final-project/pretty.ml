@@ -151,7 +151,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         sprintf "(lam(%s) %s)%s" binds_str (string_of_expr body) (print_a a)
     | EException (ex, a) -> string_of_exception ex ^ print_a a
     | ETryCatch (t, bind, excptn, c, a) ->
-        sprintf "(try (%s) catch %s as %s in (%s))%s" (string_of_expr t) (string_of_expr excptn)
+        sprintf "(etry (%s) catch %s as %s in (%s))%s" (string_of_expr t) (string_of_expr excptn)
           (string_of_bind bind) (string_of_expr c) (print_a a)
     | ECheck (ops, a) ->
         "{" ^ ExtString.String.join ", " (List.map string_of_expr ops) ^ "}" ^ print_a a
@@ -272,7 +272,7 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
           (print_a a)
     | CImmExpr i -> string_of_immexpr i
     | CTryCatch (t, except, c, a) ->
-        sprintf "(try (%s) catch %s in (%s))%s" (string_of_aexpr t) (string_of_exception except)
+        sprintf "(ctry (%s) catch %s in (%s))%s" (string_of_aexpr t) (string_of_exception except)
           (string_of_aexpr c) (print_a a)
     | CCheck (checks, a) ->
         sprintf "(check:\n  %s\n)%s"

@@ -549,15 +549,15 @@ let desugar (p : sourcespan program) : sourcespan program =
               let span = List.fold_left merge_sourcespans (get_tag_D f) (List.map get_tag_D r) in
               ELetRec (helpG g, body, span)
         in
-        Program ([], List.fold_right wrap_G decls (helpCh checks (helpE body)), [] , tag)
+        Program ([], List.fold_right wrap_G decls (helpCh checks (helpE body)), [], tag)
   (* Condense all checkblocks into a single sequence. Prepend this to the body. *)
   and helpCh checkblocks next =
-    (* 
+    (*
      * let decls in (t1; t2; t3; nil); (t4; t5; nil); body
      *
      * TODO: Foldr or foldl?
      *)
-   List.fold_right (fun e acc -> ESeq (helpE e, acc, get_tag_E e)) checkblocks next
+    List.fold_right (fun e acc -> ESeq (helpE e, acc, get_tag_E e)) checkblocks next
   and helpG g = List.map helpD g
   and helpD d =
     match d with
@@ -652,9 +652,7 @@ let desugar (p : sourcespan program) : sourcespan program =
         ETryCatch (helpE try_fun, bind, excptn, helpE catch_fun, tag)
     (* Unroll a check block into a bunch of concurrent tests *)
     | ECheck ([], tag) -> ENil tag (* Dummy value *)
-    | ECheck (test :: rest, tag) -> 
-      ESeq (helpE test, helpE (ECheck (rest, tag)), tag)
-    
+    | ECheck (test :: rest, tag) -> ESeq (helpE test, helpE (ECheck (rest, tag)), tag)
     | ETestOp1 (e1, e2, negation, tag) -> ETestOp1 (helpE e1, helpE e2, negation, tag)
     | ETestOp2 (e1, e2, tt, negation, tag) -> ETestOp2 (helpE e1, helpE e2, tt, negation, tag)
     | ETestOp2Pred (e1, e2, pred, negation, tag) ->
@@ -915,8 +913,7 @@ let anf (p : tag program) : sourcespan aprogram =
         let new_func, func_setup = helpI func in
         let new_args, new_setup = List.split (List.map helpI args) in
         ( ImmId (tmp, s),
-          func_setup @ List.concat new_setup @ [BLet (tmp, CApp (new_func, new_args, native, s))]
-        )
+          func_setup @ List.concat new_setup @ [BLet (tmp, CApp (new_func, new_args, native, s))] )
     | ELet ([], body, _) -> helpI body
     | ELet ((BBlank _, exp, _) :: rest, body, pos) ->
         let exp_ans, exp_setup = helpC exp in
@@ -973,8 +970,7 @@ let anf (p : tag program) : sourcespan aprogram =
         let tmp = sprintf "testop1_%d" tag in
         let e1_ans, e1_setup = helpI e1 in
         let e2_ans, e2_setup = helpI e2 in
-        ( ImmId (tmp, s),
-          e1_setup @ e2_setup @ [BLet (tmp, CTestOp1 (e1_ans, e2_ans, negation, s))] )
+        (ImmId (tmp, s), e1_setup @ e2_setup @ [BLet (tmp, CTestOp1 (e1_ans, e2_ans, negation, s))])
     | ETestOp2 (e1, e2, tt, negation, (tag, s)) ->
         let tmp = sprintf "testop2_%d" tag in
         let e1_ans, e1_setup = helpI e1 in
@@ -992,8 +988,6 @@ let anf (p : tag program) : sourcespan aprogram =
   and helpA (e : tag expr) : sourcespan aexpr =
     let ans, ans_setup = helpC e in
     let tags = List.map (fun a -> a) ans_setup in
-
-    
     List.fold_right
       (fun bind body ->
         match bind with
@@ -2043,8 +2037,14 @@ and reserve size tag =
 (* Additionally, you are provided an initial environment of values that you may want to
    assume should take up the first few stack slots.  See the compiliation of Programs
    below for one way to use this ability... *)
-and compile_fun name args (body : tag aexpr) (env_env : arg name_envt name_envt) tag si free_var_offsets :
-    instruction list * instruction list * instruction list =
+and compile_fun
+    name
+    args
+    (body : tag aexpr)
+    (env_env : arg name_envt name_envt)
+    tag
+    si
+    free_var_offsets : instruction list * instruction list * instruction list =
   (* Debug instruction that terminates the program *)
   let env = safe_find_opt name env_env ~callee_tag:(sprintf "COMPILE_FUN! id: %s" name) in
   let fun_label = name in
@@ -2642,9 +2642,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
-  | CTryCatch (try_fun, _, catch_fun, ((t, _) : tag)) ->
-      let catch_label = sprintf "try_catch#%d" t in
-      let done_label = sprintf "tc_done#%d" t in
+  | CTryCatch (try_block, except, catch_block, ((t, _) as tag : tag)) ->
       (* 1. Add the exception handler *)
       (* 2. Call the try function *)
       (*    - CASE 1: Smooth Exit *)
@@ -2655,24 +2653,55 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
        *           stack, if so, it will RETURN the exception, if not, it will THROW the exception *)
       (*        4. We will jump to the catch label. NOTE: the above will have returned the exception,
        *           and as such, it will be in RAX for the equality check within the catch block *)
-
-       let compiled_try_fun = compile_aexpr try_fun (si + 1) env_env 0 is_tail env_name in
-       let compiled_catch_fun = compile_aexpr catch_fun (si + 1) env_env 1 is_tail env_name in
-
-      raise (NotYetImplemented "TryCatch")
+      let pre_try, body_try, alloc_try =
+        match try_block with
+        | ALet (tmp_try, (CLambda (_, try_body, (try_tag, _)) as try_fun), try_let_body, _) ->
+            let free = StringSet.elements @@ free_vars (ACExpr try_fun) in
+            let current_env =
+              safe_find_opt tmp_try env_env
+                ~callee_tag:("Compiling try in TryCatch\n" ^ string_of_name_envt_envt env_env)
+            in
+            let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
+            compile_fun tmp_try [] try_body env_env try_tag si free_locations
+        | _ -> raise (InternalCompilerError "Found non-lambda in try block")
+      in
+      let pre_catch, body_catch, alloc_catch =
+        match catch_block with
+        | ALet
+            ( tmp_catch,
+              (CLambda (catch_arg, catch_body, (catch_tag, _)) as catch_fun),
+              catch_let_body,
+              _ ) ->
+            let free = StringSet.elements @@ free_vars (ACExpr catch_fun) in
+            let current_env =
+              safe_find_opt tmp_catch env_env
+                ~callee_tag:("Compiling catch in TryCatch\n" ^ string_of_name_envt_envt env_env)
+            in
+            let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
+            compile_fun tmp_catch [] catch_body env_env catch_tag si free_locations
+        | _ -> raise (InternalCompilerError "Found non-lambda in catch block")
+      in
+      let compiled_try = pre_try @ body_try @ alloc_try in
+      let compiled_catch = pre_catch @ body_catch @ alloc_catch in
+      let excptn = ImmExcept (except, tag) in
+      let exception_arg = compile_imm excptn env_env env_name in
+      compiled_try
+      @ [IInstrComment (IPush (Reg RAX), "Argument 1: The closure for the try func")]
+      @ compiled_catch
+      @ [IInstrComment (IPush (Reg RAX), "Argument 2: The closure for the catch func")]
+      @ [ILineComment "===== Load args for try-catch call ====="; IPop (Reg RSI); IPop (Reg RDI)]
+      @ [ILineComment "=== END Load args for try-catch call ==="]
+      @ native_call (Label "?try_catch") [Reg RDI; Reg RSI; exception_arg]
   | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
-  | CTestOp2 (given, expected, test_type, neg, tag) -> 
-    (* Naive implementation! No error checking *)
-    let given_reg = compile_imm given env_env env_name in
-    let expected_reg = compile_imm expected env_env env_name in
-    [
-      IMov (Reg RSI, given_reg);
-      IMov (Reg RDI, expected_reg);
-      ICall (Label "?equal");
-      ICmp (Sized (QWORD_PTR, Reg RAX), const_true);
-      this line is broken as a reminder
-    ]
+  | CTestOp2 (given, expected, test_type, neg, tag) ->
+      (* Naive implementation! No error checking *)
+      let given_reg = compile_imm given env_env env_name in
+      let expected_reg = compile_imm expected env_env env_name in
+      [ IMov (Reg RSI, given_reg);
+        IMov (Reg RDI, expected_reg);
+        ICall (Label "?equal");
+        ICmp (Sized (QWORD_PTR, Reg RAX), const_true) (* this line is broken as a reminder *) ]
   | CTestOp2Pred _ -> raise (NotYetImplemented "TestOp2Pred")
 (*
  * 1. Setup closure for `try` block
@@ -2772,6 +2801,7 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
      extern ?HEAP_END\n\
      extern ?ex_raise\n\
      extern ?set_stack_bottom\n\
+     extern ?try_catch\n\
      global " ^ ocsh_name
   in
   let suffix = error_suffix in
@@ -2817,7 +2847,7 @@ let pick_alloc_strategy (strat : alloc_strategy) =
 ;;
 
 let compile_to_string
-    ?(no_builtins = true)
+    ?(no_builtins = false)
     (alloc_strat : alloc_strategy)
     (prog : sourcespan program pipeline) : string pipeline =
   prog

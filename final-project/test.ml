@@ -550,7 +550,47 @@ let parse_checks =
                        false,
                        () ) ],
                  () ) ],
-           () ) ) ]
+           () ) );
+    tparse "basic_try_catch" "try 1 catch RuntimeException as r in 1"
+      (Program
+         ( [],
+           ETryCatch
+             ( ENumber (1L, ()),
+               BName ("r", false, ()),
+               EException (Runtime, ()),
+               ENumber (1L, ()),
+               () ),
+           [],
+           () ) )
+    (* tparse "basic_try_catch" "try 1 catch RuntimeException as r in 1"
+      (Program
+         ( [],
+           ETryCatch
+             ( ELet
+                 ( [ ( BName ("tmp", false, ()),
+                       ELambda ([BName ("tmp", false, ())], ENumber (1L, ()), ()),
+                       () ) ],
+                   EId ("tmp", ()),
+                   () ),
+               BName ("r", false, ()),
+               EException (Runtime, ()),
+               ELet
+                 ( [ ( BName ("tmp", false, ()),
+                       ELambda
+                         ( [BName ("ex", false, ())],
+                           EIf
+                             ( EPrim2 (Eq, EId ("ex", ()), EId ("b", ()), ()),
+                               ENumber (1L, ()),
+                               EPrim1 (Raise, EId ("b", ()), ()),
+                               () ),
+                           () ),
+                       () ) ],
+                   EId ("tmp", ()),
+                   () ),
+               () ),
+           [],
+           () ) )*)
+  ]
 ;;
 
 let suite = "unit_tests" >::: parse_checks
