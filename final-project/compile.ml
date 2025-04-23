@@ -771,7 +771,7 @@ let desugar (p : sourcespan program) : sourcespan program =
           | DeepEq ->
               ELambda
                 ( [given; expected],
-                  negated (EApp (EId ("equal", tag), [given_id; expected_id], Native, tag)),
+                  negated (EApp (EId ("equal", tag), [given_id; expected_id], Snake, tag)),
                   tag )
           | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
         in
@@ -2733,7 +2733,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
         match name with
         | "input" -> [ICall (Label "?input")]
         | "equal" ->
-            let comp_args = List.map (fun arg -> compile_imm arg env_env id) args in
+            let comp_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
             native_call (Label "?equal") comp_args
         | _ -> raise (InternalCompilerError (sprintf "Unsupported function: %s" name)) )
     | _ ->
