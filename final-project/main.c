@@ -485,13 +485,13 @@ SNAKEVAL call0(SNAKEVAL val)
     //    and takes in one argument of type (void*)
     //      rtn type    name     arg
     //      |------|  |-----|  |-----|
-    typedef SNAKEVAL (*fun0_t)(void *);
+    typedef SNAKEVAL (*fun0_t)(SNAKEVAL, SNAKEVAL);
 
     // Convert the code pointer to a type that is callable (fun0_t)
     fun0_t code_ptr = (fun0_t)raw_code;
 
     // Call the function with the
-    return code_ptr((void *)addr);
+    return code_ptr(val, 1);
   }
   else
   {
@@ -520,10 +520,10 @@ SNAKEVAL call1(SNAKEVAL val, SNAKEVAL arg)
     // 2) Get the code pointer (second thing in the closure)
     uint64_t raw_code = addr[1];
 
-    typedef SNAKEVAL (*fun1_t)(void *, SNAKEVAL);
+    typedef SNAKEVAL (*fun1_t)(SNAKEVAL, SNAKEVAL);
     fun1_t code_ptr = (fun1_t)raw_code;
 
-    return code_ptr((void *)addr, arg);
+    return code_ptr(val, arg);
   }
   else
   {

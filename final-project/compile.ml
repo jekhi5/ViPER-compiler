@@ -2299,9 +2299,9 @@ and compile_fun
   in
   let heap_padding =
     ( if (4 + arity) mod 2 == 0 then
-        4 + arity
+        8 + arity
       else
-        4 + arity + 1 )
+        8 + arity + 1 )
     * word_size
   in
   let gc =
@@ -2346,6 +2346,8 @@ and compile_fun
       ILineComment "====== End Bump Heap ======" ]
   in
   let rsi_push_done_label = sprintf "rsi_push_done#%d" tag in
+  let rdi_push_done_label = sprintf "rdi_push_done#%d" tag in
+  let perform_rdi_push = sprintf "perform_rdi_push#%d" tag in
   let rsi_push =
     [ ICmp (Reg RSI, Const 0L);
       IJe (Label rsi_push_done_label);
@@ -2355,13 +2357,20 @@ and compile_fun
   ( prelude,
     [ ILineComment "=== Unpacking closure ===";
       (* Boost RSP to make room for closed vars *)
-      ISub (Reg RSP, Const (Int64.of_int (num_free * word_size)));
+      ISub (Reg RSP, Const (Int64.of_int (num_free * word_size)))
       (* The scratch reg is going to hold the tuple pointer.
        * (i.e. the implicit first argument)
        * This means that we can't mangle it!
-       *)
-      IMov (Reg scratch_reg, RegOffset (2, RBP));
-      ISub (Reg scratch_reg, Const closure_tag) ]
+       *) ]
+    @ [ ICmp (Reg RSI, Const 0L);
+        IJne (Label perform_rdi_push);
+        IMov (Reg scratch_reg, RegOffset (2, RBP));
+        ISub (Reg scratch_reg, Const closure_tag);
+        IJmp (Label rdi_push_done_label);
+        ILabel perform_rdi_push;
+        IMov (Reg scratch_reg, Reg RDI);
+        ISub (Reg scratch_reg, Const closure_tag);
+        ILabel rdi_push_done_label ]
     @ unpack_closure_instrs
     @ [ ILineComment "=====================";
         ISub (Reg RSP, Const stack_size);
