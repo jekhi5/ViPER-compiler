@@ -21,6 +21,8 @@ let string_of_op1 op =
   | IsTuple -> "istuple"
   | Crash -> "crash"
   | Raise -> "raise"
+  | ReportTestPass -> "reportTestPass"
+  | ReportTestFailException -> "reportTestFailException"
 ;;
 
 let name_of_op1 op =
@@ -35,6 +37,8 @@ let name_of_op1 op =
   | IsTuple -> "IsTuple"
   | Crash -> "Crash"
   | Raise -> "Raise"
+  | ReportTestPass -> "ReportTestPass"
+  | ReportTestFailException -> "ReportTestFailException"
 ;;
 
 let string_of_op2 op =
@@ -50,6 +54,7 @@ let string_of_op2 op =
   | LessEq -> "<="
   | Eq -> "=="
   | CheckSize -> "check_size"
+  | ReportTestFailMismatch -> "reportTestFailMismatch"
 ;;
 
 let name_of_op2 op =
@@ -65,6 +70,7 @@ let name_of_op2 op =
   | LessEq -> "LessEq"
   | Eq -> "Eq"
   | CheckSize -> "CheckSize"
+  | ReportTestFailMismatch -> "ReportTestFailException"
 ;;
 
 let rec string_of_bind (b : 'a bind) : string =

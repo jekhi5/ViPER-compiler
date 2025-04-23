@@ -640,16 +640,22 @@ let desugar (p : sourcespan program) : sourcespan program =
     | EException _ -> e
     | ETryCatch (t, bind, excptn, c, tag) ->
         let try_fun = ELambda ([], t, tag) in
-        let excptn_id =
+        let blank_name = gensym "blank_exn" in
+        let new_bind = 
           match bind with
+          | BBlank btag -> BName (blank_name, false, btag)
+          | _ -> bind in
+        let excptn_id =
+          match new_bind with
           | BName (name, _, _) -> EId (name, tag)
+          | BBlank _ -> EId (gensym "blank_exn", tag)
           | _ -> raise (InternalCompilerError "Found non-bname in a try catch")
         in
         let excptn_check =
           EIf (EPrim2 (Eq, excptn, excptn_id, tag), c, EPrim1 (Raise, excptn_id, tag), tag)
         in
-        let catch_fun = ELambda ([bind], excptn_check, tag) in
-        ETryCatch (helpE try_fun, bind, excptn, helpE catch_fun, tag)
+        let catch_fun = ELambda ([new_bind], excptn_check, tag) in
+        ETryCatch (helpE try_fun, new_bind, excptn, helpE catch_fun, tag)
     (* Unroll a check block into a bunch of concurrent tests *)
     | ECheck ([], tag) -> ENil tag (* Dummy value *)
     | ECheck (test :: rest, tag) -> ESeq (helpE test, helpE (ECheck (rest, tag)), tag)
@@ -678,8 +684,8 @@ let desugar (p : sourcespan program) : sourcespan program =
         let test_operator =
           ELambda ([given; predicate], negated (EPrim2 (Eq, given_id, predicate_id, tag)), tag)
         in
-        ETryCatch
-          ( ELet
+        helpE @@ ETryCatch
+          (ELet
               ( [(given, EApp (e1_closure, [], Snake, tag), tag)],
                 ETryCatch
                   ( ELet
@@ -712,52 +718,55 @@ let desugar (p : sourcespan program) : sourcespan program =
             report_result_fail_exception,
             tag )
     | ETestOp2 (e1, e2, tt, negation, tag) ->
-        let e1_closure = ELambda ([], helpE e1, tag) in
-        let e2_closure = ELambda ([], helpE e2, tag) in
-        let given = BName ("given", false, tag) in
-        let given_id = EId ("given", tag) in
-        let expected = BName ("expected", false, tag) in
-        let expected_id = EId ("expected", tag) in
-        let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
-        let report_result_fail_mismatch =
-          EPrim2 (ReportTestFailMismatch, given_id, expected_id, tag)
-        in
-        let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
-        (* TODO: FIX ME! *)
-        let caught = EException (Runtime, tag) in
-        let negated x =
-          if negation then
-            EPrim1 (Not, x, tag)
-          else
-            x
-        in
-        let test_operator =
-          match tt with
-          | ShallowEq ->
-              ELambda ([given; expected], negated (EPrim2 (Eq, given_id, expected_id, tag)), tag)
-          | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
-        in
-        ETryCatch
-          ( ELet
-              ( [(given, EApp (e1_closure, [], Snake, tag), tag)],
-                ETryCatch
-                  ( ELet
-                      ( [(expected, EApp (e2_closure, [], Snake, tag), tag)],
-                        EIf
-                          ( EApp (test_operator, [given_id; expected_id], Snake, tag),
-                            report_result_pass,
-                            report_result_fail_mismatch,
-                            tag ),
-                        tag ),
-                    BBlank tag,
-                    caught,
-                    report_result_fail_exception,
-                    tag ),
-                tag ),
-            BBlank tag,
-            caught,
-            report_result_fail_exception,
-            tag )
+      let e1' = helpE e1 in
+      let e2'_closure' = helpE e2 in
+      let given_name = gensym "given" in
+      let expected_name = gensym "expected" in
+      let given = BName (given_name, false, tag) in
+      let given_id = EId (given_name, tag) in
+      let expected = BName (expected_name, false, tag) in
+      let expected_id = EId (expected_name, tag) in
+      let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
+      let report_result_fail_mismatch =
+        EPrim2 (ReportTestFailMismatch, given_id, expected_id, tag)
+      in
+      let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
+      (* TODO: FIX ME! *)
+      let caught = EException (Runtime, tag) in
+      let negated x =
+        if negation then
+          EPrim1 (Not, x, tag)
+        else
+          x
+      in
+      let test_operator =
+        match tt with
+        | ShallowEq ->
+            ELambda ([given; expected], negated (EPrim2 (Eq, given_id, expected_id, tag)), tag)
+        | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
+      in
+      helpE @@ ETryCatch
+        ( ELet
+            ( [(given, e1, tag)],
+              ETryCatch
+                ( ELet
+                    ( [(expected, e2, tag)],
+                      EIf
+                        ( EApp (test_operator, [given_id; expected_id], Snake, tag),
+                          report_result_pass,
+                          report_result_fail_mismatch,
+                          tag ),
+                      tag ),
+                  BBlank tag,
+                  caught,
+                  report_result_fail_exception,
+                  tag ),
+              tag ),
+          BBlank tag,
+          caught,
+          report_result_fail_exception,
+          tag )
+
     | ETestOp2Pred (e1, e2, pred, negation, tag) ->
         ETestOp2Pred (helpE e1, helpE e2, helpE pred, negation, tag)
   in
@@ -1890,11 +1899,25 @@ let rec deepest_stack (env : arg name_envt) : int =
 (*  Code-gen utilities *)
 (*  ==================================================================================== *)
 
-let decompose_sourcespan ((pstart, pend) : sourcespan) : (int * int * int * int) =
-  pstart.pos_lnum,
-  (pstart.pos_cnum - pstart.pos_bol),
-  pend.pos_lnum, (pend.pos_cnum - pend.pos_bol) 
+let decompose_sourcespan ((pstart, pend) : sourcespan) : int * int * int * int =
+  (pstart.pos_lnum, pstart.pos_cnum - pstart.pos_bol, pend.pos_lnum, pend.pos_cnum - pend.pos_bol)
+;;
 
+let rec take xs n =
+  match (xs, n) with
+  | l, 0 -> []
+  | [], _ -> []
+  | car :: cdr, v -> car :: take cdr (v - 1)
+;;
+
+let load_sourcespan s regs =
+  let first_four = take regs 4 in
+  (* These are not SNAKEVALs! *)
+  let sl, sc, el, ec = decompose_sourcespan s in
+  List.map2
+    (fun reg n -> IMov (Sized (QWORD_PTR, Reg reg), Const (Int64.of_int n)))
+    first_four [sl; sc; el; ec]
+;;
 
 let check_memory size =
   [ IMov (Reg scratch_reg, Const size);
@@ -2529,7 +2552,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
        @ [IJmp (Label done_label); ILineComment "  Else case:"; ILabel else_label]
        @ compile_aexpr els si env_env num_args is_tail env_name )
       @ [ILabel done_label; ILineComment (sprintf "END conditional#%d     -------------" t)]
-  | CPrim1 (op, e, ((t, _) : tag)) -> (
+  | CPrim1 (op, e, ((t, s) : tag)) -> (
       let e_reg = compile_imm e env_env env_name in
       match op with
       | Add1 ->
@@ -2597,14 +2620,11 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           [ ILineComment "== Raising an exception ==";
             IMov (Reg RDI, e_reg);
             ICall (Label "?ex_raise");
-            ILineComment "==========================" ] 
-      | ReportTestPass -> [
-        ICall (Label "?report_pass")
-      ]
-      | ReportTestFailException -> []
-  )
-      
-  | CPrim2 (op, e1, e2, t) -> (
+            ILineComment "==========================" ]
+      | ReportTestPass -> [ICall (Label "?report_pass")]
+      | ReportTestFailException ->
+          load_sourcespan s first_six_args_registers @ [ICall (Label "?report_fail_exception")] )
+  | CPrim2 (op, e1, e2, ((_, s) as t)) -> (
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
       match op with
@@ -2638,7 +2658,14 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             ICmp (Reg scratch_reg, Reg RAX);
             IMul (Reg RAX, Const 2L);
             (* Note that RAX stores the expected arity. *)
-            IJne (Label err_unpack_err_label) ] )
+            IJne (Label err_unpack_err_label) ]
+      | ReportTestFailMismatch ->
+          let first = List.nth first_six_args_registers 0 in
+          let second = List.nth first_six_args_registers 1 in
+          let rest = List.tl @@ List.tl first_six_args_registers in
+          [IMov (Sized (QWORD_PTR, Reg first), e1_reg); IMov (Sized (QWORD_PTR, Reg second), e2_reg)]
+          @ load_sourcespan s rest
+          @ [ICall (Label "?report_fail")] )
   (* | CLambda _ -> compile_lambda e si env_env num_args is_tail env_name *)
   | CLambda _ -> raise (InternalCompilerError "Encountered an un-bound CLambda!")
   | CApp (callee, args, Snake, _) ->
@@ -2974,7 +3001,7 @@ let compile_to_string
     (prog : sourcespan program pipeline) : string pipeline =
   prog
   |> add_err_phase well_formed is_well_formed
-  |> run_if (not no_builtins) (add_phase add_natives add_native_lambdas)
+  (* |> run_if (not no_builtins) (add_phase add_natives add_native_lambdas) *)
   |> add_phase desugared desugar
   |> add_phase tagged tag
   |> add_phase renamed rename_and_tag
