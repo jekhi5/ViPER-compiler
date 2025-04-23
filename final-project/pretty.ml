@@ -278,8 +278,8 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
           (print_a a)
     | CImmExpr i -> string_of_immexpr i
     | CTryCatch (t, except, c, a) ->
-        sprintf "(ctry (%s) catch %s in (%s))%s" (string_of_aexpr t) (string_of_exception except)
-          (string_of_aexpr c) (print_a a)
+        sprintf "(ctry (%s) catch %s in (%s))%s" (string_of_immexpr t) (string_of_exception except)
+          (string_of_immexpr c) (print_a a)
     | CCheck (checks, a) ->
         sprintf "(check:\n  %s\n)%s"
           (List.fold_left (fun acc e -> acc ^ "\n" ^ string_of_immexpr e) "" checks)

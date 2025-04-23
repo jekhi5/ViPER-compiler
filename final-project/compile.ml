@@ -641,10 +641,11 @@ let desugar (p : sourcespan program) : sourcespan program =
     | ETryCatch (t, bind, excptn, c, tag) ->
         let try_fun = ELambda ([], t, tag) in
         let blank_name = gensym "blank_exn" in
-        let new_bind = 
+        let new_bind =
           match bind with
           | BBlank btag -> BName (blank_name, false, btag)
-          | _ -> bind in
+          | _ -> bind
+        in
         let excptn_id =
           match new_bind with
           | BName (name, _, _) -> EId (name, tag)
@@ -684,89 +685,90 @@ let desugar (p : sourcespan program) : sourcespan program =
         let test_operator =
           ELambda ([given; predicate], negated (EPrim2 (Eq, given_id, predicate_id, tag)), tag)
         in
-        helpE @@ ETryCatch
-          (ELet
-              ( [(given, EApp (e1_closure, [], Snake, tag), tag)],
-                ETryCatch
-                  ( ELet
-                      ( [(predicate, EApp (pred_closure, [], Snake, tag), tag)],
-                        ETryCatch
-                          ( ELet
-                              ( [(applied, EApp (predicate_id, [given_id], Snake, tag), tag)],
-                                EIf
-                                  ( EPrim1 (IsBool, applied_id, tag),
-                                    EIf
-                                      ( applied_id,
-                                        report_result_pass,
-                                        report_result_fail_mismatch,
-                                        tag ),
-                                    report_result_fail_exception,
-                                    tag ),
-                                tag ),
-                            BBlank tag,
-                            caught,
-                            report_result_fail_exception,
-                            tag ),
-                        tag ),
-                    BBlank tag,
-                    caught,
-                    report_result_fail_exception,
-                    tag ),
-                tag ),
-            BBlank tag,
-            caught,
-            report_result_fail_exception,
-            tag )
+        helpE
+        @@ ETryCatch
+             ( ELet
+                 ( [(given, EApp (e1_closure, [], Snake, tag), tag)],
+                   ETryCatch
+                     ( ELet
+                         ( [(predicate, EApp (pred_closure, [], Snake, tag), tag)],
+                           ETryCatch
+                             ( ELet
+                                 ( [(applied, EApp (predicate_id, [given_id], Snake, tag), tag)],
+                                   EIf
+                                     ( EPrim1 (IsBool, applied_id, tag),
+                                       EIf
+                                         ( applied_id,
+                                           report_result_pass,
+                                           report_result_fail_mismatch,
+                                           tag ),
+                                       report_result_fail_exception,
+                                       tag ),
+                                   tag ),
+                               BBlank tag,
+                               caught,
+                               report_result_fail_exception,
+                               tag ),
+                           tag ),
+                       BBlank tag,
+                       caught,
+                       report_result_fail_exception,
+                       tag ),
+                   tag ),
+               BBlank tag,
+               caught,
+               report_result_fail_exception,
+               tag )
     | ETestOp2 (e1, e2, tt, negation, tag) ->
-      let e1' = helpE e1 in
-      let e2'_closure' = helpE e2 in
-      let given_name = "given" in
-      let expected_name = "expected" in
-      let given = BName (given_name, false, tag) in
-      let given_id = EId (given_name, tag) in
-      let expected = BName (expected_name, false, tag) in
-      let expected_id = EId (expected_name, tag) in
-      let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
-      let report_result_fail_mismatch =
-        EPrim2 (ReportTestFailMismatch, given_id, expected_id, tag)
-      in
-      let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
-      (* TODO: FIX ME! *)
-      let caught = EException (Runtime, tag) in
-      let negated x =
-        if negation then
-          EPrim1 (Not, x, tag)
-        else
-          x
-      in
-      let test_operator =
-        match tt with
-        | ShallowEq ->
-            ELambda ([given; expected], negated (EPrim2 (Eq, given_id, expected_id, tag)), tag)
-        | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
-      in
-      helpE @@ ETryCatch
-        ( ELet
-            ( [(given, e1, tag)],
-              ETryCatch
-                ( ELet
-                    ( [(expected, e2, tag)],
-                      EIf
-                        ( EApp (test_operator, [given_id; expected_id], Snake, tag),
-                          report_result_pass,
-                          report_result_fail_mismatch,
-                          tag ),
-                      tag ),
-                  BBlank tag,
-                  caught,
-                  report_result_fail_exception,
-                  tag ),
-              tag ),
-          BBlank tag,
-          caught,
-          report_result_fail_exception,
-          tag )
-
+        let e1' = helpE e1 in
+        let e2'_closure' = helpE e2 in
+        let given_name = "given" in
+        let expected_name = "expected" in
+        let given = BName (given_name, false, tag) in
+        let given_id = EId (given_name, tag) in
+        let expected = BName (expected_name, false, tag) in
+        let expected_id = EId (expected_name, tag) in
+        let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
+        let report_result_fail_mismatch =
+          EPrim2 (ReportTestFailMismatch, given_id, expected_id, tag)
+        in
+        let report_result_fail_exception = EPrim1 (ReportTestFailException, ENil tag, tag) in
+        (* TODO: FIX ME! *)
+        let caught = EException (Runtime, tag) in
+        let negated x =
+          if negation then
+            EPrim1 (Not, x, tag)
+          else
+            x
+        in
+        let test_operator =
+          match tt with
+          | ShallowEq ->
+              ELambda ([given; expected], negated (EPrim2 (Eq, given_id, expected_id, tag)), tag)
+          | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
+        in
+        helpE
+        @@ ETryCatch
+             ( ELet
+                 ( [(given, e1, tag)],
+                   ETryCatch
+                     ( ELet
+                         ( [(expected, e2, tag)],
+                           EIf
+                             ( EApp (test_operator, [given_id; expected_id], Snake, tag),
+                               report_result_pass,
+                               report_result_fail_mismatch,
+                               tag ),
+                           tag ),
+                       BBlank tag,
+                       caught,
+                       report_result_fail_exception,
+                       tag ),
+                   tag ),
+               BBlank tag,
+               caught,
+               report_result_fail_exception,
+               tag )
     | ETestOp2Pred (e1, e2, pred, negation, tag) ->
         ETestOp2Pred (helpE e1, helpE e2, helpE pred, negation, tag)
   in
@@ -957,7 +959,9 @@ let anf (p : tag program) : sourcespan aprogram =
         let new_imm, new_setup = helpI newval in
         (CSetItem (tup_imm, idx_imm, new_imm, s), tup_setup @ idx_setup @ new_setup)
     | ETryCatch (t, bind, EException (except, _), c, (_, s)) ->
-        (CTryCatch (helpA t, except, helpA c, s), [])
+        let t_imm, t_setup = helpI t in
+        let c_imm, c_setup = helpI c in
+        (CTryCatch (t_imm, except, c_imm, s), t_setup @ c_setup)
     | ETryCatch _ ->
         raise (InternalCompilerError "Violated invatiant: Tried to catch a non-exception")
     | ECheck (checks, (_, s)) ->
@@ -1071,7 +1075,9 @@ let anf (p : tag program) : sourcespan aprogram =
     | EException (ex, (_, s)) -> (ImmExcept (ex, s), [])
     | ETryCatch (t, bind, EException (except, _), c, (tag, s)) ->
         let tmp = sprintf "try_catch_%d" tag in
-        (ImmId (tmp, s), [BLet (tmp, CTryCatch (helpA t, except, helpA c, s))])
+        let new_t, t_setup = helpI t in
+        let new_c, c_setup = helpI c in
+        (ImmId (tmp, s), t_setup @ c_setup @ [BLet (tmp, CTryCatch (new_t, except, new_c, s))])
     | ETryCatch _ ->
         raise (InternalCompilerError "Violated invariant. Tried to catch a non-exception")
     | ECheck (checks, (tag, s)) ->
@@ -1141,7 +1147,7 @@ let free_vars (e : 'a aexpr) : StringSet.t =
     | CSetItem (tup, idx, new_elem, _) ->
         helpI tup bound_ids |> u (helpI idx bound_ids) |> u (helpI new_elem bound_ids)
     | CLambda (ids, body, _) -> helpA body (StringSet.of_list ids |> u bound_ids)
-    | CTryCatch (t, except, c, _) -> helpA t bound_ids |> u (helpA c bound_ids)
+    | CTryCatch (t, except, c, _) -> helpI t bound_ids |> u (helpI c bound_ids)
     | CCheck (checks, _) ->
         List.fold_left (fun set check -> helpI check bound_ids |> u set) StringSet.empty checks
     | CTestOp1 (e1, e2, _, _) -> helpI e1 bound_ids |> u (helpI e2 bound_ids)
@@ -1233,8 +1239,8 @@ let free_vars_cache (AProgram (body, _) as prog : 'a aprogram) : freevars aprogr
         let free = d free_body (StringSet.of_list ids) in
         (CLambda (ids, new_body, free), free)
     | CTryCatch (t, except, c, _) ->
-        let new_try, free_try = helpA t in
-        let new_catch, free_catch = helpA c in
+        let new_try, free_try = helpI t in
+        let new_catch, free_catch = helpI c in
         let free = free_try |> u free_catch in
         (CTryCatch (new_try, except, new_catch, free), free)
     | CCheck (checks, _) ->
@@ -1357,6 +1363,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
      |CTuple _
      |CGetItem _
      |CSetItem _
+     |CTryCatch _
      |CCheck _
      |CTestOp1 _
      |CTestOp2 _
@@ -1378,9 +1385,6 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
             env args_locs
         in
         helpA body args_env (num_free + 1) env_name
-    | CTryCatch (t, except, c, _) ->
-        let try_env = helpA t env (si + 1) env_name in
-        helpA c try_env (si + 1) env_name
   and helpA (aexp : tag aexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
       arg name_envt name_envt =
     match aexp with
@@ -1599,10 +1603,12 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
         in
         CSetItem (live_tup, live_idx, live_new_elem, live_in)
     | CTryCatch (t, except, c, _) ->
-        let live_catch = compute_live_in c live_out in
-        let live_try = compute_live_in t live_out in
-        let free_vars = free_vars live_catch |> u (free_vars live_try) in
-        let live_in = get_cache live_try |> u (get_cache live_catch) |> u free_vars in
+        let live_catch = helpI c live_out in
+        let live_try = helpI t live_out in
+        let aexpr_live_try = ACExpr (CImmExpr live_try) in
+        let aexpr_live_catch = ACExpr (CImmExpr live_catch) in
+        let free_vars = free_vars aexpr_live_catch |> u (free_vars aexpr_live_try) in
+        let live_in = get_cache aexpr_live_try |> u (get_cache aexpr_live_catch) |> u free_vars in
         CTryCatch (live_try, except, live_catch, live_in)
     | CCheck (checks, _) ->
         let live_in, live_checks =
@@ -1796,6 +1802,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
      |CTuple _
      |CGetItem _
      |CSetItem _
+     |CTryCatch _
      |CCheck _
      |CTestOp1 _
      |CTestOp2 _
@@ -1811,9 +1818,6 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
             env_env args_locs
         in
         helpA body env_name args_env
-    | CTryCatch (t, _, c, _) ->
-        let try_env = helpA t env_name env_env in
-        helpA c env_name try_env
   (* helper for ANF expressions *)
   and helpA (e : freevars aexpr) (env_name : string) (env_env : arg name_envt name_envt) :
       arg name_envt name_envt =
@@ -2795,24 +2799,38 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
        *           stack, if so, it will RETURN the exception, if not, it will THROW the exception *)
       (*        4. We will jump to the catch label. NOTE: the above will have returned the exception,
        *           and as such, it will be in RAX for the equality check within the catch block *)
-      let pre_try, body_try, alloc_try =
+      (* let pre_try, body_try, alloc_try =
         match try_block with
-        | ALet (tmp_try, (CLambda (_, try_body, (try_tag, _)) as try_fun), try_let_body, _) ->
+        | ALet
+            ( tmp_try,
+              (CLambda (_, try_body, (try_tag, _)) as try_fun),
+              ACExpr (CImmExpr (ImmId _)),
+              _ ) ->
             let free = StringSet.elements @@ free_vars (ACExpr try_fun) in
             let current_env =
               safe_find_opt tmp_try env_env
                 ~callee_tag:("Compiling try in TryCatch\n" ^ string_of_name_envt_envt env_env)
             in
-            let free_locations = List.map (fun v -> safe_find_opt v current_env ~callee_tag:"A") free in
+            let free_locations =
+              List.map
+                (fun v ->
+                  safe_find_opt v current_env
+                    ~callee_tag:
+                      (sprintf "name_of_env: %s. env: %s" tmp_try (string_of_name_envt current_env)) )
+                free
+            in
             compile_fun tmp_try [] try_body env_env try_tag si free_locations
+        | ALet (_, CLambda _, _, _) ->
+            raise
+              (InternalCompilerError "Found an ALet in a catch whose body was not solely an ImmExpr")
         | _ -> raise (InternalCompilerError "Found non-lambda in try block")
-      in
-      let pre_catch, body_catch, alloc_catch =
+      in *)
+      (* let pre_catch, body_catch, alloc_catch =
         match catch_block with
         | ALet
             ( tmp_catch,
               (CLambda (catch_arg :: [], catch_body, (catch_tag, _)) as catch_fun),
-              catch_let_body,
+              ACExpr (CImmExpr (ImmId _)),
               _ ) ->
             let fun_env =
               safe_find_opt tmp_catch env_env
@@ -2823,21 +2841,22 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             let fun_env' = StringMap.add catch_arg arg_offset fun_env in
             let env_env' = StringMap.add tmp_catch fun_env' env_env in
             let free = StringSet.elements @@ free_vars (ACExpr catch_fun) in
-            let free_locations = List.map (fun v -> safe_find_opt v fun_env' ~callee_tag:"B") free in
+            let free_locations =
+              List.map (fun v -> safe_find_opt v fun_env' ~callee_tag:"B") free
+            in
             compile_fun tmp_catch [catch_arg] catch_body env_env' catch_tag si free_locations
+        | ALet (_, CLambda _, _, _) ->
+            raise
+              (InternalCompilerError "Found an ALet in a catch whose body was not solely an ImmExpr")
         | _ -> raise (InternalCompilerError "Found non-lambda in catch block")
-      in
-      let compiled_try = pre_try @ body_try @ alloc_try in
-      let compiled_catch = pre_catch @ body_catch @ alloc_catch in
+      in *)
+      let compiled_try = compile_imm try_block env_env env_name in
+      let compiled_catch = compile_imm catch_block env_env env_name in
+      (* let compiled_try = pre_try @ body_try @ alloc_try in
+      let compiled_catch = pre_catch @ body_catch @ alloc_catch in *)
       let excptn = ImmExcept (except, tag) in
       let exception_arg = compile_imm excptn env_env env_name in
-      compiled_try
-      @ [IInstrComment (IMov (Reg RDI, Reg RAX), "Argument 1: The closure for the try func")]
-      (* This will not mangle RDI as no actual calls happen here *)
-      @ compiled_catch
-      @ [IInstrComment (IMov (Reg RSI, Reg RAX), "Argument 2: The closure for the catch func")]
-      @ [IInstrComment (IMov (Reg RDX, exception_arg), "Argument 3: The expected exception")]
-      @ [ICall (Label "?try_catch")]
+      native_call (Label "?try_catch") [compiled_try; compiled_catch; exception_arg]
   | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
   | CTestOp2 (given, expected, test_type, neg, tag) ->

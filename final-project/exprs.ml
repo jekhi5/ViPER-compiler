@@ -112,7 +112,7 @@ and 'a cexpr =
   | CSetItem of 'a immexpr * 'a immexpr * 'a immexpr * 'a
   | CLambda of string list * 'a aexpr * 'a
   (* The CTryCatch does not have a `bind` anymore because it was desugared away *)
-  | CTryCatch of 'a aexpr * except * 'a aexpr * 'a
+  | CTryCatch of 'a immexpr * except * 'a immexpr * 'a
   | CCheck of 'a immexpr list * 'a
   | CTestOp1 of 'a immexpr * 'a immexpr * bool * 'a
   | CTestOp2 of 'a immexpr * 'a immexpr * test_type * bool * 'a
@@ -188,9 +188,8 @@ let get_tag_C (e : 'a cexpr) =
 let get_tag_A (e : 'a aexpr) =
   match e with
   | ACExpr c -> get_tag_C c
-  | ALet (_, _, _, t)
-  | ALetRec (_, _, t)
-  | ASeq (_, _, t) -> t
+  | ALet (_, _, _, t) | ALetRec (_, _, t) | ASeq (_, _, t) -> t
+;;
 
 let get_tag_D d =
   match d with
@@ -282,10 +281,10 @@ and map_tag_D (f : 'a -> 'b) d : ('b * 'c) decl =
       let tag_body = map_tag_E f body in
       DFun (name, tag_args, tag_body, tag_fun)
 
-and map_tag_P (f : 'a -> 'b) (p : sourcespan program)  : tag program=
+and map_tag_P (f : 'a -> 'b) (p : sourcespan program) : tag program =
   match p with
   | Program (declgroups, body, checks, s) ->
-      let tag_a = f s, s in
+      let tag_a = (f s, s) in
       let tag_decls = List.map (fun group -> List.map (map_tag_D f) group) declgroups in
       let tag_body = map_tag_E f body in
       let tag_checks = List.map (map_tag_E f) checks in
@@ -399,7 +398,7 @@ let atag (p : sourcespan aprogram) : tag aprogram =
         CLambda (args, helpA body, (lam_tag, s))
     | CTryCatch (t, except, c, s) ->
         let try_catch_tag = tag () in
-        CTryCatch (helpA t, except, helpA c, (try_catch_tag, s))
+        CTryCatch (helpI t, except, helpI c, (try_catch_tag, s))
     | CCheck (ops, s) ->
         let catch_tag = tag () in
         CCheck (List.map helpI ops, (catch_tag, s))
