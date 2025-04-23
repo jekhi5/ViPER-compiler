@@ -553,6 +553,10 @@ SNAKEVAL try_catch(SNAKEVAL try_closure,
                    SNAKEVAL catch_closure,
                    SNAKEVAL exception_type)
 {
+
+  fprintf(stderr, "GIVEN ERROR: ");
+  printHelp(stderr, exception_type);
+
   ExStackEntry entry;
 
   // link into the global stack
@@ -686,7 +690,7 @@ int main(int argc, char **argv)
   initialize_tests();
 
   // TODO: Make this bigger :3
-  HEAP_SIZE = 20;
+  HEAP_SIZE = 1000;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);

@@ -2784,16 +2784,20 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
         match catch_block with
         | ALet
             ( tmp_catch,
-              (CLambda (catch_arg, catch_body, (catch_tag, _)) as catch_fun),
+              (CLambda (catch_arg :: [], catch_body, (catch_tag, _)) as catch_fun),
               catch_let_body,
               _ ) ->
-            let free = StringSet.elements @@ free_vars (ACExpr catch_fun) in
-            let current_env =
+            let fun_env =
               safe_find_opt tmp_catch env_env
                 ~callee_tag:("Compiling catch in TryCatch\n" ^ string_of_name_envt_envt env_env)
             in
-            let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
-            compile_fun tmp_catch [] catch_body env_env catch_tag si free_locations
+            (* For a single argument, this will always be its location *)
+            let arg_offset = RegOffset (0, RSP) in
+            let fun_env' = StringMap.add catch_arg arg_offset fun_env in
+            let env_env' = StringMap.add tmp_catch fun_env' env_env in
+            let free = StringSet.elements @@ free_vars (ACExpr catch_fun) in
+            let free_locations = List.map (fun v -> safe_find_opt v fun_env') free in
+            compile_fun tmp_catch [catch_arg] catch_body env_env' catch_tag si free_locations
         | _ -> raise (InternalCompilerError "Found non-lambda in catch block")
       in
       let compiled_try = pre_try @ body_try @ alloc_try in
@@ -2801,12 +2805,12 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let excptn = ImmExcept (except, tag) in
       let exception_arg = compile_imm excptn env_env env_name in
       compiled_try
-      @ [IInstrComment (IPush (Reg RAX), "Argument 1: The closure for the try func")]
+      @ [IInstrComment (IMov (Reg RDI, Reg RAX), "Argument 1: The closure for the try func")]
+      (* This will not mangle RDI as no actual calls happen here *)
       @ compiled_catch
-      @ [IInstrComment (IPush (Reg RAX), "Argument 2: The closure for the catch func")]
-      @ [ILineComment "===== Load args for try-catch call ====="; IPop (Reg RSI); IPop (Reg RDI)]
-      @ [ILineComment "=== END Load args for try-catch call ==="]
-      @ native_call (Label "?try_catch") [Reg RDI; Reg RSI; exception_arg]
+      @ [IInstrComment (IMov (Reg RSI, Reg RAX), "Argument 2: The closure for the catch func")]
+      @ [IInstrComment (IMov (Reg RDX, exception_arg), "Argument 3: The expected exception")]
+      @ [ICall (Label "?try_catch")]
   | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
   | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
   | CTestOp2 (given, expected, test_type, neg, tag) ->
