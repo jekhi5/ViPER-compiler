@@ -4,8 +4,6 @@
 #include <string.h>
 #include "gc.h"
 #include <setjmp.h>
-// #include "except.h"
-// #include "except.c"
 
 typedef uint64_t SNAKEVAL;
 
@@ -68,7 +66,6 @@ typedef struct ExStackEntry
   struct ExStackEntry *prev; // previous handler
 } ExStackEntry;
 
-// Top of the stack of active handlers
 extern ExStackEntry *global_exception_stack;
 
 ExStackEntry *global_exception_stack = NULL;
@@ -465,14 +462,8 @@ uint64_t *try_gc(uint64_t *alloc_ptr, uint64_t bytes_needed, uint64_t *cur_frame
   }
 }
 
-// Zero‑arg closure call:
-//   layout at raw = [ arity; code_ptr; num_free; ...free_vars ]
 SNAKEVAL call0(SNAKEVAL val)
 {
-
-  // fprintf(stderr, "Closure value for call0: \n");
-  // printHelp(stderr, val);
-  // fprintf(stderr, "\n");
 
   if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
   {
@@ -482,9 +473,9 @@ SNAKEVAL call0(SNAKEVAL val)
     uint64_t raw_code = addr[1];
 
     // 3) This is a definition of fun0_t, which is a function pointer that returns a SNAKEVAL
-    //    and takes in one argument of type (void*)
-    //      rtn type    name     arg
-    //      |------|  |-----|  |-----|
+    //    and takes in two argumenst of type SnakeVal
+    //      rtn type    name     arg        arg
+    //      |------|  |-----|  |-----|   |------|
     typedef SNAKEVAL (*fun0_t)(SNAKEVAL, SNAKEVAL);
 
     // Convert the code pointer to a type that is callable (fun0_t)
@@ -499,30 +490,15 @@ SNAKEVAL call0(SNAKEVAL val)
   }
 }
 
-// One‑arg closure call (for the catch‐block):
-//   same layout, but code_ptr expects (env, arg)
 SNAKEVAL call1(SNAKEVAL val, SNAKEVAL arg)
 {
 
-  // fprintf(stderr, "Closure value for call1: \n");
-  // printHelp(stderr, val);
-  // fprintf(stderr, "\nArgument for call1 (given exception): ");
-  // printHelp(stderr, arg);
-  // fprintf(stderr, "\n");
-
   if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
   {
-
-    // fprintf(stderr, "\nMATCHED IN call1()!\n\n");
-
-    // 1) Untag
     uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
-    // 2) Get the code pointer (second thing in the closure)
     uint64_t raw_code = addr[1];
-
     typedef SNAKEVAL (*fun1_t)(SNAKEVAL, SNAKEVAL);
     fun1_t code_ptr = (fun1_t)raw_code;
-
     return code_ptr(val, arg);
   }
   else
@@ -538,26 +514,12 @@ void ex_raise(SNAKEVAL ex)
 {
   ExStackEntry *entry = global_exception_stack;
 
-  // fprintf(stderr, "Exception raised: ");
-  // printHelp(stderr, ex);
-  // fprintf(stderr, "\n");
-
   while (entry != NULL)
   {
-    // fprintf(stderr, "Expected exception: ");
-    // printHelp(stderr, entry->exception_type);
-    // fprintf(stderr, "\n");
 
     if (entry->exception_type == ex)
     {
-      // fprintf(stderr, "\nMATCHED IN ex_raise!\n\n");
-      // stash the real exception payload
       entry->exception_data = ex;
-
-      // fprintf(stderr, "Exception data: ");
-      // printHelp(stderr, entry->exception_data);
-      // fprintf(stderr, "\n");
-
       // pop this handler and jump into it
       global_exception_stack = entry->prev;
       longjmp(entry->context, 1);
@@ -579,10 +541,6 @@ SNAKEVAL try_catch(SNAKEVAL try_closure,
                    SNAKEVAL exception_type)
 {
 
-  // fprintf(stderr, "Binding exception: ");
-  // printHelp(stderr, exception_type);
-  // fprintf(stderr, "\n");
-
   ExStackEntry entry;
 
   // link into the global stack
@@ -603,7 +561,7 @@ SNAKEVAL try_catch(SNAKEVAL try_closure,
   }
   else
   {
-    // We got here via ex_raise → longjmp
+    // We got here via ex_raise -> longjmp
     SNAKEVAL ex = entry.exception_data;
 
     // pop the handler (ex_raise already popped, but safe to do again)
@@ -756,8 +714,7 @@ int main(int argc, char **argv)
 {
   initialize_tests();
 
-  // TODO: Make this bigger :3
-  HEAP_SIZE = 1000;
+  HEAP_SIZE = 2000;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);
@@ -770,9 +727,7 @@ int main(int argc, char **argv)
 
   uint64_t *aligned = (uint64_t *)(((uint64_t)HEAP + 15) & ~0xF);
   HEAP_END = aligned + HEAP_SIZE;
-  /* printf("HEAP = %p, aligned = %p, HEAP_END = %p\n", HEAP, aligned, HEAP_END); */
   SNAKEVAL result = our_code_starts_here(aligned, HEAP_SIZE);
-  // smarter_print_heap(aligned, HEAP_END, TO_S, TO_E);
   print_tests();
   print(result);
   free(HEAP);

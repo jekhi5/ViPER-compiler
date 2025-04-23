@@ -54,17 +54,6 @@ let tparse name program expected =
 
 let teq name actual expected = name >:: fun _ -> assert_equal expected actual ~printer:(fun s -> s)
 
-(* let tfvs name program expected =
-  name
-  >:: fun _ ->
-  let ast = parse_string name program in
-  let anfed = anf (tag ast) in
-  let vars = free_vars_cache anfed in
-  let c = Stdlib.compare in
-  let str_list_print strs = "[" ^ ExtString.String.join ", " strs ^ "]" in
-  assert_equal (List.sort c vars) (List.sort c expected) ~printer:str_list_print
-;; *)
-
 let set = StringSet.of_list
 
 let empty = StringSet.empty
@@ -302,10 +291,9 @@ let ra =
       [ ("ocsh_0", []);
         ("lam_5", [("x", RegOffset (3, RBP))]);
         ("lam_6", [("y", RegOffset (3, RBP))]) ];
-    (* Commented this test because we know LetRec is broken... *)
-    (* tra "letrec1" "let rec foo = (lambda(x): x) in 1"
+    tra "letrec1" "let rec foo = (lambda(x): x) in 1"
       [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
-        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ]; *)
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ];
     tra "number" "1" [("ocsh_0", [])];
     tra "nested_let_and_lambda"
       "\n\
@@ -335,23 +323,6 @@ let ra =
             ("z", Reg R13) ] );
         ("lam_25", [("p", RegOffset (4, RBP)); ("r", RegOffset (3, RBP))]) ] ]
 ;;
-
-(* let live_in =
-  [ tli "given_ex"
-      "let \n\
-      \     x = true \n\
-      \   in\n\
-      \     let \n\
-      \       y = if true: let \n\
-      \                      b = 5 \n\
-      \                    in \n\
-      \                      b else: 6 \n\
-      \     in\n\
-      \      x"
-      [];
-    tli "let_sub_expr" "let y = (if true: (let b = 5 in b) else: 6) in y" [];
-    tli "let" "let x = 5 in a + b" ["a"; "b"] ]
-;; *)
 
 let live_out = []
 
@@ -561,41 +532,11 @@ let parse_checks =
                ENumber (1L, ()),
                () ),
            [],
-           () ) )
-    (* tparse "basic_try_catch" "try 1 catch RuntimeException as r in 1"
-      (Program
-         ( [],
-           ETryCatch
-             ( ELet
-                 ( [ ( BName ("tmp", false, ()),
-                       ELambda ([BName ("tmp", false, ())], ENumber (1L, ()), ()),
-                       () ) ],
-                   EId ("tmp", ()),
-                   () ),
-               BName ("r", false, ()),
-               EException (Runtime, ()),
-               ELet
-                 ( [ ( BName ("tmp", false, ()),
-                       ELambda
-                         ( [BName ("ex", false, ())],
-                           EIf
-                             ( EPrim2 (Eq, EId ("ex", ()), EId ("b", ()), ()),
-                               ENumber (1L, ()),
-                               EPrim1 (Raise, EId ("b", ()), ()),
-                               () ),
-                           () ),
-                       () ) ],
-                   EId ("tmp", ()),
-                   () ),
-               () ),
-           [],
-           () ) )*)
-  ]
+           () ) ) ]
 ;;
 
 let suite = "unit_tests" >::: parse_checks
-(* fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra @  *)
-(*@ live_in @ live_out*)
-(*@ oom @ gc @ input*)
+(* @ fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra @ live_out @ oom
+       @ gc @ input *)
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

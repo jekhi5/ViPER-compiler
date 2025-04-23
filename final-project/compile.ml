@@ -670,7 +670,11 @@ let desugar (p : sourcespan program) : sourcespan program =
                          (applied, EApp (predicate_id, [given_id], Snake, tag), tag) ],
                        EIf
                          ( EPrim1 (IsBool, applied_id, tag),
-                           EIf (negated (applied_id), report_result_pass, report_result_fail_mismatch, tag),
+                           EIf
+                             ( negated applied_id,
+                               report_result_pass,
+                               report_result_fail_mismatch,
+                               tag ),
                            (* TODO: Augment this with a fail due to not a predicate *)
                            report_result_fail_exception,
                            tag ),
@@ -690,28 +694,29 @@ let desugar (p : sourcespan program) : sourcespan program =
         let given_id = EId (given_name, tag) in
         let expected_id = EId (expected_name, tag) in
         let report_result_pass = EPrim1 (ReportTestPass, ENil tag, tag) in
-        let report_result_fail_mismatch =
-          EPrim2 (ReportTestFailMismatch, given_id, excptn, tag)
-        in
-        let report_result_fail_exception =
-          EPrim1 (ReportTestFailException, given_id, tag)
-        in
+        let report_result_fail_mismatch = EPrim2 (ReportTestFailMismatch, given_id, excptn, tag) in
+        let report_result_fail_exception = EPrim1 (ReportTestFailException, given_id, tag) in
         helpE
           (ETryCatch
              ( ETryCatch
                  ( ETryCatch
-                     ( ELet ([(given, e1, tag)],  report_result_fail_exception, tag),
+                     ( ELet ([(given, e1, tag)], report_result_fail_exception, tag),
                        BBlank tag,
                        excptn,
                        report_result_pass,
                        tag ),
                    BBlank tag,
                    EException (Runtime, tag),
-                   EPrim2 (ReportTestFailMismatch, EException (Runtime, tag), EException (Value, tag), tag),
+                   EPrim2
+                     ( ReportTestFailMismatch,
+                       EException (Runtime, tag),
+                       EException (Value, tag),
+                       tag ),
                    tag ),
                BBlank tag,
                EException (Value, tag),
-               EPrim2 (ReportTestFailMismatch, EException (Runtime, tag), EException (Value, tag), tag),
+               EPrim2
+                 (ReportTestFailMismatch, EException (Runtime, tag), EException (Value, tag), tag),
                tag ) )
     | ETestOp2 (e1, e2, tt, negation, tag) ->
         let given_name = "_given" in
@@ -1108,15 +1113,10 @@ let anf (p : tag program) : sourcespan aprogram =
   helpP p
 ;;
 
-(* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
-(* For convenience. 
- * In general, I like the infix syntax `|> u` for union.
- *)
 let u = StringSet.union
 
 let d = StringSet.diff
 
-(* Is it more convenient to return a StringSet, or just to slap a to_list at the end? *)
 let free_vars (e : 'a aexpr) : StringSet.t =
   let rec helpI (e : 'a immexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
@@ -1341,7 +1341,6 @@ let safe_find_opt ?callee_tag:(addn = "") key map =
 
 let si_to_arg (si : int) : arg = RegOffset (~-si, RBP)
 
-(* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
 let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
     tag aprogram * arg name_envt name_envt =
   let rec helpC (cexp : tag cexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
@@ -1363,9 +1362,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let thn_env = helpA thn env (si + 1) env_name in
         helpA els thn_env (si + 1) env_name
     | CLambda (ids, body, _) ->
-        (* TODO: revisit adding 2 instead of 1 (we add 2 because before the ids 
-         *       we put RBP and the return address (?)) 
-
+        (*
          * Actually, we add 3, to account for the implicit 'self' argument.
          *)
         let num_free = StringSet.cardinal @@ free_vars (ACExpr cexp) in
@@ -1381,7 +1378,6 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
     match aexp with
     | ACExpr cexp -> helpC cexp env si env_name
     | ASeq (first, next, _) ->
-        (* Order matters here? *)
         merge_envs (helpA next env (si + 1) env_name) (helpC first env si env_name)
     | ALetRec ([], body, _) -> helpA body env (si + 1) env_name
     | ALet (id, (CLambda _ as lambda), body, _) ->
@@ -1403,13 +1399,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let body_envt_envt = helpA body add_base_env_for_lambda (si + 1) env_name in
         let cur_envt = update_envt_envt env_name id cur_offset body_envt_envt in
         let lambda_offset = helpC lambda cur_envt si id in
-        (* TODO: Think about this a little more. Is there too much indirection? *)
         let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
-        (* let without_self_reference =
-          StringMap.add id
-            (StringMap.remove id (StringMap.find id with_self_reference))
-            with_self_reference
-        in *)
         (* This is where we could put our mutual recursion code -- If we had any! *)
         let rest_env = helpA (ALetRec (rest, body, tag)) with_self_reference (si + 1) env_name in
         rest_env
@@ -1420,35 +1410,12 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
         let bound_env = helpC bound cur_envt si env_name in
         let rest_env = helpA (ALetRec (rest, body, tag)) bound_env (si + 1) env_name in
         rest_env
-    (* | ALetRec ((id, bound) :: _, _, _) -> *)
-    (* let binders, _ = List.split binds in
-        let located_binders = List.mapi (fun i binder -> (binder, si_to_arg (i + si))) binders in
-        (* let binder_buffer = si + List.length located_binders in *)
-        let binds_env = List.fold_left
-          (fun (acc_env : arg name_envt name_envt) ((id : string), (bound : tag cexpr)) ->
-            match bound with
-            | CLambda _ ->
-                let add_base_env_for_lambda = StringMap.add id (assoc_to_map located_binders) acc_env in
-                let bound_offset = helpC bound add_base_env_for_lambda si id in
-                bound_offset
-            | _ ->
-                raise
-                  (InternalCompilerError
-                     (sprintf "Tried to allocate a non-lambda value in LetRec!: %s => %s" id
-                        (string_of_cexpr bound) ) ) )
-          env binds in
-          let body_offset = helpA body binds_env (si + 1) env_name in
-          body_offset *)
   in
-  (* TODO: Change the name of the OCSH environment? *)
   let body_env = helpA body (assoc_to_map [(ocsh_name, StringMap.empty)]) 1 ocsh_name in
   (prog, body_env)
 ;;
 
-(* IMPLEMENT THE BELOW *)
 let empty = StringSet.empty
-
-(* TODO: Clean up duplicated code *)
 
 let get_cache (expr : StringSet.t aexpr) : StringSet.t =
   let helpI (imm_expr : StringSet.t immexpr) : StringSet.t =
@@ -1683,28 +1650,6 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
       ALetRec (live_bindings, live_body, live_in)
   | ACExpr cexpr -> ACExpr (helpC cexpr live_out)
 
-(* and compute_live_out (expr : StringSet.t aexpr) (next_live_in : StringSet.t) : StringSet.t aexpr =
-  let helpI (imm_expr : StringSet.t immexpr) (next_live_in : StringSet.t) : StringSet.t immexpr =
-    match imm_expr with
-    | ImmNum (num, _) -> ImmNum (num, next_live_in)
-    | ImmBool (bool, _) -> ImmBool (bool, next_live_in)
-    | ImmNil _ -> ImmNil (next_live_in)
-    (* This is the interesting case. How do we determine if this id *)
-    | ImmId (id, _) -> ImmId (id, next_live_in)
-  in
-  let helpC (cexpr : StringSet.t cexpr) (next_live_in : StringSet.t) : StringSet.t cexpr =
-    match cexpr with
-    | CIf (cond, thn, els, _) -> 
-      let live_in_cond = compute_live_in (ACExpr (CImmExpr cond)) prior_live_out in
-      let live_in_thn = compute_live_in thn prior_live_out
-      compute_live_in thn |> u (compute_live_in els)
-    | CLambda (_, body, _) -> compute_live_in body
-    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ -> empty
-  in
-  match expr with
-  | ASeq (_, b, _) | ALet (_, _, b, _) | ALetRec (_, b, _) -> compute_live_in b
-  | ACExpr cexpr -> helpC cexpr *)
-
 and live_in_program (AProgram (body, _)) = AProgram (compute_live_in body empty, empty)
 
 let string_of_set s =
@@ -1719,7 +1664,6 @@ let interfere (e : livevars aexpr) : grapht =
         let g' = add_nodes g (StringSet.to_list l) in
         helpA next (connect_set l g')
     | ALet (x, _, b, l) ->
-        (* printf "\n%s\n" (string_of_set l); *)
         let g' = add_node g x in
         let g' = add_nodes g' (StringSet.to_list l) in
         let connected = connect_set l g' in
@@ -1782,7 +1726,6 @@ let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg
 ;;
 
 let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
-  (* helper for composite expressions *)
   let rec helpC (e : freevars cexpr) (env_name : string) (env_env : arg name_envt name_envt) :
       arg name_envt name_envt =
     match e with
@@ -2164,10 +2107,6 @@ and reserve size tag =
           "assume gc success if returning here, so RAX holds the new heap_reg value" );
       ILabel ok ]
 
-(* IMPLEMENT THIS FROM YOUR PREVIOUS ASSIGNMENT *)
-(* Additionally, you are provided an initial environment of values that you may want to
-   assume should take up the first few stack slots.  See the compiliation of Programs
-   below for one way to use this ability... *)
 and compile_fun
     name
     args
@@ -2181,12 +2120,10 @@ and compile_fun
   let fun_label = name in
   let after_label = name ^ "_end" in
   let acexp = ACExpr (CLambda (args, body, get_tag_A body)) in
-  (* let acexp = body in  *)
   let vars = deepest_stack env in
   let arity = List.length args in
   let free_vars = StringSet.elements (free_vars acexp) in
   (* The order we get these out of the set is not the same as their order on the stack. *)
-  (* let free_var_regs = List.rev @@ List.mapi (fun i _ -> RegOffset (i + 3, RBP)) free_vars in *)
   let num_free = List.length free_vars in
   let load_closure =
     List.concat
@@ -2227,10 +2164,7 @@ and compile_fun
             (* Move up to the next slot above RBP *)
             j - 1,
             (* At this point in time, the closure pointer
-
              * should be stored in the scratch register. *)
-
-            (* TODO; Lines 24 and 25 are these: *)
             IInstrComment (IMov (Reg RAX, RegOffset (i, scratch_reg)), sprintf "moving: %s" id)
             (* Grab the closure ptr*)
             :: IMov (offset, Reg RAX) (* Put it where it belongs*)
@@ -2275,7 +2209,6 @@ and compile_fun
         ( IMov (Sized (QWORD_PTR, RegOffset (2, heap_reg)), Const (Int64.of_int (num_free * 2))),
           "Load the number of free vars into the 2nd offset of the heap (as a SNAKEVAL)" ) ]
   in
-  (* TODO: what should the value be for SI? *)
   let compiled_body = compile_aexpr body si new_env (List.length args) false name in
   let stack_cleanup =
     [ILineComment "=== Stack clean-up ==="; IMov (Reg RSP, Reg RBP); IPop (Reg RBP); IRet]
@@ -2366,7 +2299,6 @@ and native_call label args =
   in
   setup @ [ICall label] @ teardown
 
-(* UPDATE THIS TO HANDLE FIRST-CLASS FUNCTIONS AS NEEDED -- THIS CODE WILL NOT WORK AS WRITTEN *)
 and call (closure : arg) args =
   let closure_to_rax = [IMov (Reg RAX, closure)] in
   (* Step 1: Ensure that `closure` is actually a closure. *)
@@ -2379,7 +2311,6 @@ and call (closure : arg) args =
       untag_snakeval (Reg scratch_reg);
       (* Note that we multiply the caller arity by two, since closures store a snakeval. *)
       ICmp (Sized (QWORD_PTR, RegOffset (0, scratch_reg)), Const (Int64.of_int (2 * call_arity)));
-      (* ] @ crash @ [ *)
       IJne (Label err_arity_mismatch_label) ]
   in
   let push_args =
@@ -2463,9 +2394,7 @@ and compile_aexpr
       let prelude =
         (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
         let free = StringSet.elements @@ free_vars (ACExpr lambda) in
-        (* printf "\n%s\n" (string_of_set (free_vars (ACExpr lambda))); *)
         let free_locations = List.map (fun v -> safe_find_opt v current_env) free in
-        (* List.iter (fun a -> printf "%s, " (arg_to_asm a)) free_locations; *)
         let fun_prelude, fun_body, fun_heap_bump =
           compile_fun id args fun_body env_env tag si free_locations
         in
@@ -2501,38 +2430,6 @@ and compile_aexpr
       in
       let body = compile_aexpr body si env_env num_args is_tail env_name in
       bindings_instr @ body
-  (* | ALetRec (bindings, let_body, _) ->
-      let new_env, compiled_bindings =
-        List.fold_left
-          (fun (acc_env, acc_instrs) (binder, bound) ->
-            (* We know that new functions are always at the top of the heap, right before we compile. *)
-            let rec_env = update_envt_envt env_name binder (Reg heap_reg) acc_env in
-            let offset = get_nested env_name binder env_env in
-            let compiled_bound =
-              match bound with
-              (* Since we're stepping into the body of a lambda, we set the env_name to the current id. *)
-              | CLambda (args, fun_body, tag) as lambda ->
-                  (* TODO: Fix this! *)
-                  let free = StringSet.elements @@ free_vars (ACExpr lambda) in
-                  let free_locations =
-                    List.map (fun v -> safe_find_opt v (safe_find_opt binder rec_env)) free
-                  in
-                  let a, b, c = compile_fun binder args fun_body env_env tag si free_locations in
-                  a @ b @ c
-              | _ -> compile_cexpr bound si rec_env num_args is_tail env_name
-            in
-            (* TODO: Before or after? *)
-            (* TODO: rec_env or env_env? *)
-            ( rec_env,
-              acc_instrs @ compiled_bound
-              @ [ IInstrComment
-                    ( IMov (offset, Reg RAX),
-                      "Move the id that was found into the offset of the base pointer" ) ] ) )
-          (env_env, [ (* compiled code *) ])
-          bindings
-      in
-      let compiled_body = compile_aexpr let_body si new_env num_args is_tail env_name in
-      compiled_bindings @ compiled_body *)
   | ASeq (first, next, _) ->
       let compiled_first = compile_cexpr first si env_env num_args is_tail env_name in
       let compiled_next = compile_aexpr next si env_env num_args is_tail env_name in
@@ -2543,10 +2440,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
   match e with
   | CImmExpr immexp ->
       let compiled_immexp = compile_imm immexp env_env env_name in
-      [ IInstrComment
-          ( IMov (Reg scratch_reg, compiled_immexp),
-            "" (*sprintf "%s" (string_of_name_envt_envt env_env)*) );
-        IMov (Reg RAX, Reg scratch_reg) ]
+      [IMov (Reg scratch_reg, compiled_immexp); IMov (Reg RAX, Reg scratch_reg)]
   | CIf (cond, thn, els, ((t, _) : tag)) ->
       let else_label = sprintf "if_else#%d" t in
       let done_label = sprintf "if_done#%d" t in
@@ -2599,7 +2493,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       | Print ->
           [ (* Print both passes its value to the external function, and returns it. *)
             IMov (Reg RDI, e_reg);
-            (* TODO: Is this right?? *)
             ICall (Label "?print") (* The answer goes in RAX :) *) ]
       | IsTuple ->
           let false_label = sprintf "is_tuple_false#%d" t in
@@ -2624,7 +2517,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
             ICall (Label "?print_stack");
             ILineComment "=== End Printing Stack ===" ]
       | Crash -> [IJmp (Label crash_label)]
-      (* TODO: Once try-catch is implemented, update this functionality *)
       | Raise ->
           [ ILineComment "== Raising an exception ==";
             IMov (Reg RDI, e_reg);
@@ -2675,14 +2567,11 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           [IMov (Sized (QWORD_PTR, Reg first), e1_reg); IMov (Sized (QWORD_PTR, Reg second), e2_reg)]
           @ load_sourcespan s rest
           @ [ICall (Label "?report_fail")] )
-  (* | CLambda _ -> compile_lambda e si env_env num_args is_tail env_name *)
   | CLambda _ -> raise (InternalCompilerError "Encountered an un-bound CLambda!")
   | CApp (callee, args, Snake, _) ->
-      (* let closure_name = (match callee with ImmId (id, _) -> id | _ -> raise (InternalCompilerError "Tried to call a literal")) in *)
       let compiled_closure = compile_cexpr (CImmExpr callee) si env_env num_args is_tail env_name in
       let compiled_args = List.map (fun arg -> compile_imm arg env_env env_name) args in
       (ILineComment "~~~~~~~~~~" :: compiled_closure) @ call (Reg RAX) compiled_args
-  (* | CApp (_, _, Snake, _) -> compile_call e si env_env num_args is_tail env_name *)
   | CApp (callee, args, Native, _) -> (
     match callee with
     | ImmId (id, _) -> (
@@ -2761,8 +2650,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           ICmp (Reg R11, Const 0L);
           IJl (Label index_low_label);
           IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, R11, word_size, word_size)));
-          (* IInstrComment
-             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
           ILineComment "Multiply the value in R11 by 8 with no further offset" ]
       @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, word_size, word_size))
       @ [ILineComment "===== End get-item ====="]
@@ -2785,8 +2672,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           IShr (Reg R11, Const 1L);
           ICmp (Reg R11, Const 0L);
           IJl (Label index_low_label);
-          (* IInstrComment
-             (IAdd (Reg R11, Const 1L), "R11 already has n, now add 1 to account for the length"); *)
           IMov (Reg scratch_reg2, val_reg);
           IInstrComment
             ( IMov (tuple_slot_offset, Reg scratch_reg2),
@@ -2809,65 +2694,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let excptn = ImmExcept (except, tag) in
       let exception_arg = compile_imm excptn env_env env_name in
       native_call (Label "?try_catch") [compiled_try; compiled_catch; exception_arg]
-      (* 
-      
-      NO LONGER USED:
-      
-      let pre_try, body_try, alloc_try =
-        match try_block with
-        | ALet
-            ( tmp_try,
-              (CLambda (_, try_body, (try_tag, _)) as try_fun),
-              ACExpr (CImmExpr (ImmId _)),
-              _ ) ->
-            let free = StringSet.elements @@ free_vars (ACExpr try_fun) in
-            let current_env =
-              safe_find_opt tmp_try env_env
-                ~callee_tag:("Compiling try in TryCatch\n" ^ string_of_name_envt_envt env_env)
-            in
-            let free_locations =
-              List.map
-                (fun v ->
-                  safe_find_opt v current_env
-                    ~callee_tag:
-                      (sprintf "name_of_env: %s. env: %s" tmp_try (string_of_name_envt current_env)) )
-                free
-            in
-            compile_fun tmp_try [] try_body env_env try_tag si free_locations
-        | ALet (_, CLambda _, _, _) ->
-            raise
-              (InternalCompilerError "Found an ALet in a catch whose body was not solely an ImmExpr")
-        | _ -> raise (InternalCompilerError "Found non-lambda in try block")
-      in
-      let pre_catch, body_catch, alloc_catch =
-        match catch_block with
-        | ALet
-            ( tmp_catch,
-              (CLambda (catch_arg :: [], catch_body, (catch_tag, _)) as catch_fun),
-              ACExpr (CImmExpr (ImmId _)),
-              _ ) ->
-            let fun_env =
-              safe_find_opt tmp_catch env_env
-                ~callee_tag:("Compiling catch in TryCatch\n" ^ string_of_name_envt_envt env_env)
-            in
-            (* For a single argument, this will always be its location *)
-            let arg_offset = RegOffset (0, RSP) in
-            let fun_env' = StringMap.add catch_arg arg_offset fun_env in
-            let env_env' = StringMap.add tmp_catch fun_env' env_env in
-            let free = StringSet.elements @@ free_vars (ACExpr catch_fun) in
-            let free_locations =
-              List.map (fun v -> safe_find_opt v fun_env' ~callee_tag:"B") free
-            in
-            compile_fun tmp_catch [catch_arg] catch_body env_env' catch_tag si free_locations
-        | ALet (_, CLambda _, _, _) ->
-            raise
-              (InternalCompilerError "Found an ALet in a catch whose body was not solely an ImmExpr")
-        | _ -> raise (InternalCompilerError "Found non-lambda in catch block")
-      in
-      let compiled_try = pre_try @ body_try @ alloc_try in
-      let compiled_catch = pre_catch @ body_catch @ alloc_catch in *)
-  | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
-  | CTestOp1 _ -> raise (NotYetImplemented "TestOp1")
   | CTestOp2 (given, expected, _, _, _) ->
       (* Naive implementation! No error checking *)
       let given_reg = compile_imm given env_env env_name in
@@ -2875,16 +2701,11 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       [ IMov (Reg RSI, given_reg);
         IMov (Reg RDI, expected_reg);
         ICall (Label "?equal");
-        ICmp (Sized (QWORD_PTR, Reg RAX), const_true) (* TODO *) ]
-  | CTestOp2Pred _ -> raise (NotYetImplemented "TestOp2Pred")
-(*
- * 1. Setup closure for `try` block
- * 2. Setup exception handler:
- *    - What is in the exception handler?
- *      - Original RSP and RBP from before we entered this block
- *      - Location of _this_ `try` block's `catch` block
- *      - *Note*: before leaving the `try` block, the exception should be put into RAX
- *)
+        ICmp (Sized (QWORD_PTR, Reg RAX), const_true) ]
+  (* We made these ANF types before we realized we do not need them... Oops! *)
+  | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
+  | CTestOp1 _ -> raise (InternalCompilerError "CTestOp1 Desugared away")
+  | CTestOp2Pred _ -> raise (InternalCompilerError "CTestOp2Pred Desugared away")
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with
