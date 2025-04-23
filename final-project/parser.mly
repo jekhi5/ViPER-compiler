@@ -157,7 +157,7 @@ test :
   | expr NOT SPITS expr { ETestOp2($1, $4, DeepEq, true, full_span()) }
 
   | expr SHEDS snakeexcept { ETestOp2($1, $3, Raises, false, full_span()) }
-  | expr NOT SHEDS snakeexcept { ETestOp2($1, $4, Raises, true, full_span()) }
+  // | expr NOT SHEDS snakeexcept { ETestOp2($1, $4, Raises, true, full_span()) }
 
   | expr BROODS expr { ETestOp1($1, $3, false, full_span()) }
   | expr NOT BROODS expr { ETestOp1($1, $4, true, full_span()) }
