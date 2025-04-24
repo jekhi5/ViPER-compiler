@@ -5,7 +5,7 @@
 ### Professor Benjamin Lerner
 #### 04/2025
 
-# Syntax
+# Syntax for `try-catch` and `checks`
 
 ```
 def fact(n):
@@ -16,6 +16,13 @@ def fact(n):
 
 def lessThanFive(x):
   if x < 5: true else: false
+
+def tryAddFact(n1, n2):
+  try
+    fact(n1) + fact(n2)
+  catch ValueException as e in
+    0
+      
 
 fact(3)
 
@@ -29,7 +36,13 @@ check:
   9 spits true, # False!
   fact(-1) sheds ValueException,
   (lambda(x): add1(x) - 5)(2) spits -2,
-  8 broods lessThanFive # False!
+  8 broods lessThanFive
+end
+
+check:
+  tryAddFact(3, 2) spits 8,
+  tryAddFact(-5, 100000) spits 0,
+  tryAddFact(3, -4) spits 6 # False!
 end
 ```
 
@@ -37,16 +50,22 @@ The expected output of this program would look something like this (The last lin
 of the program):
 
 ```
-Failuresss (2):
-> Tesssst from (ln 19, col 2) to (ln 19, col 14) failed -- Expected:
+Ran 10 tessstsss...
+Failuresss (3):
+> Tesssst from (ln 26, col 2) to (ln 26, col 14) failed -- Expected:
 >   true
 > But received:
 >   9
 
-< Tesssst from (ln 22, col 2) to (ln 22, col 23) failed -- Expected:
+< Tesssst from (ln 29, col 2) to (ln 29, col 23) failed -- Expected:
 <   true
 < But received:
 <   false
+
+> Tesssst from (ln 35, col 2) to (ln 35, col 27) failed -- Expected:
+>   6
+> But received:
+>   0
 
 ==================== Tests Complete ====================
 
