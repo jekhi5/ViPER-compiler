@@ -7,40 +7,84 @@
 
 # Syntax
 
-For this implementation, we begin with the syntax of the proposed changes. The syntax that will be
-supported looks like the following:
-
 ```
 def fact(n):
-  if n == 1: 1
-  else: n * fact(n - 1)
+  if (n < 0): raise(ValueException)
+  else:
+    (if n == 1: 1
+    else: n * fact(n - 1))
+
+def lessThanFive(x):
+  if x < 5: true else: false
+
+fact(3)
 
 check:
-  check fact(1) spits 1
-  check fact(4) spits 24
-  check 24 spits fact(4)
-  check 9 spits true # False!
-  check (lambda(x): add1(x) - 5)(2) spits -2
+  fact(1) spits 1,
+  fact(4) spits 24,
+  24 bites fact(4)
 end
 
-fact(2)
-
-check true spits true
-check 1 + 4 spits 5
+check:
+  9 spits true, # False!
+  fact(-1) sheds ValueException,
+  (lambda(x): add1(x) - 5)(2) spits -2,
+  8 broods lessThanFive # False!
+end
 ```
 
-The expected output of this program would look something like this, with the first line being
-the result of the program:
+The expected output of this program would look something like this (The last line is the output
+of the program):
 
 ```
-2
+Failuresss (2):
+> Tesssst from (ln 19, col 2) to (ln 19, col 14) failed -- Expected:
+>   true
+> But received:
+>   9
 
-6 checks passed
-1 check failed on line 11:
-  check 9 spits true
+< Tesssst from (ln 22, col 2) to (ln 22, col 23) failed -- Expected:
+<   true
+< But received:
+<   false
+
+==================== Tests Complete ====================
+
+6
 ```
 
-You'll notice that `check-spit` statements are allowed at the topmost level of the code, both
-before and after the final value would be returned.
+`check` blocks are allowed only at the top level of the program and are run after the body of
+the program is run.
 
 # Kinds of check-spits we support
+
+(`!` can be used to negate all tests except sheds)
+- `spits` - deep equality
+  - Syntax:
+    - `<expr> spits <expr>`
+  - Example:
+    - `(1, 2, 3) spits (lambda(): (1, 2, 3))()`
+- `bites` - shallow equality
+  - Syntax:
+    - `<expr> bites <expr>`
+  Example:
+    - `(1, 2, 3) bites (1, 2, 3)`
+    - `(1, 2, 3) ! bites (lambda(): (1, 2, 3))()`
+- `broods` - test against a predicate
+  - Syntax:
+    - `<expr> broods <Predicate>`
+  Example:
+    - `5 broods (lambda(x): x < 5)`
+    - ```
+      def lessThanFive(x):
+        x < 5
+      .
+      .
+      .
+      3 broods lessThanFive
+      ```
+- `sheds` - test that something raises a specific exception
+  - Syntax:
+    - `<expr> sheds <NameOfException>`
+  Example:
+    - `raise(RuntimeException) sheds RuntimeException`
