@@ -11,7 +11,7 @@ Example:
 
 test1.viper:
     add1(2 + 3)
-    ;
+    @
     6
 
 =>
