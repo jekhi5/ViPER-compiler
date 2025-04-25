@@ -4,19 +4,19 @@ from glob import glob
 import argparse
 
 """
-Looks at all `.diamond` files in the directory.
+Looks at all `.fdl` files in the directory.
 Splits them on a delimiter. Places everything past the delimiter into an out file.
 
 Example:
 
-test1.diamond:
+test1.fdl:
     add1(2 + 3)
     ;
     6
 
 =>
 
-test1.diamond:
+test1.fdl:
     add1(2 + 3)
 
 test1.out:
