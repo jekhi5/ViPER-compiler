@@ -29,7 +29,7 @@ Additionally, there are numerous example programs in each assignment's `input` f
 
 To run your own programs:
 1. Write program files in the input directory under `do_pass` in the desired assignment directory
-  - The file extension should match the corresponding file extension for that directory listed above
+    - The file extension should match the corresponding file extension for that directory listed above
 3. Run the `run` script in that assignment's root directory
 4. Run the compiled `*.run` file at `output/do_pass/YOUR_PROG_NAME.run`
 
