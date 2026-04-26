@@ -1,13 +1,12 @@
-# Compilers 4410 Final Project
-# Implementation of check-expect style functionality
+# Compilers 4410 Final Project - Implementation of check-expect style functionality
 
-## Submission by Jacob Kline and Emery Jacobowitz
-### Professor Benjamin Lerner
-#### 04/2025
+**Submission by Jacob Kline and Emery Jacobowitz**
+_Professor Benjamin Lerner_
+_04/2025_
 
-# Syntax for `try-catch` and `checks`
+## Syntax for `try-catch` and `checks`
 
-```
+```viper
 def fact(n):
   if (n < 0): raise(ValueException)
   else:
@@ -49,7 +48,7 @@ end
 The expected output of this program would look something like this (The last line is the output
 of the program):
 
-```
+```text
 Ran 10 tessstsss...
 Failuresss (3):
 > Tesssst from (ln 26, col 2) to (ln 26, col 14) failed -- Expected:
@@ -75,9 +74,10 @@ Failuresss (3):
 `check` blocks are allowed only at the top level of the program and are run after the body of
 the program is run.
 
-# Kinds of check-spits we support
+### Kinds of check-spits we support
 
 (`!` can be used to negate all tests except sheds)
+
 - `spits` - deep equality
   - Syntax:
     - `<expr> spits <expr>`
@@ -94,14 +94,16 @@ the program is run.
     - `<expr> broods <Predicate>`
   Example:
     - `5 broods (lambda(x): x < 5)`
-    - ```
-      def lessThanFive(x):
-        x < 5
-      .
-      .
-      .
-      3 broods lessThanFive
-      ```
+
+```viper
+def lessThanFive(x):
+  x < 5
+.
+.
+.
+3 broods lessThanFive
+```
+
 - `sheds` - test that something raises a specific exception
   - Syntax:
     - `<expr> sheds <NameOfException>`
