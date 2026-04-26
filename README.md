@@ -3,7 +3,7 @@
 ## Verifying Programs Execute Right
 
 Welcome to our compiler! We've worked very hard to make your experience with our language a positive
-one. ViPER is a functional language. The most current version of our language exists in the root directory
+one. ViPER is a functional language. The most current version of our language exists in the [`src/`](src/) directory
 This project is the culmination of several iterations of this compiler, each building on the one prior.
 You can find each iteration alphabetically sorted in the [archive/](archive/) directory. The
 [README](archive/README.md) there further explains this.
@@ -12,8 +12,8 @@ You can find each iteration alphabetically sorted in the [archive/](archive/) di
 
 To run your own programs:
 
-1. Write program files in the `input/do_pass` directory with the extension `*.viper`
-2. Run the [`./run`](./run) script to compile your program
+1. Write program files in the `src/input/do_pass` directory with the extension `*.viper`
+2. Run the [`./src/run`](./src/run) script to compile your program
 3. Run the compiled `*.run` file at `output/do_pass/YOUR_PROG_NAME.run`
 
 Thank you for using our language! We hope your programs execute right!
