@@ -1,4 +1,3 @@
-clear
 if dune build; then
     make clean
     ./gen_tests.py -v 1

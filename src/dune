@@ -3,6 +3,15 @@
  (modules
   assembly
   compile
+   compile_anf
+   compile_constants
+   compile_desugar
+   compile_env_helpers
+   compile_free_vars
+   compile_rename
+   compile_runtime_env
+   compile_scope
+   compile_utils
   errors
   exprs
   phases

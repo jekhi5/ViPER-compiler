@@ -1,11 +1,16 @@
-open Compile
-open Runner
-open OUnit2
-open Pretty
-open Exprs
-open Phases
-open Graph
 open Assembly
+open Compile
+open Compile_anf
+open Compile_constants
+open Compile_env_helpers
+open Compile_free_vars
+open Compile_utils
+open Exprs
+open Graph
+open OUnit2
+open Phases
+open Pretty
+open Runner
 
 let t name program input expected =
   name >:: test_run ~args:[] ~std_input:input Naive program name expected
