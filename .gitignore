@@ -14,6 +14,7 @@ output/*/*.dSYM
 _build/*
 **/.DS_Store
 **/.vscode
+**/output/**
 
 
 ## Ignore Visual Studio temporary files, build results, and
