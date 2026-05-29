@@ -9,6 +9,7 @@
   well_formed
   desugar
   rename
+  anf
   errors
   exprs
   phases
