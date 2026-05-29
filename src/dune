@@ -8,6 +8,7 @@
   env
   well_formed
   desugar
+  rename
   errors
   exprs
   phases
