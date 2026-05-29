@@ -12,6 +12,7 @@
   anf
   free_vars
   naive_alloc
+  liveness
   errors
   exprs
   phases
