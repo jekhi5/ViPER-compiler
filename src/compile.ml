@@ -5,6 +5,10 @@ open Exprs
 open Assembly
 open Errors
 open Graph
+
+(* Re-export extracted modules so that callers (runner.ml, test.ml) that
+   `open Compile` continue to see every name. Keep these in dependency order. *)
+include Util
 module StringSet = Set.Make (String)
 module StringMap = Map.Make (String)
 module TagMap = Map.Make (Int)
@@ -181,16 +185,6 @@ let initial_fun_env = merge_envs prim_bindings native_fun_bindings
 
 (* You may find some of these helpers useful *)
 
-let rec find ls x =
-  match ls with
-  | [] -> raise (InternalCompilerError (sprintf "Name %s not found" x))
-  | (y, v) :: rest ->
-      if y = x then
-        v
-      else
-        find rest x
-;;
-
 let rec find_decl (ds : 'a decl list) (name : string) : 'a decl option =
   match ds with
   | [] -> None
@@ -199,22 +193,6 @@ let rec find_decl (ds : 'a decl list) (name : string) : 'a decl option =
         Some d
       else
         find_decl ds_rest name
-;;
-
-let rec find_one (l : 'a list) (elt : 'a) : bool =
-  match l with
-  | [] -> false
-  | x :: xs -> elt = x || find_one xs elt
-;;
-
-let rec find_dup (l : 'a list) : 'a option =
-  match l with
-  | [] | [_] -> None
-  | x :: xs ->
-      if find_one xs x then
-        Some x
-      else
-        find_dup xs
 ;;
 
 let find_opt (env : 'a name_envt) (elt : string) : 'a option = StringMap.find_opt elt env
@@ -1836,20 +1814,6 @@ let deepest_stack (env : arg name_envt) : int =
 
 let decompose_sourcespan ((pstart, pend) : sourcespan) : int * int * int * int =
   (pstart.pos_lnum, pstart.pos_cnum - pstart.pos_bol, pend.pos_lnum, pend.pos_cnum - pend.pos_bol)
-;;
-
-let rec take xs n =
-  match (xs, n) with
-  | _, 0 -> []
-  | [], _ -> []
-  | car :: cdr, v -> car :: take cdr (v - 1)
-;;
-
-let rec drop xs n =
-  match (xs, n) with
-  | l, 0 -> l
-  | [], _ -> []
-  | _ :: cdr, n -> drop cdr (n - 1)
 ;;
 
 let load_sourcespan s regs =

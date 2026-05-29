@@ -3,6 +3,7 @@
  (modules
   assembly
   compile
+  util
   errors
   exprs
   phases
