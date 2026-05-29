@@ -5,6 +5,7 @@
   compile
   util
   constants
+  env
   errors
   exprs
   phases
