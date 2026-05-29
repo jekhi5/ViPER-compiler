@@ -10,6 +10,7 @@
   desugar
   rename
   anf
+  free_vars
   errors
   exprs
   phases
