@@ -13,6 +13,7 @@
   free_vars
   naive_alloc
   liveness
+  register_alloc
   errors
   exprs
   phases
