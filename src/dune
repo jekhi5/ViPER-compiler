@@ -4,6 +4,7 @@
   assembly
   compile
   util
+  constants
   errors
   exprs
   phases
