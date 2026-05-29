@@ -11,6 +11,7 @@
   rename
   anf
   free_vars
+  naive_alloc
   errors
   exprs
   phases
