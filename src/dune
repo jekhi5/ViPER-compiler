@@ -6,6 +6,7 @@
   util
   constants
   env
+  well_formed
   errors
   exprs
   phases
