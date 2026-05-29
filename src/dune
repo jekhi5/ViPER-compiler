@@ -7,6 +7,7 @@
   constants
   env
   well_formed
+  desugar
   errors
   exprs
   phases
