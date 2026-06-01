@@ -888,3 +888,82 @@ and compile_imm e (env_env : arg name_envt name_envt) env_name =
     | Runtime -> runtime_exception
     | Value -> value_exception )
 ;;
+
+let error_suffix =
+  List.fold_left
+    (fun asm (label, instrs) -> asm ^ sprintf "%s:%s\n" label instrs)
+    "\n"
+    [ ( not_a_number_comp_label,
+        to_asm (native_call (Label "?error") [Const err_COMP_NOT_NUM; Reg scratch_reg]) );
+      ( not_a_number_arith_label,
+        to_asm (native_call (Label "?error") [Const err_ARITH_NOT_NUM; Reg scratch_reg]) );
+      ( not_a_bool_logic_label,
+        to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg scratch_reg]) );
+      ( not_a_bool_if_label,
+        to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg scratch_reg]) );
+      (overflow_label, to_asm (native_call (Label "?error") [Const err_OVERFLOW; Reg RAX]));
+      ( not_a_tuple_access_label,
+        to_asm (native_call (Label "?error") [Const err_GET_NOT_TUPLE; Reg scratch_reg]) );
+      ( not_a_number_index_label,
+        to_asm (native_call (Label "?error") [Const err_INDEX_NOT_NUM; Reg scratch_reg]) );
+      ( index_low_label,
+        to_asm (native_call (Label "?error") [Const err_GET_LOW_INDEX; Reg scratch_reg]) );
+      (index_high_label, to_asm (native_call (Label "?error") [Const err_GET_HIGH_INDEX]));
+      (nil_deref_label, to_asm (native_call (Label "?error") [Const err_NIL_DEREF; Reg scratch_reg]));
+      ( err_out_of_memory_label,
+        to_asm (native_call (Label "?error") [Const err_OUT_OF_MEMORY; Reg scratch_reg]) );
+      ( not_a_closure_label,
+        to_asm (native_call (Label "?error") [Const err_CALL_NOT_CLOSURE; Reg scratch_reg]) );
+      ( err_arity_mismatch_label,
+        to_asm (native_call (Label "?error") [Const err_CALL_ARITY_ERR; Reg scratch_reg]) );
+      (crash_label, to_asm (native_call (Label "?error") [Const err_CRASH])) ]
+;;
+
+let compile_prog (anfed, (env : arg name_envt name_envt)) =
+  let prelude =
+    "section .text\n\
+     extern ?error\n\
+     extern ?input\n\
+     extern ?print\n\
+     extern ?print_stack\n\
+     extern ?equal\n\
+     extern ?try_gc\n\
+     extern ?naive_print_heap\n\
+     extern ?HEAP\n\
+     extern ?HEAP_END\n\
+     extern ?ex_raise\n\
+     extern ?set_stack_bottom\n\
+     extern ?report_pass\n\
+     extern ?report_fail\n\
+     extern ?report_fail_exception\n\
+     extern ?try_catch\n\
+     global " ^ ocsh_name
+  in
+  let suffix = error_suffix in
+  match anfed with
+  | AProgram (body, ((tag, _) : tag)) ->
+      (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
+      let prologue, comp_main, epilogue =
+        compile_fun ocsh_name ["$heap"; "$size"] body env tag 0 []
+      in
+      let heap_start =
+        [ ILineComment "heap start";
+          IInstrComment
+            ( IMov (Sized (QWORD_PTR, Reg heap_reg), Reg (List.nth first_six_args_registers 0)),
+              "Load heap_reg with our argument, the heap pointer" );
+          IInstrComment
+            ( IAdd (Sized (QWORD_PTR, Reg heap_reg), Const 15L),
+              "Align it to the nearest multiple of 16" );
+          IMov (Reg scratch_reg, HexConst 0xFFFFFFFFFFFFFFF0L);
+          IInstrComment
+            ( IAnd (Sized (QWORD_PTR, Reg heap_reg), Reg scratch_reg),
+              "by adding no more than 15 to it" ) ]
+      in
+      let set_stack_bottom =
+        [IMov (Reg R12, Reg RDI)]
+        @ native_call (Label "?set_stack_bottom") [Reg RBP]
+        @ [IMov (Reg RDI, Reg R12)]
+      in
+      let main = prologue @ set_stack_bottom @ heap_start @ comp_main @ epilogue in
+      sprintf "%s%s%s\n" prelude (to_asm main) suffix
+;;
