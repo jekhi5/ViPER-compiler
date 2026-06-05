@@ -61,6 +61,8 @@ let pick_alloc_strategy (strat : alloc_strategy) =
   | Register -> register_allocation
 ;;
 
+let compile_prog = compile_prog;;
+
 let compile_to_string
     ?(no_builtins = false)
     (alloc_strat : alloc_strategy)

@@ -9,7 +9,6 @@ open Exprs
 open Pretty
 open Phases
 open Errors
-open Codegen
 
 let result_printer (e : (string, string) result) : string =
   match e with
