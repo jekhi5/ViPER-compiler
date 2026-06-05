@@ -10,6 +10,8 @@ open Env
 open Util
 open Free_vars
 open Liveness
+open Naive_alloc
+let naive_stack_allocation = naive_stack_allocation
 
 (* Consumes an AExpr tagged with sets of live variables *)
 let interfere (e : livevars aexpr) : grapht =

@@ -6,20 +6,15 @@ open Assembly
 open Errors
 open Graph
 
-(* Re-export extracted modules so that callers (runner.ml, test.ml) that
-   `open Compile` continue to see every name. Keep these in dependency order. *)
-include Util
-include Constants
-include Env
-include Well_formed
-include Desugar
-include Rename
-include Anf
-include Free_vars
-include Naive_alloc
-include Liveness
-include Register_alloc
-open Codegen (* to call `compile_prog` *)
+open Util
+open Constants
+open Env
+open Well_formed
+open Desugar
+open Rename
+open Anf
+open Register_alloc
+open Codegen
 
 (* This function can be used to take the native functions and produce DFuns whose bodies
    simply contain an EApp (with a Native call_type) to that native function.  Then,

@@ -7,6 +7,19 @@ open Phases
 open Graph
 open Assembly
 
+open Util
+open Constants
+open Env
+open Well_formed
+open Desugar
+open Rename
+open Anf
+open Free_vars
+open Naive_alloc
+open Liveness
+open Register_alloc
+open Codegen
+
 let t name program input expected =
   name >:: test_run ~args:[] ~std_input:input Naive program name expected
 ;;
