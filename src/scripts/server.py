@@ -18,7 +18,7 @@ from functools import partial
 # Configuration
 # ---------------------------------------------------------------------------
 
-DOCS_ROOT = os.path.join("_build", "default", "_doc", "_html")
+DOCS_ROOT = os.path.join("..", "docs", "_html")
 INDEX_FILE = "index.html"
 DEFAULT_PORT = 8080
 BIND_HOST = "0.0.0.0"  # Accept connections on all interfaces (needed for port forwarding)

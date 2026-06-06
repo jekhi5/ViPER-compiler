@@ -10,12 +10,21 @@ ifeq ($(UNAME), Darwin)
 endif
 endif
 
+DOCS_DIR=../docs
+
 PKGS=ounit2,extlib,unix,str
 BUILD=ocamlbuild -r -use-ocamlfind -cflag -annot -ocamlyacc 'ocamlyacc -v'
 
 main: *.ml parser.mly lexer.mll
 	$(BUILD) -package $(PKGS) main.native
 	mv main.native main
+
+.PHONY: doc
+doc: doc/*
+	dune build @doc
+	rm -rf $(DOCS_DIR)
+	mkdir $(DOCS_DIR)
+	cp -r _build/default/_doc/_html $(DOCS_DIR)
 
 test: *.ml parser.mly lexer.mll main
 	$(BUILD) -package $(PKGS) test.native

@@ -17,7 +17,7 @@ while getopts "hcdt" opt; do
     case $opt in
         t) TESTS=false ;;
         c) CLEAN=false ;;
-        d) dune build @doc; exit 0 ;;
+        d) make doc; exit 0 ;;
         h) usage; exit 0 ;;
         ?) usage; exit 1 ;;
     esac
@@ -27,6 +27,7 @@ done
 if dune build; then
     clear
     make clean
+    make doc
     if [ "$TESTS" = true ]; then
         ./gen_tests.py -v 1
         make test
@@ -35,8 +36,6 @@ if dune build; then
             make clean
         fi
     fi
-    
-    dune build @doc
     dune build @ocaml-index>/dev/null 2>&1
 
 else
