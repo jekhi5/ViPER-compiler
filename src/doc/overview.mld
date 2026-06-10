@@ -1,6 +1,8 @@
 {0 Language Overview}
 
-ViPER's syntax is simple. Indentation is not meaningful.
+ViPER is a dynamically-typed scripting language. Types are only determined at runtime.
+
+ViPER's syntax is simple. Indentation is not meaningful. Line comments are marked with [#].
 
 {1 Assignments}
 
@@ -58,7 +60,7 @@ All assignment in a single [let...in] are evaluated independently. This means th
     4
 ]}
 
-Multiple identifiers can be bound at once, based on the structure of a {{!data_types.tuples}tuple}. This is sometimes called {i tuple unpacking}. The left-hand-side of the assignment must match the structure of the tuple on the right-hand-side.
+Multiple identifiers can be bound at once, based on the structure of a {{!data_types.destructuring}tuple}. This is sometimes called {i tuple unpacking}. The left-hand-side of the assignment must match the structure of the tuple on the right-hand-side.
 
 {@viper[
     let t = (1, 2, 3) in
@@ -116,3 +118,76 @@ This is especially useful in the case of tuple assignments, where some elements 
 
 {1 Control Flow}
 
+Control flow in ViPER is rather limited. The two main forms are conditionals and sequencing. ViPER also supports {{!exception_handling}exception handling}, discussed in a different section.
+
+{2 Conditionals}
+
+ViPER's only conditional is the [if] form:
+
+{@viper[
+    if <test-expr>:
+        <then-expr>
+    else:
+        <else-expr>
+]}
+
+The [test-expr] is evaluated first. If it evaluates to [true], the [then-expr] is evaluated next. If not, the [else-expr] is evaluated. Note that the {i only} truthy value is [true], which is different from many other programming languages.
+
+{@viper[
+    if 5 > 3: 42 else: -1
+
+    42
+]}
+
+For multiple checks, nesting is required:
+
+{@viper[
+    let age = input() in
+    # Determine which discount code to apply
+    if age < 13:
+        1
+    else: 
+        if age >= 18 && age <= 22:
+            2
+        else:
+            if age > 65:
+                3
+            else:
+                0
+]}
+
+{2 Sequencing}
+
+Sometimes it is useful to evaluate multiple expressions in sequence without caring about the returned values. The [;] operator allows this.
+x`
+{@viper[
+    1 + 1; 2 + 2; 3 + 3
+
+    6
+]}
+
+This is most useful for functions with side effects, such as IO interactions and {{!data_types.mutation} tuple mutation}.
+
+{@viper[ 
+    print(1 + 1); print(2 + 2); print(3 + 3)
+
+    2
+    4
+    6
+    6
+]}
+
+Long sequences can be formalized with the [begin...end] form, but this is purely decorational:
+
+{@viper[ 
+    begin
+        print(1 + 1); 
+        print(2 + 2);
+        print(3 + 3)
+    end
+
+    2
+    4
+    6
+    6
+]}
