@@ -59,6 +59,8 @@ Tuples are mutable, which is different from languages like Python. The values at
     (1, 2, 3)
 ]}
 
+{2 Mutation}
+
 The [:=] operation additionally returns the {i new} value. 
 
 {@viper[
@@ -78,7 +80,9 @@ Tuple slots and accessors can be filled with any data type, including tuples:
 
 Note that Tuples can only be indexed by expressions that evaluate to numbers.
 
-Tuples can be {i destructured} on the left-hand-side of assignments. Tuple bindings can go "all the way down" in a nested tuple (i.e. one identifier for every slot), or they can "stop early" (an entire tuple may be bound to a single identifier).
+{2 Destructuring}
+
+Tuples can be {i destructured} (or "{i unpacked}") on the left-hand-side of assignments. Tuple bindings can go "all the way down" in a nested tuple (i.e. one identifier for every slot), or they can "stop early" (an entire tuple may be bound to a single identifier).
 
 {@viper[
     let t = (3, ((4, true), 5)) in
@@ -109,3 +113,95 @@ The [nil] value represents empty or missing data. Any attempts to operate on [ni
 {1 Functions}
 
 Functions are first-class in ViPER, which means that they are treated like all other data types.
+
+{2 Anonymous Functions}
+
+The most basic way to define a function is by binding a [lambda] expression to an identifier. A [lambda] defines an {i anonymous function}.
+
+let
+    is_adult = (lambda(age): age >= 18)
+in
+    is_adult(16)
+
+false
+
+
+Lambdas can have any number of arguments:
+
+let
+    constant = (lambda(): 42),
+    plus = (lambda(x, y): x + y),
+    update_if_negative = (lambda(tuple, index, new_value): if tuple[index] < 0: tuple[index] := new_value; true else: false)
+in
+    let t = (1, -2, 3) in
+    update_if_negative(t, 1, 10);
+    t
+
+(1, 10, 3
+
+Note that
+
+
+{3 Recursive Lambdas}
+
+The above method of defining functions does not allow for recursive functions. Use the [let rec] form to allow this:
+
+{@viper[
+    let rec
+        factorial = 
+        (lambda(n): 
+            if n == 0:
+                1
+            else:
+                n * factorial(n - 1))
+    in
+        factorial(5)
+    
+    120
+]}
+
+This also allows for {i mutual recursion} between two or more functions:
+
+{@viper[
+    let rec
+        is_odd = (lambda(n): n == 1 || is_even(n-1)),
+        is_even = (lambda(n): n == 0 || is_odd(n-1)),
+    in
+        print(is_odd(13)); is_odd(24)
+    
+    true
+    false
+]}
+
+{2 Function Definitions}
+
+For convenience, functions can be defined at the top of a program using the [def] form. Functions defined this way are recursive.
+
+{@viper[
+    def fib(n):
+        if n == 0:
+            0
+        else:
+            if n == 1:
+                1
+            else:
+                fib(n - 1) + fib(n - 2)
+    
+    fib(7)
+
+    13
+]}
+
+To define mutually recursive functions this way, use the [def...and] form:
+
+{@viper[
+    def is_odd(n):
+        n == 1 || is_even(n-1)
+    
+    and def is_even(n):
+        n == 0 || is_odd(n-1)
+    
+    is_even(24)
+
+    true
+]}
