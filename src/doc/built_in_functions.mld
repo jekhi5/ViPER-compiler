@@ -1,0 +1,58 @@
+{0 Built-in Functions}
+
+There are a handful of functions that make up the ViPER standard library. These are available in all programs. While they may be implemented in C, they behave identically to user-defined functions.
+
+{1 Type Predicates}
+
+These are unary functions that test if a value is a given type.
+
+{3:isnum isnum}
+{@viper[isnum(obj) : Any -> bool]}
+Checks if [obj] is a number.
+
+{3:isbool isbool}
+{@viper[isbool(obj) : Any -> bool]}
+Checks if [obj] is a boolean.
+
+{3:istuple istuple}
+{@viper[istuple(obj) : Any -> bool]}
+Checks if [obj] is a tuple.
+
+{1 Arithmetic}
+
+{3:add1 add1}
+{@viper[add1(n) : number -> number]}
+Computes [n + 1].
+
+{3:sub1 sub1}
+{@viper[sub1(n) : number -> number]}
+Computes [n - 1].
+
+{1 IO Operations}
+
+{3:print print}
+{@viper[print(obj) : Any -> Any]}
+Prints [obj] to stdout. Returns [obj].
+
+{3:input input}
+{@viper[input() : -> number]}
+Reads a numeric value from stdin.
+
+
+{1 Equality}
+
+{3:equal equal}
+{@viper[equal(obj1, obj2) : Any Any -> boolean]}
+Compares two objects for equality. Computes deep equality on tuples.
+
+{@viper[
+    let 
+        a = (1, (2, 3),
+        b = (1, (2, 3),
+        c = ((1, 2), 3)
+    in
+        (equal(a, b), equal(a, c))
+
+    (true, false) 
+]}
+
