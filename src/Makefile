@@ -10,7 +10,10 @@ ifeq ($(UNAME), Darwin)
 endif
 endif
 
-DOCS_DIR=../docs
+# Location for generated docs to be served.
+# The doc sources (.mld files) themselves live in src/doc/.
+DOCS_BUILD_DIR=_build/_doc/viper
+DOCS_OUTPUT_DIR=../docs
 
 PKGS=ounit2,extlib,unix,str
 BUILD=ocamlbuild -r -use-ocamlfind -cflag -annot -ocamlyacc 'ocamlyacc -v'
@@ -21,10 +24,10 @@ main: *.ml parser.mly lexer.mll
 
 .PHONY: doc
 doc: doc/*
-	dune build @doc
-	rm -rf $(DOCS_DIR)
-	mkdir $(DOCS_DIR)
-	cp -r _build/default/_doc/_html $(DOCS_DIR)
+	./scripts/build-docs.sh -v
+	rm -rf $(DOCS_OUTPUT_DIR)
+	mkdir $(DOCS_OUTPUT_DIR)
+	cp -r $(DOCS_BUILD_DIR)/_html $(DOCS_OUTPUT_DIR)
 
 test: *.ml parser.mly lexer.mll main
 	$(BUILD) -package $(PKGS) test.native

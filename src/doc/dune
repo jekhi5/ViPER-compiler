@@ -1,8 +1,0 @@
-(documentation
- (package viper)
- (mld_files index data_types))
-
-(env
- (profile1
-  (odoc 
-   (warnings fatal))))
