@@ -1,0 +1,110 @@
+{0 Exception Handling}
+
+ViPER includes a robust system of exceptions to allow for fault-tolerant programs.
+
+{1 Basic Exceptions}
+
+An {i exception} is something that is not supposed to happen. Consider a function that computes the factorial of a non-negative number [n]:
+
+{@viper[
+    # ASSUME: n is a non-negative integer.
+    def factorial(n):
+        if n == 0:
+            1
+        else:
+            n * factorial(n - 1).
+]}
+
+If a negative value is given for [n], the function will loop forever and overflow the stack, hence the prominent comment. What happens if we want to take user input at runtime? We don't want to just return an arbitrary value like [-1], since that's not the expected behavior of factorial. Instead, we can {i raise an exception}, to signal that something unexpected happened:
+
+{@viper[
+    def safe_factorial(n):
+        if n < 0:
+            raise(ValueException)
+        else:
+            if n == 0:
+                1
+            else:
+                n * factorial(n - 1).
+]}
+
+There are two parts to raising an exception. The exception itself, {{!exception_handling.valueexception}[ValueException]}, is a first-level object in ViPER, just like the other data types. It can be bound to identifiers, and passed as a function argument or return value. Alone, exceptions are inert. They only have unique semantics when paired with the [raise] keyword.
+
+When an exception (or an expression that evaluates to an exception) is {i raised}, execution immediately stops.
+
+{@viper[
+    safe_factorial(-4)
+
+    <ValueException>
+]}
+
+By default, this is very similar to a program crash. However, unlike a runtime error, raised exceptions can be {i caught and handled} within the program.
+
+{1 Try/Catch}
+
+The exception handling syntax form is [try...catch]:
+
+{@viper[
+    let n = input() in
+    try
+        safe_factorial(n)
+    catch ValueException as _ in 
+        n
+]}
+
+First, [try] expression is evaluated. If it succeeds normally, that value is returned. If an exception is raised, [try] evaluation immediately halts, and the [catch] expression is evaluated and returned. So, the above program first takes user input. If the user provided a non-negative integer, the factorial will be computed. If not, [safe_factorial] will raise a {{!exception_handling.valueexception}[ValueException]}. This exception will be caught, and ultimately the user's input will be returned. 
+
+Note that only the specified exception type will be caught:
+
+{@viper[
+    try
+        safe_factorial(-4)
+    catch RuntimeException as _ in
+        n
+
+    <ValueException>
+]}
+
+[try...catch] forms can also be nested. Raised exceptions propagate outward, starting with the most narrow scope. In the following example, note that the raised exception is not caught by the inner [try...catch] because it is the wrong type. It is instead caught by the {i outer} [try...catch], and therefore only the outermost [catch] is evaluated.
+
+{@viper[
+    def foo():
+        raise ValueException
+
+    try 
+        try 
+            foo() 
+        catch RuntimeException as e in
+            print(e); 5
+    catch ValueException as _ in 
+        15
+    
+    15
+]}
+
+If an exception is raised but not caught at all (i.e. it reaches the outermost scope of the program), ViPER will halt execution.
+
+One final point is that the [try...catch] form allows for the caught exception to be bound to an identifier. This identifier will be in scope if the [catch] expression is evaluated:
+
+{@viper[
+    let n = -4 in
+    try 
+        safe_factorial(n) 
+    catch ValueException as e in
+        print(e); n
+    
+    ValueException
+    -4
+]}
+
+This feature is not currently useful, since you need to know what type of exception you are catching in the first place. However, future language improvements are planned to add extra information to exceptions, such as a customizable error message. This binding will allow the user to capture that information. 
+
+{1 List of Exceptions}
+
+ViPER defines the following exception types. Each is provided with its idiomatic meaning. These meanings are not inherent, as all exceptions are functionally identical.
+
+{3:valueexception [ValueException]}
+An invalid function argument was provided.
+
+{3:RuntimeException [RuntimeException]}
+An unforseen and otherwise uncategorized issue happened during evaluation.
