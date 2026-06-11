@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>data_types (viper.data_types)</title><meta charset="utf-8"/><link rel="stylesheet" href="../odoc.css"/><meta name="generator" content="odoc 3.2.1"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><script src="../highlight.pack.js"></script><script>hljs.initHighlightingOnLoad();</script></head><body class="odoc"><nav class="odoc-nav"><a href="index.html">Up</a> – <a href="index.html">ViPER Documentation</a> &#x00BB; Data Types</nav><header class="odoc-preamble"><h1 id="data-types"><a href="#data-types" class="anchor"></a>Data Types</h1><p>ViPER only has a handful of data types, but these are powerful.</p></header><div class="odoc-tocs"><nav class="odoc-toc odoc-local-toc"><ul><li><a href="#numbers">Numbers</a></li><li><a href="#booleans">Booleans</a></li><li><a href="#tuples">Tuples</a><ul><li><a href="#mutation">Mutation</a></li><li><a href="#destructuring">Destructuring</a></li></ul></li><li><a href="#nil">Nil</a></li><li><a href="#functions">Functions</a><ul><li><a href="#anonymous-functions">Anonymous Functions</a><ul><li><a href="#recursive-lambdas">Recursive Lambdas</a></li></ul></li><li><a href="#function-definitions">Function Definitions</a></li></ul></li></ul></nav><nav class="odoc-toc odoc-global-toc"><ul><li><a href="index.html">ViPER Documentation</a><ul><li><a href="overview.html">Language Overview</a></li><li><a href="#" class="current_unit">Data Types</a></li><li><a href="exception_handling.html">Exception Handling</a></li><li><a href="built_in_functions.html">Built-in Functions</a></li><li><a href="testing.html">Testing</a></li></ul></li><li>index</li></ul></nav></div><div class="odoc-content"><h2 id="numbers"><a href="#numbers" class="anchor"></a>Numbers</h2><p>63-bit integers are the only number type. Operations that overflow or underflow will raise an exception.</p><p>There are three match operations: addition, subtraction, and multiplication. Operations are associative and commutative as expected, with proper ordering.</p><pre class="language-viper"><code>    2 * (3 - 5) + 10
+
+    14</code></pre><p>Numbers can be compared with <code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>, and <code>==</code>.</p><pre class="language-viper"><code>    2 &gt; 3
+
+    false</code></pre><h2 id="booleans"><a href="#booleans" class="anchor"></a>Booleans</h2><p>There are two boolean values: <code>true</code> and <code>false</code>. The boolean operators are <code>&amp;&amp;</code> (and), <code>||</code> (or), and <code>!</code> (not). These operators are associative and commutative as expected.</p><pre class="language-viper"><code>    true &amp;&amp; (false || !true)
+
+    false</code></pre><h2 id="tuples"><a href="#tuples" class="anchor"></a>Tuples</h2><p>Tuples are groups of values of a set length. Fields are accessed by providing a <code>0</code>-based index:</p><pre class="language-viper"><code>    let 
+        unit = (),
+        one = (1,),
+        three = (3, 4, 5)
+    in
+        three[0]
+
+    3</code></pre><p>Tuples are mutable, which is different from languages like Python. The values at a given index can be updated using the <code>:=</code> operator. The size of the tuple, however, cannot be altered.</p><pre class="language-viper"><code>    let three  = (0, 0, 0),
+    let three1 = three[0] := 1 in
+    let three2 = three[1] := 2 in
+    three[2] := 3
+    three
+
+    (1, 2, 3)</code></pre><h3 id="mutation"><a href="#mutation" class="anchor"></a>Mutation</h3><p>The <code>:=</code> operation additionally returns the <i>new</i> value.</p><pre class="language-viper"><code>    let pair = (5, 6) in
+    pair[1] := three[1] := 10
+    # Now three is (1, 10, 3) and pair is (5, 10)</code></pre><p>Tuple slots and accessors can be filled with any data type, including tuples:</p><pre class="language-viper"><code>    let tup = ((1, 2, 3), 4) in
+    tup[1][2] := 5;
+
+    (1, 2, 3, 4)[0 + 1] := isbool(5)</code></pre><p>Note that Tuples can only be indexed by expressions that evaluate to numbers.</p><h3 id="destructuring"><a href="#destructuring" class="anchor"></a>Destructuring</h3><p>Tuples can be <i>destructured</i> (or &quot;<i>unpacked</i>&quot;) on the left-hand-side of assignments. Tuple bindings can go &quot;all the way down&quot; in a nested tuple (i.e. one identifier for every slot), or they can &quot;stop early&quot; (an entire tuple may be bound to a single identifier).</p><pre class="language-viper"><code>    let t = (3, ((4, true), 5)) in
+    let (x, (y, z)) = t
+    # x == 3, y == (4, true), z == 5
+    x + y[0] + z
+
+    9</code></pre><h2 id="nil"><a href="#nil" class="anchor"></a>Nil</h2><p>The <code>nil</code> value represents empty or missing data. Any attempts to operate on <code>nil</code> will result in an error.</p><p><code>nil</code> is useful in certain cases, such as serving as a placeholder for a cyclic tuple.</p><pre class="language-viper"><code>    let rec
+        t = (1, 2, 3, nil),
+        _ = t[3] := t
+    in
+        # t == (1, 2, 3, t)
+        t
+    
+    &lt;cyclic tuple&gt;</code></pre><h2 id="functions"><a href="#functions" class="anchor"></a>Functions</h2><p>Functions are first-class in ViPER, which means that they are treated like all other data types.</p><h3 id="anonymous-functions"><a href="#anonymous-functions" class="anchor"></a>Anonymous Functions</h3><p>The most basic way to define a function is by binding a <code>lambda</code> expression to an identifier. A <code>lambda</code> defines an <i>anonymous function</i>.</p><p>let is_adult = (lambda(age): age &gt;= 18) in is_adult(16)</p><p>false</p><p>Lambdas can have any number of arguments:</p><p>let constant = (lambda(): 42), plus = (lambda(x, y): x + y), update_if_negative = (lambda(tuple, index, new_value): if tuple<code>index</code> &lt; 0: tuple<code>index</code> := new_value; true else: false) in let t = (1, -2, 3) in update_if_negative(t, 1, 10); t</p><p>(1, 10, 3</p><p>Note that</p><h4 id="recursive-lambdas"><a href="#recursive-lambdas" class="anchor"></a>Recursive Lambdas</h4><p>The above method of defining functions does not allow for recursive functions. Use the <code>let rec</code> form to allow this:</p><pre class="language-viper"><code>    let rec
+        factorial = 
+        (lambda(n): 
+            if n == 0:
+                1
+            else:
+                n * factorial(n - 1))
+    in
+        factorial(5)
+    
+    120</code></pre><p>This also allows for <i>mutual recursion</i> between two or more functions:</p><pre class="language-viper"><code>    let rec
+        is_odd = (lambda(n): n == 1 || is_even(n-1)),
+        is_even = (lambda(n): n == 0 || is_odd(n-1)),
+    in
+        print(is_odd(13)); is_odd(24)
+    
+    true
+    false</code></pre><h3 id="function-definitions"><a href="#function-definitions" class="anchor"></a>Function Definitions</h3><p>For convenience, functions can be defined at the top of a program using the <code>def</code> form. Functions defined this way are recursive.</p><pre class="language-viper"><code>    def fib(n):
+        if n == 0:
+            0
+        else:
+            if n == 1:
+                1
+            else:
+                fib(n - 1) + fib(n - 2)
+    
+    fib(7)
+
+    13</code></pre><p>To define mutually recursive functions this way, use the <code>def...and</code> form:</p><pre class="language-viper"><code>    def is_odd(n):
+        n == 1 || is_even(n-1)
+    
+    and def is_even(n):
+        n == 0 || is_odd(n-1)
+    
+    is_even(24)
+
+    true</code></pre></div></body></html>
