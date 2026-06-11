@@ -18,8 +18,8 @@ from functools import partial
 # Configuration
 # ---------------------------------------------------------------------------
 
-DOCS_ROOT = os.path.join("..", "docs", "_html", "viper")
-INDEX_FILE = "index.html"
+DOCS_ROOT = os.path.join("..", "docs", "_html")
+INDEX_FILE = "viper/index.html"
 DEFAULT_PORT = 8080
 BIND_HOST = "0.0.0.0"  # Accept connections on all interfaces (needed for port forwarding)
 
