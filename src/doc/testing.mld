@@ -1,0 +1,97 @@
+{0 Testing}
+
+ViPER includes functionality for in-language unit tests, inspired by {{:https://pyret.org/docs/latest/testing.html}Pyret}.
+
+{1 Core Concepts}
+
+Tests are specified in one or more [check] blocks at the end of the program. A [check] block contains any number of individual tests separated by commas. Each individual test is comprised of three components, in order:
+
++ The test case
++ A test operator
++ The expected result
+
+In the follwing example, [4 * 10 + 2] is the test case, [spits] is the test operator (it checks for equality, more on that later), and [42] is the expected result.
+
+{@viper[
+    check:
+        4 * 10 + 2 spits 42        
+    end
+]}
+
+Note that there is no restriction on the either the the actual or expected expressions. 
+
+{@viper[
+    check:
+        add1(sub1(0)) spits sub1(add1(0)),
+        42 spites 4 * 10 + 2      
+    end
+]}
+
+Tests are resilient to uncaught exceptions. However, the program will fail during testing if an error occurs (e.g. running out of memory), or it gets stuck in an infinite loop.
+
+Importantly, tests are executed {i after} function definitions are processed, but {i before} the main body of the program. This means that functions can be tested, but any identifiers assigned in the program body will be unavailable. 
+
+{1 Test Operators}
+
+ViPER currently supports 4 test operators, and their negations.
+
+{3:bites [bites]}
+Tests for shallow equality. The given values must be exactly equivalent, i.e. they refer to the same value on the heap. 
+
+{3:spits [spits]}
+Tests for deep equality. This is different from {{!testing.bites}[bites]} as it captures the {i content} of heap-allocated variables like tuples, not the {i identity}.
+
+{@viper[
+    check:
+        (1, 2, 3) spits (1, 2, 3), # Pass
+        (1, 2, 3) bites (1, 2, 3)  # Fail
+    end
+]}
+
+{3:broods [broods]}
+Tests that a given predicate is true for a value.
+
+{@viper[
+    check:
+        3 broods isnumber, # Pass
+        3 broods isbool    # Fail
+    end
+]}
+
+{3:testneg [!]}
+[!] is a special operator that negates another operator.
+
+{@viper[
+    check:
+        (1, 2, 3) ! spits (1, 2, 3), # Fail
+        (1, 2, 3) ! bites (1, 2, 3)  # Pass
+        3 ! broods  isnumber,        # Fail 
+        3 ! broods isbool            # Pass
+    end
+]}
+
+{3:sheds [sheds]}
+Tests that an expression is raised an not caught.
+
+{@viper[
+    def faulty_code():
+        raise ValueException
+
+    check:
+        faulty_code() sheds ValueException  # Pass
+    end
+]}
+
+[sheds] is unique for two reasons:
++ The expected result must be a literal exception type (not an expression which evaluates to one)
++ It cannot be negated.
+
+If you want to test that an expression is evaluated without raising any exceptions, the supported approach is to use {{!testing.broods}[broods]} to check against a predicate that always returns [true]:
+
+{@viper[
+    def safe_code():
+        ...
+    
+    check:
+        safe_code broods (lambda(_): true)
+]}
