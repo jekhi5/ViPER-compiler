@@ -6,42 +6,42 @@ There are a handful of functions that make up the ViPER standard library. These 
 
 These are unary functions that test if a value is a given type.
 
-{3:isnum isnum}
+{3:isnum [isnum]}
 {@viper[isnum(obj) : Any -> bool]}
 Checks if [obj] is a number.
 
-{3:isbool isbool}
+{3:isbool [isbool]}
 {@viper[isbool(obj) : Any -> bool]}
 Checks if [obj] is a boolean.
 
-{3:istuple istuple}
+{3:istuple [istuple]}
 {@viper[istuple(obj) : Any -> bool]}
 Checks if [obj] is a tuple.
 
 {1 Arithmetic}
 
-{3:add1 add1}
+{3:add1 [add1]}
 {@viper[add1(n) : number -> number]}
 Computes [n + 1].
 
-{3:sub1 sub1}
+{3:sub1 [sub1]}
 {@viper[sub1(n) : number -> number]}
 Computes [n - 1].
 
 {1 IO Operations}
 
-{3:print print}
+{3:print [print]}
 {@viper[print(obj) : Any -> Any]}
 Prints [obj] to stdout. Returns [obj].
 
-{3:input input}
+{3:input [input]}
 {@viper[input() : -> number]}
 Reads a numeric value from stdin.
 
 
 {1 Equality}
 
-{3:equal equal}
+{3:equal [equal]}
 {@viper[equal(obj1, obj2) : Any Any -> boolean]}
 Compares two objects for equality. Computes deep equality on tuples.
 
