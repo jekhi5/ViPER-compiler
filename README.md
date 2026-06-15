@@ -3,10 +3,7 @@
 ## Verifying Programs Execute Right
 
 Welcome to our compiler! We've worked very hard to make your experience with our language a positive
-one. ViPER is a functional language. The most current version of our language exists in the [`src/`](src/) directory
-This project is the culmination of several iterations of this compiler, each building on the one prior.
-You can find each iteration alphabetically sorted in the [archive/](archive/) directory. The
-[README](archive/README.md) there further explains this.
+one. ViPER is a functional language and the most current version of our language exists in the [`src/`](src/) directory.
 
 ### Running your own programs
 

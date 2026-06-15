@@ -1,1 +1,0 @@
-try raise(RuntimeException) catch RuntimeException as e in raise(e)

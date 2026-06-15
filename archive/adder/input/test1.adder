@@ -1,4 +1,0 @@
-(let ((x 1)
-      (y (add1 x)))
-  (let ((z (sub1 y)))
-    (add1 (sub1 y))))

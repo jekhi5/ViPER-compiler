@@ -1,7 +1,0 @@
-let 
-  x = 5, y = 10
-in
-  let rec 
-    sum = (lambda(a, b): a + b) 
-  in 
-    sum(x, y)

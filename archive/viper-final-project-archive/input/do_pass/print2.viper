@@ -1,1 +1,0 @@
-let a = 5, b = 10 in print(a); print(b)
