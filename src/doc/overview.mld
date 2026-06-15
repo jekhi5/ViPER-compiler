@@ -159,7 +159,7 @@ For multiple checks, nesting is required:
 {2 Sequencing}
 
 Sometimes it is useful to evaluate multiple expressions in sequence without caring about the returned values. The [;] operator allows this.
-x`
+
 {@viper[
     1 + 1; 2 + 2; 3 + 3
 

@@ -47,8 +47,8 @@ Compares two objects for equality. Computes deep equality on tuples.
 
 {@viper[
     let 
-        a = (1, (2, 3),
-        b = (1, (2, 3),
+        a = (1, (2, 3)),
+        b = (1, (2, 3)),
         c = ((1, 2), 3)
     in
         (equal(a, b), equal(a, c))

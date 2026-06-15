@@ -11,7 +11,7 @@ There are three match operations: addition, subtraction, and multiplication. Ope
 {@viper[
     2 * (3 - 5) + 10
 
-    14
+    6
 ]}
 
 Numbers can be compared with [<], [>], [<=], [>=], and [==].
@@ -47,19 +47,21 @@ Tuples are groups of values of a set length. Fields are accessed by providing a 
     3
 ]}
 
-Tuples are mutable, which is different from languages like Python. The values at a given index can be updated using the [:=] operator. The size of the tuple, however, cannot be altered.
+{2 Mutation}
+
+Tuples are mutable, which is different from languages like Python. The values at a given index can be updated using the [:=] operator. The size of the tuple, however, cannot be altered. Note that Tuples can only be indexed by expressions that evaluate to numbers. Trying to access or mutate a negative index, or an index outside the tuple, will cause an error.
+
 
 {@viper[
     let three  = (0, 0, 0),
-    let three1 = three[0] := 1 in
-    let three2 = three[1] := 2 in
-    three[2] := 3
+    three[0] := 1;
+    three[1] := 2;
+    three[2] := 3;
     three
 
     (1, 2, 3)
 ]}
 
-{2 Mutation}
 
 The [:=] operation additionally returns the {i new} value. 
 
@@ -73,12 +75,19 @@ Tuple slots and accessors can be filled with any data type, including tuples:
 
 {@viper[
     let tup = ((1, 2, 3), 4) in
-    tup[1][2] := 5;
+    tup[0][2] := 5;
+    tup
 
-    (1, 2, 3, 4)[0 + 1] := isbool(5)
+    ((1, 2, 5), 4)
 ]}
 
-Note that Tuples can only be indexed by expressions that evaluate to numbers.
+Literal tuples can also be accessed and mutated.
+
+{@viper[
+    (1, 2, 3, 4)[0 + 1] := isbool(5)
+
+    false
+]}
 
 {2 Destructuring}
 
@@ -86,7 +95,7 @@ Tuples can be {i destructured} (or "{i unpacked}") on the left-hand-side of assi
 
 {@viper[
     let t = (3, ((4, true), 5)) in
-    let (x, (y, z)) = t
+    let (x, (y, z)) = t in
     # x == 3, y == (4, true), z == 5
     x + y[0] + z
 
@@ -118,29 +127,29 @@ Functions are first-class in ViPER, which means that they are treated like all o
 
 The most basic way to define a function is by binding a [lambda] expression to an identifier. A [lambda] defines an {i anonymous function}.
 
-let
-    is_adult = (lambda(age): age >= 18)
-in
-    is_adult(16)
+{@viper[
+    let
+        is_adult = (lambda(age): age >= 18)
+    in
+        is_adult(16)
 
-false
-
+    false
+]}
 
 Lambdas can have any number of arguments:
 
-let
-    constant = (lambda(): 42),
-    plus = (lambda(x, y): x + y),
-    update_if_negative = (lambda(tuple, index, new_value): if tuple[index] < 0: tuple[index] := new_value; true else: false)
-in
-    let t = (1, -2, 3) in
-    update_if_negative(t, 1, 10);
-    t
+{@viper[
+    let
+        constant = (lambda(): 42),
+        plus = (lambda(x, y): x + y),
+        update_if_negative = (lambda(tuple, index, new_value): if tuple[index] < 0: tuple[index] := new_value; true else: false)
+    in
+        let t = (1, -2, 3) in
+        update_if_negative(t, 1, 10);
+        t
 
-(1, 10, 3
-
-Note that
-
+    (1, 10, 3)
+]}
 
 {3 Recursive Lambdas}
 

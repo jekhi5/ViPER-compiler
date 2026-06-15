@@ -23,7 +23,7 @@ Note that there is no restriction on the either the the actual or expected expre
 {@viper[
     check:
         add1(sub1(0)) spits sub1(add1(0)),
-        42 spites 4 * 10 + 2      
+        42 spits 4 * 10 + 2      
     end
 ]}
 
@@ -71,7 +71,7 @@ Tests that a given predicate is true for a value.
 ]}
 
 {3:sheds [sheds]}
-Tests that an expression is raised an not caught.
+Tests that an expression is raised and not caught.
 
 {@viper[
     def faulty_code():
