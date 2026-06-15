@@ -3,6 +3,18 @@
  (modules
   assembly
   compile
+  util
+  constants
+  env
+  well_formed
+  desugar
+  rename
+  anf
+  free_vars
+  naive_alloc
+  liveness
+  register_alloc
+  codegen
   errors
   exprs
   phases
