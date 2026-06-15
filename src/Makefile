@@ -10,12 +10,24 @@ ifeq ($(UNAME), Darwin)
 endif
 endif
 
+# Location for generated docs to be served.
+# The doc sources (.mld files) themselves live in src/doc/.
+DOCS_BUILD_DIR=_build/_doc/viper
+DOCS_OUTPUT_DIR=../docs
+
 PKGS=ounit2,extlib,unix,str
 BUILD=ocamlbuild -r -use-ocamlfind -cflag -annot -ocamlyacc 'ocamlyacc -v'
 
 main: *.ml parser.mly lexer.mll
 	$(BUILD) -package $(PKGS) main.native
 	mv main.native main
+
+.PHONY: doc
+doc: doc/*
+	./scripts/build-docs.sh -v
+	rm -rf $(DOCS_OUTPUT_DIR)
+	mkdir $(DOCS_OUTPUT_DIR)
+	cp -r $(DOCS_BUILD_DIR)/_html $(DOCS_OUTPUT_DIR)
 
 test: *.ml parser.mly lexer.mll main
 	$(BUILD) -package $(PKGS) test.native

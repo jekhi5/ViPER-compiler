@@ -1,13 +1,44 @@
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") [-tcdh]
+
+Options:
+  -t    Don't run \`make test\`.
+  -c    Don't run \`make clean\` after testing.
+  -c    Only build the documentation.
+  -h    Show this help message.
+EOF
+}
+
+TESTS=true
+CLEAN=true
+
+while getopts "hcdt" opt; do
+    case $opt in
+        t) TESTS=false ;;
+        c) CLEAN=false ;;
+        d) make doc; exit 0 ;;
+        h) usage; exit 0 ;;
+        ?) usage; exit 1 ;;
+    esac
+done
+
+
 if dune build; then
+    clear
     make clean
-    ./gen_tests.py -v 1
-    make test
-    ./test
-    if [ $# -gt 0 ]; then
-        make clean
+    make doc
+    if [ "$TESTS" = true ]; then
+        ./gen_tests.py -v 1
+        make test
+        ./test
+        if [ "$CLEAN" = true ]; then
+            make clean
+        fi
     fi
     dune build @ocaml-index>/dev/null 2>&1
 
 else
     echo 'Build failure. Aborting...'
+    exit 1
 fi

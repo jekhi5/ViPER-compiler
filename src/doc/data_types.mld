@@ -1,0 +1,216 @@
+{0 Data Types}
+
+ViPER only has a handful of data types, but these are powerful.
+
+{1 Numbers}
+
+63-bit integers are the only number type. Operations that overflow or underflow will raise an exception.
+
+There are three match operations: addition, subtraction, and multiplication. Operations are associative and commutative as expected, with proper ordering.
+
+{@viper[
+    2 * (3 - 5) + 10
+
+    6
+]}
+
+Numbers can be compared with [<], [>], [<=], [>=], and [==].
+
+{@viper[
+    2 > 3
+
+    false
+]}
+
+{1 Booleans}
+
+There are two boolean values: [true] and [false]. The boolean operators are [&&] (and), [||] (or), and [!] (not). These operators are associative and commutative as expected.
+
+{@viper[
+    true && (false || !true)
+
+    false
+]}
+
+{1 Tuples}
+
+Tuples are groups of values of a set length. Fields are accessed by providing a [0]-based index:
+
+{@viper[
+    let 
+        unit = (),
+        one = (1,),
+        three = (3, 4, 5)
+    in
+        three[0]
+
+    3
+]}
+
+{2 Mutation}
+
+Tuples are mutable, which is different from languages like Python. The values at a given index can be updated using the [:=] operator. The size of the tuple, however, cannot be altered. Note that Tuples can only be indexed by expressions that evaluate to numbers. Trying to access or mutate a negative index, or an index outside the tuple, will cause an error.
+
+
+{@viper[
+    let three  = (0, 0, 0),
+    three[0] := 1;
+    three[1] := 2;
+    three[2] := 3;
+    three
+
+    (1, 2, 3)
+]}
+
+
+The [:=] operation additionally returns the {i new} value. 
+
+{@viper[
+    let pair = (5, 6) in
+    pair[1] := three[1] := 10
+    # Now three is (1, 10, 3) and pair is (5, 10)
+]}
+
+Tuple slots and accessors can be filled with any data type, including tuples:
+
+{@viper[
+    let tup = ((1, 2, 3), 4) in
+    tup[0][2] := 5;
+    tup
+
+    ((1, 2, 5), 4)
+]}
+
+Literal tuples can also be accessed and mutated.
+
+{@viper[
+    (1, 2, 3, 4)[0 + 1] := isbool(5)
+
+    false
+]}
+
+{2 Destructuring}
+
+Tuples can be {i destructured} (or "{i unpacked}") on the left-hand-side of assignments. Tuple bindings can go "all the way down" in a nested tuple (i.e. one identifier for every slot), or they can "stop early" (an entire tuple may be bound to a single identifier).
+
+{@viper[
+    let t = (3, ((4, true), 5)) in
+    let (x, (y, z)) = t in
+    # x == 3, y == (4, true), z == 5
+    x + y[0] + z
+
+    9
+]}
+
+{1 Nil}
+
+The [nil] value represents empty or missing data. Any attempts to operate on [nil] will result in an error.
+
+[nil] is useful in certain cases, such as serving as a placeholder for a cyclic tuple.
+
+{@viper[
+    let rec
+        t = (1, 2, 3, nil),
+        _ = t[3] := t
+    in
+        # t == (1, 2, 3, t)
+        t
+    
+    <cyclic tuple>
+]}
+
+{1 Functions}
+
+Functions are first-class in ViPER, which means that they are treated like all other data types.
+
+{2 Anonymous Functions}
+
+The most basic way to define a function is by binding a [lambda] expression to an identifier. A [lambda] defines an {i anonymous function}.
+
+{@viper[
+    let
+        is_adult = (lambda(age): age >= 18)
+    in
+        is_adult(16)
+
+    false
+]}
+
+Lambdas can have any number of arguments:
+
+{@viper[
+    let
+        constant = (lambda(): 42),
+        plus = (lambda(x, y): x + y),
+        update_if_negative = (lambda(tuple, index, new_value): if tuple[index] < 0: tuple[index] := new_value; true else: false)
+    in
+        let t = (1, -2, 3) in
+        update_if_negative(t, 1, 10);
+        t
+
+    (1, 10, 3)
+]}
+
+{3 Recursive Lambdas}
+
+The above method of defining functions does not allow for recursive functions. Use the [let rec] form to allow this:
+
+{@viper[
+    let rec
+        factorial = 
+        (lambda(n): 
+            if n == 0:
+                1
+            else:
+                n * factorial(n - 1))
+    in
+        factorial(5)
+    
+    120
+]}
+
+This also allows for {i mutual recursion} between two or more functions:
+
+{@viper[
+    let rec
+        is_odd = (lambda(n): n == 1 || is_even(n-1)),
+        is_even = (lambda(n): n == 0 || is_odd(n-1)),
+    in
+        print(is_odd(13)); is_odd(24)
+    
+    true
+    false
+]}
+
+{2 Function Definitions}
+
+For convenience, functions can be defined at the top of a program using the [def] form. Functions defined this way are recursive.
+
+{@viper[
+    def fib(n):
+        if n == 0:
+            0
+        else:
+            if n == 1:
+                1
+            else:
+                fib(n - 1) + fib(n - 2)
+    
+    fib(7)
+
+    13
+]}
+
+To define mutually recursive functions this way, use the [def...and] form:
+
+{@viper[
+    def is_odd(n):
+        n == 1 || is_even(n-1)
+    
+    and def is_even(n):
+        n == 0 || is_odd(n-1)
+    
+    is_even(24)
+
+    true
+]}
