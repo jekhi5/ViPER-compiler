@@ -1,7 +1,0 @@
-def our_code_starts_here():
-    print(true)
-
-let 
-    a = our_code_starts_here()
-in
-    a || false
