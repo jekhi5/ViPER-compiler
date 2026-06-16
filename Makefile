@@ -1,4 +1,5 @@
 SNAKE_EXT=viper
+BUILD=_build
 UNAME := $(shell uname)
 ifeq ($(UNAME), Linux)
   NASM_FORMAT=elf64
@@ -13,13 +14,13 @@ endif
 # Location for generated docs to be served.
 # The doc sources (.mld files) themselves live in src/doc/.
 DOCS_BUILD_DIR=_build/_doc/viper
-DOCS_OUTPUT_DIR=../docs
+DOCS_OUTPUT_DIR=docs
 
 PKGS=ounit2,extlib,unix,str
 BUILD=ocamlbuild -r -use-ocamlfind -cflag -annot -ocamlyacc 'ocamlyacc -v'
 
-main: *.ml parser.mly lexer.mll
-	$(BUILD) -package $(PKGS) main.native
+main: src/*.ml src/parser.mly src/lexer.mll
+	$(BUILD) -I src -package $(PKGS) main.native
 	mv main.native main
 
 .PHONY: doc
@@ -29,61 +30,61 @@ doc: doc/*
 	mkdir $(DOCS_OUTPUT_DIR)
 	cp -r $(DOCS_BUILD_DIR)/_html $(DOCS_OUTPUT_DIR)
 
-test: *.ml parser.mly lexer.mll main
-	$(BUILD) -package $(PKGS) test.native
-	mv test.native test
+test: src/*.ml src/parser.mly src/lexer.mll main $(ALL_RUNS)
+	$(BUILD) -I src -package $(PKGS) test/test.native
+	mv test.native tester
 
-output/%.run: output/%.o main.c gc.c
-	clang $(CLANG_FLAGS) -o $@ gc.c main.c $<
+test/output/%.run: test/output/%.o src/main.c src/gc.c
+	clang $(CLANG_FLAGS) -o $@ src/gc.c src/main.c $<
 
-output/%.o: output/%.s
+test/output/%.o: test/output/%.s
 	nasm -f $(NASM_FORMAT) -o $@ $<
 
-.PRECIOUS: output/%.s
-output/%.s: input/%.$(SNAKE_EXT) main
+.PRECIOUS: test/output/%.s
+test/output/%.s: test/input/%.$(SNAKE_EXT) main
 	./main $< > $@
 
-output/do_pass/%.run: output/do_pass/%.o main.c gc.c
-	clang $(CLANG_FLAGS) -o $@ gc.c main.c $<
+test/output/do_pass/%.run: test/output/do_pass/%.o src/main.c src/gc.c
+	clang $(CLANG_FLAGS) -o $@ src/gc.c src/main.c $<
 
-output/do_pass/%.o: output/do_pass/%.s
+test/output/do_pass/%.o: test/output/do_pass/%.s
 	nasm -f $(NASM_FORMAT) -o $@ $<
 
-.PRECIOUS: output/do_pass/%.s
-output/do_pass/%.s: input/do_pass/%.$(SNAKE_EXT) main
-	./main $< > $@
-
-
-output/dont_pass/%.run: output/dont_pass/%.o main.c gc.c
-	clang -g $(CLANG_FLAGS) -o $@ gc.c main.c $<
-
-output/dont_pass/%.o: output/dont_pass/%.s
-	nasm -f $(NASM_FORMAT) -o $@ $<
-
-.PRECIOUS: output/dont_pass/%.s
-output/dont_pass/%.s: input/dont_pass/%.$(SNAKE_EXT) main
+.PRECIOUS: test/output/do_pass/%.s
+test/output/do_pass/%.s: test/input/do_pass/%.$(SNAKE_EXT) main
 	./main $< > $@
 
 
-output/do_err/%.run: output/do_err/%.o main.c gc.c
-	clang $(CLANG_FLAGS) -o $@ gc.c main.c $<
+test/output/dont_pass/%.run: test/output/dont_pass/%.o src/main.c src/gc.c
+	clang -g $(CLANG_FLAGS) -o $@ src/gc.c src/main.c $<
 
-output/do_err/%.o: output/do_err/%.s
+test/output/dont_pass/%.o: test/output/dont_pass/%.s
 	nasm -f $(NASM_FORMAT) -o $@ $<
 
-.PRECIOUS: output/do_err/%.s
-output/do_err/%.s: input/do_err/%.$(SNAKE_EXT) main
+.PRECIOUS: test/output/dont_pass/%.s
+test/output/dont_pass/%.s: test/input/dont_pass/%.$(SNAKE_EXT) main
 	./main $< > $@
 
 
-output/dont_err/%.run: output/dont_err/%.o main.c gc.c
-	clang -g $(CLANG_FLAGS) -o $@ gc.c main.c $<
+test/output/do_err/%.run: test/output/do_err/%.o src/main.c src/gc.c
+	clang $(CLANG_FLAGS) -o $@ src/gc.c src/main.c $<
 
-output/dont_err/%.o: output/dont_err/%.s
+test/output/do_err/%.o: test/output/do_err/%.s
 	nasm -f $(NASM_FORMAT) -o $@ $<
 
-.PRECIOUS: output/dont_err/%.s
-output/dont_err/%.s: input/dont_err/%.$(SNAKE_EXT) main
+.PRECIOUS: test/output/do_err/%.s
+test/output/do_err/%.s: test/input/do_err/%.$(SNAKE_EXT) main
+	./main $< > $@
+
+
+test/output/dont_err/%.run: test/output/dont_err/%.o src/main.c src/gc.c
+	clang -g $(CLANG_FLAGS) -o $@ src/gc.c src/main.c $<
+
+test/output/dont_err/%.o: test/output/dont_err/%.s
+	nasm -f $(NASM_FORMAT) -o $@ $<
+
+.PRECIOUS: test/output/dont_err/%.s
+test/output/dont_err/%.s: test/input/dont_err/%.$(SNAKE_EXT) main
 	./main $< > $@
 
 gctest.o: gctest.c gc.h
@@ -100,7 +101,7 @@ gctest.o: gctest.c gc.h
 
 
 clean:
-	rm -rf output/*.o output/*.s output/*.dSYM output/*.run *.log *.o
-	rm -rf output/*/*.o output/*/*.s output/*/*.dSYM output/*/*.run
+	rm -rf test/output/*.o test/output/*.s test/output/*.dSYM test/output/*.run test/*.log test/*.o
+	rm -rf test/output/*/*.o test/output/*/*.s test/output/*/*.dSYM test/output/*/*.run
 	rm -rf _build/
-	rm -f main test
+	rm -f main tester
