@@ -24,7 +24,7 @@ test1.out:
 """
 
 
-def walk_dir(delimiter=r"@", dirname: str = ".", filetype=".viper", verbose=0) -> None:
+def walk_dir(delimiter=r"@", dirname: str = "test", filetype=".viper", verbose=0) -> None:
     if verbose > 0:
         print("Generating test files...")
 
