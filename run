@@ -25,13 +25,12 @@ done
 
 
 if dune build; then
-    clear
     make clean
     make doc
     if [ "$TESTS" = true ]; then
-        ./gen_tests.py -v 1
+        ./scripts/gen_tests.py -v 1
         make test
-        ./test
+        ./tester
         if [ "$CLEAN" = true ]; then
             make clean
         fi
