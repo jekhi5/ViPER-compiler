@@ -13,10 +13,12 @@ Coming soon!
 
 ### Build from source
 
-Install the source code:
+Install the source code and dependencies:
 
 ```bash
 git clone git@github.com:jekhi5/ViPER-compiler.git
+cd ViPER-compiler
+opam install .
 ```
 
 The main interface is `scripts/run`, which wraps around the rules in the Makefile.

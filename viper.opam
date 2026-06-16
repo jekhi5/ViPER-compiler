@@ -1,4 +1,4 @@
-opam-version: "2.3.0"
+opam-version: "2.0"
 name: "viper"
 version: "dev"
 synopsis: "The ViPER programming language"
@@ -26,4 +26,8 @@ depends: [
     "odoc" {>= "3.2.1"}
 ]
 
-build: ["make"]
+build: [
+    [make]
+    [make "test"] {with-test}
+    [make "doc"] {with-doc}   
+]
