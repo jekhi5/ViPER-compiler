@@ -20,6 +20,7 @@ PKGS=ounit2,extlib,unix,str
 BUILD=ocamlbuild -r -use-ocamlfind -cflag -annot -ocamlyacc 'ocamlyacc -v'
 
 main: src/*.ml src/parser.mly src/lexer.mll
+	dune fmt
 	$(BUILD) -I src -package $(PKGS) main.native
 	mv main.native main
 
@@ -31,6 +32,7 @@ doc: doc/*
 	cp -r $(DOCS_BUILD_DIR)/_html $(DOCS_OUTPUT_DIR)
 
 test: src/*.ml src/parser.mly src/lexer.mll main $(ALL_RUNS)
+	mkdir -p test/output/do_err test/output/do_pass test/output/dont_err test/output/dont_pass
 	$(BUILD) -I src -package $(PKGS) test/test.native
 	mv test.native tester
 

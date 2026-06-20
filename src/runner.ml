@@ -464,7 +464,6 @@ let test_doesnt_err filename _ =
 ;;
 
 let input_file_test_suite () =
-  print (getcwd ());
   let safe_readdir dir ext =
     try List.filter (fun f -> Filename.check_suffix f ext) (Array.to_list (Sys.readdir dir))
     with _ -> []
