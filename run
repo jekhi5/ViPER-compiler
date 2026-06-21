@@ -5,7 +5,7 @@ Usage: $(basename "$0") [-tcdh]
 Options:
   -t    Don't run \`make test\`.
   -c    Don't run \`make clean\` after testing.
-  -c    Only build the documentation.
+  -d    Only build the documentation.
   -h    Show this help message.
 EOF
 }
@@ -25,13 +25,12 @@ done
 
 
 if dune build; then
-    clear
     make clean
     make doc
     if [ "$TESTS" = true ]; then
-        ./gen_tests.py -v 1
+        ./scripts/gen_tests.py -v 1
         make test
-        ./test
+        ./tester
         if [ "$CLEAN" = true ]; then
             make clean
         fi

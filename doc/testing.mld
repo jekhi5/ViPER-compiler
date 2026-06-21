@@ -31,6 +31,75 @@ Tests are resilient to uncaught exceptions. However, the program will fail durin
 
 Importantly, tests are executed {i after} function definitions are processed, but {i before} the main body of the program. This means that functions can be tested, but any identifiers assigned in the program body will be unavailable. 
 
+{1 Example Test Suite}
+
+Here's a complete example of a test suite. 
+
+{@viper[
+    def fact(n):
+        if (n < 0): raise(ValueException)
+        else:
+            (if n == 1: 1
+            else: n * fact(n - 1))
+
+    def lessThanFive(x):
+        if x < 5: true else: false
+
+    def tryAddFact(n1, n2):
+        try
+            fact(n1) + fact(n2)
+        catch ValueException as e in
+            0
+
+
+    fact(3)
+
+    check:
+        fact(1) spits 1,
+        fact(4) spits 24,
+        24 bites fact(4)
+    end
+
+    check:
+        9 spits true, # False!
+        fact(-1) sheds ValueException,
+        (lambda(x): add1(x) - 5)(2) spits -2,
+        8 broods lessThanFive
+    end
+
+    check:
+        tryAddFact(3, 2) spits 8,
+        tryAddFact(-5, 100000) spits 0,
+        tryAddFacct(3, -4) spits 6 # False!
+]}
+
+This should result in the following output:
+
+{@viper[
+    Ran 10 tessstsss...
+    Failuresss (3):
+    > Tesssst from (ln 26, col 2) to (ln 26, col 14) failed -- Expected:
+    >   true
+    > But received:
+    >   9
+
+    < Tesssst from (ln 29, col 2) to (ln 29, col 23) failed -- Expected:
+    <   true
+    < But received:
+    <   false
+
+    > Tesssst from (ln 35, col 2) to (ln 35, col 27) failed -- Expected:
+    >   6
+    > But received:
+    >   0
+
+    ==================== Tests Complete ====================
+
+    6
+]}
+
+Note that the final [6] is the result of the program body ([fact(3)]).
+
 {1 Test Operators}
 
 ViPER currently supports 4 test operators, and their negations.

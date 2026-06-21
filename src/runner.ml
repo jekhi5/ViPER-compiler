@@ -9,6 +9,7 @@ open Exprs
 open Pretty
 open Phases
 open Errors
+open Sys
 
 let result_printer (e : (string, string) result) : string =
   match e with
@@ -246,7 +247,7 @@ let test_run
     expected
     ?(cmp = ( = ))
     _ =
-  let full_outfile = "output/" ^ outfile in
+  let full_outfile = "test/output/" ^ outfile in
   let result =
     try
       let program = parse_string outfile program_str in
@@ -257,7 +258,7 @@ let test_run
 ;;
 
 let test_run_anf ?(args = []) ?(std_input = "") program_anf outfile expected ?(cmp = ( = )) _ =
-  let full_outfile = "output/" ^ outfile in
+  let full_outfile = "test/output/" ^ outfile in
   let result = run_anf program_anf full_outfile run_no_vg args std_input in
   assert_equal (Ok (expected ^ "\n")) result ~cmp ~printer:result_printer
 ;;
@@ -272,7 +273,7 @@ let test_run_valgrind
     expected
     ?(cmp = ( = ))
     _ =
-  let full_outfile = "output/" ^ outfile in
+  let full_outfile = "test/output/" ^ outfile in
   let result =
     try
       let program = parse_string outfile program_str in
@@ -292,7 +293,7 @@ let test_err
     errmsg
     ?(vg = false)
     _ =
-  let full_outfile = "output/" ^ outfile in
+  let full_outfile = "test/output/" ^ outfile in
   let runner =
     if vg then
       run_vg
@@ -313,13 +314,13 @@ let test_err
 
 let test_run_input filename ?(args = []) alloc_strat expected test_ctxt =
   test_run ~args ~std_input:"" alloc_strat
-    (string_of_file ("input/" ^ filename))
+    (string_of_file ("test/input/" ^ filename))
     filename expected test_ctxt
 ;;
 
 let test_err_input filename ?(args = []) alloc_strat expected test_ctxt =
   test_err ~args ~std_input:"" alloc_strat
-    (string_of_file ("input/" ^ filename))
+    (string_of_file ("test/input/" ^ filename))
     filename expected test_ctxt
 ;;
 
@@ -334,11 +335,11 @@ let chomp str =
 
 let test_does_run filename test_ctxt =
   let filename = Filename.remove_extension filename in
-  let progfile = sprintf "input/do_pass/%s.viper" filename in
-  let argsfile = sprintf "input/do_pass/%s.args" filename in
-  let outfile = sprintf "input/do_pass/%s.out" filename in
-  let infile = sprintf "input/do_pass/%s.in" filename in
-  let opts = read_options (sprintf "input/do_pass/%s.options" filename) in
+  let progfile = sprintf "test/input/do_pass/%s.viper" filename in
+  let argsfile = sprintf "test/input/do_pass/%s.args" filename in
+  let outfile = sprintf "test/input/do_pass/%s.out" filename in
+  let infile = sprintf "test/input/do_pass/%s.in" filename in
+  let opts = read_options (sprintf "test/input/do_pass/%s.options" filename) in
   let prog = string_of_file progfile in
   let args = parse_args argsfile opts in
   let output =
@@ -369,11 +370,11 @@ let test_does_run filename test_ctxt =
 
 let test_does_err filename test_ctxt =
   let filename = Filename.remove_extension filename in
-  let progfile = sprintf "input/do_err/%s.viper" filename in
-  let argsfile = sprintf "input/do_err/%s.args" filename in
-  let errfile = sprintf "input/do_err/%s.err" filename in
-  let infile = sprintf "input/do_err/%s.in" filename in
-  let opts = read_options (sprintf "input/do_err/%s.options" filename) in
+  let progfile = sprintf "test/input/do_err/%s.viper" filename in
+  let argsfile = sprintf "test/input/do_err/%s.args" filename in
+  let errfile = sprintf "test/input/do_err/%s.err" filename in
+  let infile = sprintf "test/input/do_err/%s.in" filename in
+  let opts = read_options (sprintf "test/input/do_err/%s.options" filename) in
   let prog = string_of_file progfile in
   let args = parse_args argsfile opts in
   let err =
@@ -395,10 +396,10 @@ let test_does_err filename test_ctxt =
 
 let test_doesnt_run filename _ =
   let filename = Filename.remove_extension filename in
-  let progfile = sprintf "input/dont_pass/%s.viper" filename in
-  let argsfile = sprintf "input/dont_pass/%s.args" filename in
-  let infile = sprintf "input/dont_pass/%s.in" filename in
-  let opts = read_options (sprintf "input/dont_pass/%s.options" filename) in
+  let progfile = sprintf "test/input/dont_pass/%s.viper" filename in
+  let argsfile = sprintf "test/input/dont_pass/%s.args" filename in
+  let infile = sprintf "test/input/dont_pass/%s.in" filename in
+  let opts = read_options (sprintf "test/input/dont_pass/%s.options" filename) in
   let prog = string_of_file progfile in
   let args = parse_args argsfile opts in
   let input =
@@ -414,7 +415,7 @@ let test_doesnt_run filename _ =
       run_no_vg
   in
   let alloc_strat = opts.alloc_strat in
-  let full_outfile = "output/dont_pass" ^ filename in
+  let full_outfile = "test/output/dont_pass" ^ filename in
   let result =
     try
       let program = parse_string filename prog in
@@ -430,10 +431,10 @@ let test_doesnt_run filename _ =
 
 let test_doesnt_err filename _ =
   let filename = Filename.remove_extension filename in
-  let progfile = sprintf "input/dont_err/%s.viper" filename in
-  let argsfile = sprintf "input/dont_err/%s.args" filename in
-  let infile = sprintf "input/dont_err/%s.in" filename in
-  let opts = read_options (sprintf "input/dont_err/%s.options" filename) in
+  let progfile = sprintf "test/input/dont_err/%s.viper" filename in
+  let argsfile = sprintf "test/input/dont_err/%s.args" filename in
+  let infile = sprintf "test/input/dont_err/%s.in" filename in
+  let opts = read_options (sprintf "test/input/dont_err/%s.options" filename) in
   let prog = string_of_file progfile in
   let args = parse_args argsfile opts in
   let input =
@@ -449,7 +450,7 @@ let test_doesnt_err filename _ =
       run_no_vg
   in
   let alloc_strat = opts.alloc_strat in
-  let full_outfile = "output/dont_err" ^ filename in
+  let full_outfile = "test/output/dont_err" ^ filename in
   let result =
     try
       let program = parse_string filename prog in
@@ -469,12 +470,15 @@ let input_file_test_suite () =
   in
   "input-file-suite"
   >::: [ "do_pass"
-         >::: List.map (fun f -> f >:: test_does_run f) (safe_readdir "input/do_pass" ".viper");
+         >::: List.map (fun f -> f >:: test_does_run f) (safe_readdir "test/input/do_pass" ".viper");
          "do_err"
-         >::: List.map (fun f -> f >:: test_does_err f) (safe_readdir "input/do_err" ".viper");
+         >::: List.map (fun f -> f >:: test_does_err f) (safe_readdir "test/input/do_err" ".viper");
          "dont_pass"
-         >::: List.map (fun f -> f >:: test_doesnt_run f) (safe_readdir "input/dont_pass" ".viper");
+         >::: List.map
+                (fun f -> f >:: test_doesnt_run f)
+                (safe_readdir "test/input/dont_pass" ".viper");
          "dont_err"
-         >::: List.map (fun f -> f >:: test_doesnt_err f) (safe_readdir "input/dont_err" ".viper")
-       ]
+         >::: List.map
+                (fun f -> f >:: test_doesnt_err f)
+                (safe_readdir "test/input/dont_err" ".viper") ]
 ;;

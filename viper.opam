@@ -1,0 +1,33 @@
+opam-version: "2.0"
+name: "viper"
+version: "dev"
+synopsis: "The ViPER programming language"
+description: """
+ViPER is a functional programming language written in OCaml with a C runtime. It is compiled to x86 assembly.
+"""
+homepage: "https://github.com/jekhi5/ViPER-compiler"
+bug-reports: "https://github.com/jekhi5/ViPER-compiler/issues"
+license: "MIT"
+
+maintainer: [
+    "Jacob Kline"
+    "Emery Jacobowitz"
+]
+authors: [
+    "Jacob Kline"
+    "Emery Jacobowitz"
+]
+
+depends: [
+    "dune" {>= "3.21.0"}
+    "extlib" {>= "1.8.0"}
+    "ocaml" {>= "5.2.1"}
+    "ounit2" {>= "2.2.7"}
+    "odoc" {>= "3.2.1"}
+]
+
+build: [
+    [make]
+    [make "test"] {with-test}
+    [make "doc"] {with-doc}   
+]

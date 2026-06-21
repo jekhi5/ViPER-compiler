@@ -20,7 +20,7 @@ PKG_ID="viper"
 BUILD_PATH=$BUILD_DIR/$PKG_ID
 
 rm -rf $BUILD_DIR
-mkdir $BUILD_DIR
+mkdir -p $BUILD_DIR
 
 # Compiling
 for f in $DOC_DIR/*.mld

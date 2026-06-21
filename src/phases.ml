@@ -116,13 +116,15 @@ let no_op_phase (cur_pipeline : 'a pipeline) = cur_pipeline
 
 let string_of_name_envt_envt e =
   ExtString.String.join "\n"
-            (List.map
-               (fun (name, env) ->
-                 name
-                 ^ ":\n\t"
-                 ^ ExtString.String.join "\n\t"
-                     (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env)) )
-               (StringMap.bindings e)) ^ "\n" 
+    (List.map
+       (fun (name, env) ->
+         name
+         ^ ":\n\t"
+         ^ ExtString.String.join "\n\t"
+             (List.map (fun (name, arg) -> name ^ "=>" ^ arg_to_asm arg) (StringMap.bindings env)) )
+       (StringMap.bindings e) )
+  ^ "\n"
+;;
 
 (* Stringifies a list of phases, for debug printing purposes *)
 let print_trace (trace : phase list) : string list =
@@ -149,9 +151,9 @@ let print_trace (trace : phase list) : string list =
     | Tagged p -> string_of_program_with 1000 (fun (tag, _) -> sprintf "@%d" tag) p
     | ANFed p -> string_of_aprogram_with 1000 (fun (tag, _) -> sprintf "@%d" tag) p
     | Located (p, e) ->
-      string_of_aprogram_with 1000 (fun (tag, _) -> sprintf "@%d" tag) p
-      ^ "\nEnvs:\n"
-      ^ (string_of_name_envt_envt e)
+        string_of_aprogram_with 1000 (fun (tag, _) -> sprintf "@%d" tag) p
+        ^ "\nEnvs:\n"
+        ^ string_of_name_envt_envt e
     | Result s -> s
   in
   List.mapi
