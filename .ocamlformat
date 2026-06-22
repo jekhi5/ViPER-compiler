@@ -1,4 +1,5 @@
 profile = ocamlformat
+version = 0.27.0
 margin = 100
 max-indent = 80
 wrap-comments = false

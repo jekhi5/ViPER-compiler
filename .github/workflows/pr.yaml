@@ -1,12 +1,70 @@
-name: Placeholder
+name: Run Tests
 
-on:
-  pull_request:
-    branches-ignore:
-      - *
+on: [pull_request]
+
+env:
+  OCAML_COMPILER: "5.2.1"
 
 jobs:
-  placeholder-job:
+  test:
+    name: Run Tests
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        # As this is a compiler, ensure tests pass on a series of OS's
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+      fail-fast: false # test all regardless of failures in others
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Install Deps - Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm
+
+      - name: Install Deps - MacOS
+        if: runner.os == 'macOS'
+        run: brew install nasm
+
+      - name: Install Deps - Windows
+        if: runner.os == 'Windows'
+        run: |
+          choco install nasm llvm
+      
+      - name: Set-up OCaml and Opam
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ env.OCAML_COMPILER }}
+          dune-cache: true
+
+      - name: Opam install and run tests
+        run: |
+          opam install . --deps-only --with-test -y
+          opam exec -- ./run
+
+  linting:
+    name: Check Formatting
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Placeholder"
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Set-up OCaml and Opam
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ env.OCAML_COMPILER }}
+          dune-cache: true
+
+      - name: Check formatting
+        uses: ocaml/setup-ocaml/lint-fmt@v3
