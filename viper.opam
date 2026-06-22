@@ -23,9 +23,11 @@ depends: [
     "extlib" {>= "1.8.0"}
     "menhir" {build}
     "ocaml" {>= "5.2.1"}
+    "ocamlbuild" {build}
+    "ocamlfind" {build}
     "ocamlformat" {>= "0.26.0"}
-    "ounit2" {>= "2.2.7"}
     "odoc" {with-doc}
+    "ounit2" {>= "2.2.7"}
 ]
 
 build: [

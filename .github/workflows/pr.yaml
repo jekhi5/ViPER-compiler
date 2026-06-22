@@ -4,11 +4,12 @@ on: [pull_request]
 
 env:
   OCAML_COMPILER: "5.2.1"
+  CI: true
 
 jobs:
   test:
     name: Run Tests
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       matrix:
         # As this is a compiler, ensure tests pass on a series of OS's
