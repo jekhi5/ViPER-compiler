@@ -2,6 +2,7 @@ profile = ocamlformat
 margin = 100
 max-indent = 80
 wrap-comments = false
+parse-docstrings = true
 type-decl = sparse
 break-cases = fit-or-vertical
 break-fun-decl = fit-or-vertical
