@@ -6,7 +6,6 @@ open Exprs
 open Phases
 open Graph
 open Assembly
-
 open Util
 open Constants
 open Env

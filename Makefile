@@ -31,7 +31,7 @@ doc: doc/*
 	mkdir $(DOCS_OUTPUT_DIR)
 	cp -r $(DOCS_BUILD_DIR)/_html $(DOCS_OUTPUT_DIR)
 
-test: src/*.ml src/parser.mly src/lexer.mll main $(ALL_RUNS)
+test: src/*.ml src/parser.mly src/lexer.mll main
 	mkdir -p test/output/do_err test/output/do_pass test/output/dont_err test/output/dont_pass
 	$(BUILD) -I src -package $(PKGS) test/test.native
 	mv test.native tester
