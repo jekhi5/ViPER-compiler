@@ -16,7 +16,7 @@ BINDIR     = $(PREFIX)/bin
 LIBDIR     = $(PREFIX)/lib/viper
 
 # Location for generated docs to be served.
-# The doc sources (.mld files) themselves live in src/doc/.
+# The doc sources (.mld files) themselves live in /doc/.
 DOCS_BUILD_DIR=_build/_doc/viper
 DOCS_OUTPUT_DIR=docs
 
@@ -39,6 +39,8 @@ executable/config.ml: Makefile
 	@echo "let nasm_format = \"$(NASM_FORMAT)\"" >> $@
 	@echo "let clang_flags = \"$(CLANG_FLAGS)\"" >> $@
 	@echo "let runtime_dir = \"$(RUNTIME_DIR)\"" >> $@
+	@echo "let runtime_dir = \"$(RUNTIME_DIR)\"" >> $@
+	@echo "" >> $@
 
 viperc: executable/config.ml
 	$(BUILD) -I executable executable/viperc.native

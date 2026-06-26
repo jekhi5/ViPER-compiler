@@ -31,12 +31,15 @@ let no_builtins = ref false
 
 let alloc_strat = ref Naive
 
+let verbose = ref false
+
 let set_strategy s =
   match s with
   | "naive" -> alloc_strat := Naive
   | "register" -> alloc_strat := Register
   | _ ->
-      raise (Arg.Bad (sprintf "'%s' is not an allocation strategy, use either naive or register" s))
+      raise
+        (Arg.Bad (sprintf "'%s' is not an allocation strategy, use either 'naive' or 'register'" s))
 ;;
 
 let filename_handler (name : string) : unit =
@@ -69,7 +72,7 @@ let output_name () : string * string =
   Arguments:
     - [label]: the name of the phase, for error messages.
     - [process_name]: the name of the process in which this phase will run.
-    - [command]: the command to execute to runt this phase.
+    - [command]: the command to execute to run this phase.
     - [out]: The output filename for this phase, WITHOUT the file extension.
     - [std_input]: The contents of std_in for this step. Usually empty. 
  *)
@@ -144,17 +147,25 @@ let sep = "\n=================\n"
 
 let run_phases (out : string) (std_input : string) : (string, string) result =
   if !halt_after_compile then
-    Ok ""
+    Ok (sprintf "Successfully compiled %s." out)
   else
     match run_assemble out "" with
     | Error _ as err -> err
-    | Ok _ as ok -> (
+    | Ok assemble_msg as ok -> (
+        if !verbose && not !halt_after_assemble then
+          printf "%s" assemble_msg
+        else
+          ();
         if !halt_after_assemble then
           ok
         else
           match run_build out "" with
           | Error _ as err -> err
-          | Ok _ as ok ->
+          | Ok build_msg as ok ->
+              if !verbose && not !halt_after_build then
+                printf "%s" build_msg
+              else
+                ();
               if !halt_after_build then
                 ok
               else
@@ -219,7 +230,8 @@ let () =
       ("-t", Arg.Set show_trace, "Display the trace of compilation");
       ("-no-builtins", Arg.Set no_builtins, "Leave out all built-in functions");
       ("-d", Arg.Set show_debug_print, "Enable debug printing");
-      ("-alloc", Arg.String set_strategy, "Use register stack allocation") ]
+      ("-alloc", Arg.String set_strategy, "Use register stack allocation");
+      ("-v", Arg.Set verbose, "Print output of assembling and linking to stdout.") ]
   in
   Arg.parse speclist filename_handler "viperc usage:";
   validate_args ();
