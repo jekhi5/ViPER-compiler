@@ -7,6 +7,12 @@ one. ViPER is a functional language and the most current version of our language
 
 ## Installation
 
+## System Dependencies
+
+Make sure that recent versions of {{:https://www.nasm.us}[nasm]} and {{:https://clang.llvm.org}clang} are installed on your system.
+
+Currently, ViPER primarily targets Linux. MacOS is occassionally supported. Windows is not supported. 
+
 ### Download
 
 Coming soon!
@@ -20,6 +26,21 @@ git clone git@github.com:jekhi5/ViPER-compiler.git
 cd ViPER-compiler
 opam install .
 ```
+To build ViPER, run
+
+```bash
+make && make install
+```
+
+Now the ViPER compiler, `viperc`, will be available on your system. 
+
+Uninstall with
+
+```bash
+make uninstall
+```
+
+### Development
 
 The main interface is `scripts/run`, which wraps around the rules in the Makefile.
 

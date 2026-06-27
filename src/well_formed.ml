@@ -83,16 +83,16 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | EApp (func, args, _, loc) ->
         let rec_errors = List.concat (List.map (fun e -> wf_E e env) (func :: args)) in
         ( match func with
-        | EId (funname, _) -> (
-          match find_opt env funname with
-          | Some (_, _, Some arg_arity) ->
-              let actual = List.length args in
-              if actual != arg_arity then
-                [Arity (arg_arity, actual, loc)]
-              else
-                []
+          | EId (funname, _) -> (
+            match find_opt env funname with
+            | Some (_, _, Some arg_arity) ->
+                let actual = List.length args in
+                if actual != arg_arity then
+                  [Arity (arg_arity, actual, loc)]
+                else
+                  []
+            | _ -> [] )
           | _ -> [] )
-        | _ -> [] )
         @ rec_errors
     | ELetRec (binds, body, _) ->
         let nonfuns =
@@ -174,8 +174,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           | BBlank _ :: rest -> process_args rest
           | BName (x, _, loc) :: rest ->
               ( match dupe x rest with
-              | None -> []
-              | Some where -> [DuplicateId (x, where, loc)] )
+                | None -> []
+                | Some where -> [DuplicateId (x, where, loc)] )
               @ process_args rest
           | BTuple (binds, _) :: rest -> process_args (binds @ rest)
         in
@@ -228,8 +228,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           | BBlank _ :: rest -> process_args rest
           | BName (x, _, loc) :: rest ->
               ( match dupe x rest with
-              | None -> []
-              | Some where -> [DuplicateId (x, where, loc)] )
+                | None -> []
+                | Some where -> [DuplicateId (x, where, loc)] )
               @ process_args rest
           | BTuple (binds, _) :: rest -> process_args (binds @ rest)
         in
@@ -271,8 +271,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         | [] -> []
         | DFun (name, _, _, loc) :: rest ->
             ( match find name rest with
-            | None -> []
-            | Some where -> [DuplicateFun (name, where, loc)] )
+              | None -> []
+              | Some where -> [DuplicateFun (name, where, loc)] )
             @ dupe_funbinds rest
       in
       let all_decls = List.flatten decls in

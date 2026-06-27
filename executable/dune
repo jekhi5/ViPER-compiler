@@ -1,0 +1,4 @@
+(executable
+ (name viperc)
+ (modules viperc config)
+ (libraries viper_impl))
