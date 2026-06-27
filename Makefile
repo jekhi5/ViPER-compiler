@@ -29,7 +29,6 @@ PKGS=ounit2,extlib,unix,str
 BUILD=ocamlbuild -r -use-ocamlfind -cflag -annot -ocamlyacc 'ocamlyacc -v'
 
 main: src/*.ml src/parser.mly src/lexer.mll executable/config.ml
-	-dune fmt
 	$(BUILD) -I src -package $(PKGS) main.native executable/viperc.native
 	mv main.native main
 	mv viperc.native viperc
@@ -46,7 +45,16 @@ viperc: executable/config.ml
 	$(BUILD) -I executable executable/viperc.native
 	mv viperc.native viperc
 
-.PHONY: install uninstall doc
+.PHONY: doc fmt install uninstall
+
+doc: doc/*
+	./scripts/build-docs.sh -v
+	rm -rf $(DOCS_OUTPUT_DIR)
+	mkdir $(DOCS_OUTPUT_DIR)
+	cp -r $(DOCS_BUILD_DIR)/_html $(DOCS_OUTPUT_DIR)
+
+fmt:
+	dune fmt
 
 install:
 	install -d $(BINDIR)
@@ -62,12 +70,6 @@ uninstall:
 	rm -f $(LIBDIR)/gc.c
 	rm -f $(LIBDIR)/gc.h
 	-rmdir  $(LIBDIR)
-
-doc: doc/*
-	./scripts/build-docs.sh -v
-	rm -rf $(DOCS_OUTPUT_DIR)
-	mkdir $(DOCS_OUTPUT_DIR)
-	cp -r $(DOCS_BUILD_DIR)/_html $(DOCS_OUTPUT_DIR)
 
 test: src/*.ml src/parser.mly src/lexer.mll main
 	mkdir -p test/output/do_err test/output/do_pass test/output/dont_err test/output/dont_pass
