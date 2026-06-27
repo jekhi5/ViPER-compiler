@@ -3,7 +3,7 @@ name: Run Tests
 on: [pull_request]
 
 env:
-  OCAML_COMPILER: "5.2.1"
+  OCAML_COMPILER: '5.2.1'
   CI: true
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
       - name: Install Deps - MacOS
         if: runner.os == 'macOS'
         run: brew install nasm
-      
+
       - name: Set-up OCaml and Opam
         uses: ocaml/setup-ocaml@v3
         with:
@@ -46,7 +46,7 @@ jobs:
         run: |
           opam install . --deps-only --with-test -y
           eval $(opam env)
-          dune build
+          make main
           ./scripts/gen_tests.py -v 1
           make test
           ./tester
@@ -64,6 +64,9 @@ jobs:
         with:
           ocaml-compiler: ${{ env.OCAML_COMPILER }}
           dune-cache: true
+
+      - name: Generate config.ml
+        run: make main
 
       - name: Check formatting
         uses: ocaml/setup-ocaml/lint-fmt@v3
