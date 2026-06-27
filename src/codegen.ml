@@ -259,7 +259,7 @@ let rec replicate x i =
 and reserve size tag =
   let ok = sprintf "$memcheck_%d" tag in
   [ IInstrComment
-      (IMov (Reg RAX, LabelContents "?HEAP_END"), sprintf "Reserving %d words" (size / word_size));
+      (IMov (Reg RAX, RelLabel "?HEAP_END"), sprintf "Reserving %d words" (size / word_size));
     ISub (Reg RAX, Const (Int64.of_int size));
     ICmp (Reg RAX, Reg heap_reg);
     IJge (Label ok) ]
