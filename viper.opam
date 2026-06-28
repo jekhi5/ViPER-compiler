@@ -21,10 +21,13 @@ authors: [
 depends: [
     "dune" {>= "3.21.0"}
     "extlib" {>= "1.8.0"}
+    "menhir" {build}
     "ocaml" {>= "5.2.1"}
+    "ocamlbuild" {build}
+    "ocamlfind" {build}
     "ocamlformat" {>= "0.26.0"}
+    "odoc" {with-doc}
     "ounit2" {>= "2.2.7"}
-    "odoc" {>= "3.2.1"}
 ]
 
 build: [
