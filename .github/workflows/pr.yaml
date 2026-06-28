@@ -4,7 +4,6 @@ on: [pull_request]
 
 env:
   OCAML_COMPILER: '5.2.1'
-  CI: true
 
 jobs:
   test:
@@ -16,10 +15,8 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-          # - windows-latest # For now Windows is causing too many headaches
       fail-fast: false # test all regardless of failures in others
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }} # Only validating on linux machines for now
     defaults:
       run:
         shell: bash
@@ -65,7 +62,7 @@ jobs:
           ocaml-compiler: ${{ env.OCAML_COMPILER }}
           dune-cache: true
 
-      - name: Generate config.ml
+      - name: Opam install
         run: |
           opam install . --deps-only --with-test -y
           eval $(opam env)
