@@ -52,10 +52,11 @@ let filename_handler (name : string) : unit =
   )
 ;;
 
-(** Returns the output directory and file basename, based on the provided options. * If no output
-    was provided, use the same directory and basename as the input file. * If the provided output is
-    a directory, use the same basename as the input file. * If the provided output is a file, use
-    its dirname and basename. *)
+(** Returns the output directory and file basename, based on the provided options.
+ *  If no output was provided, use the same directory and basename as the input file.
+ *  If the provided output is a directory, use the same basename as the input file.
+ *  If the provided output is a file, use its dirname and basename.
+ *)
 let output_name () : string * string =
   match !output with
   | "" -> (dirname !filename, remove_extension (basename !filename))
@@ -67,12 +68,14 @@ let output_name () : string * string =
         (dirname output_name, basename bare_name)
 ;;
 
-(** A generalized process for a step in building a viper program. Arguments:
+(** A generalized process for a step in building a viper program.
+  Arguments:
     - [label]: the name of the phase, for error messages.
     - [process_name]: the name of the process in which this phase will run.
     - [command]: the command to execute to run this phase.
     - [out]: The output filename for this phase, WITHOUT the file extension.
-    - [std_input]: The contents of std_in for this step. Usually empty. *)
+    - [std_input]: The contents of std_in for this step. Usually empty. 
+ *)
 let run_build_phase
     (label : string)
     (process_name : string)
