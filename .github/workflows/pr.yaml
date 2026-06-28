@@ -66,7 +66,10 @@ jobs:
           dune-cache: true
 
       - name: Generate config.ml
-        run: make main
+        run: |
+          opam install . --deps-only --with-test -y
+          eval $(opam env)
+          make main
 
       - name: Check formatting
         uses: ocaml/setup-ocaml/lint-fmt@v3
