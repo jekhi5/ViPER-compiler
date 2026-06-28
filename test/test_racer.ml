@@ -238,6 +238,6 @@ let run_with_ra =
     tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12" ]
 ;;
 
-module RacerSuite : TestSuite = struct
+module Suite : TestSuite = struct
   let suite = nsa @ ra @ coloring @ interf @ run_with_ra
 end
