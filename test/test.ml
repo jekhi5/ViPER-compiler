@@ -6,7 +6,6 @@ open Exprs
 open Phases
 open Graph
 open Assembly
-
 open Util
 open Constants
 open Env
@@ -19,7 +18,6 @@ open Naive_alloc
 open Liveness
 open Register_alloc
 open Codegen
-
 open Test_funcs
 
 let builtins_size =
@@ -251,7 +249,12 @@ let parse_checks =
            () ) ) ]
 ;;
 
-let suite = "unit_tests" >::: parse_checks
+(** Collects a number of tests into one list, just by specifying the modules.*)
+let gather_tests (modules : (module TestSuite) list) =
+  List.concat_map (fun (module M : TestSuite) -> M.suite) modules
+;;
+
+let suite = "unit_tests" >::: parse_checks @ gather_tests [(module Test_racer.RacerSuite)]
 (* @ fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra @ live_out @ oom
        @ gc @ input *)
 

@@ -19,7 +19,11 @@ open Liveness
 open Register_alloc
 open Codegen
 
-type test_suite = test list;;
+type test_suite = test list
+
+module type TestSuite = sig
+  val suite : test_suite
+end
 
 (** [t name program input expected] uses the [Naive] allocation strategy to run a [program], given
     as a source string, and compares its output to [expected]. A test [name] must be given as well
