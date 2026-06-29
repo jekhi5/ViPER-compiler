@@ -1,23 +1,15 @@
-open Compile
 open Runner
 open OUnit2
 open Pretty
 open Exprs
 open Phases
 open Graph
-open Assembly
-open Util
-open Constants
 open Env
-open Well_formed
-open Desugar
-open Rename
 open Anf
 open Free_vars
 open Naive_alloc
 open Liveness
 open Register_alloc
-open Codegen
 
 type test_suite = test list
 

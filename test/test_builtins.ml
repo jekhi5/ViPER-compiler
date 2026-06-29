@@ -2,7 +2,6 @@ open Test_funcs
 
 (** Tests for core viper functionality. *)
 
-
 let pair_tests =
   [ t "tup1"
       "let t = (4, (5, 6)) in\n\

@@ -1,27 +1,17 @@
 open OUnit2
 open Test_funcs
-open Compile
 open Runner
-open OUnit2
-open Pretty
 open Exprs
 open Phases
 open Assembly
-open Util
-open Constants
 open Env
 open Graph
-open Well_formed
-open Desugar
-open Rename
 open Anf
 open Free_vars
-open Naive_alloc
 open Liveness
 open Register_alloc
-open Codegen
 
-(** Tests for "Racer",  Viper's register-allocation system. *)
+(** Tests for "Racer", Viper's register-allocation system. *)
 
 (** Test naive stack allocation. *)
 let nsa =
