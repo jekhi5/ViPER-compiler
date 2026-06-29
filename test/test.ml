@@ -20,32 +20,6 @@ open Register_alloc
 open Codegen
 open Test_funcs
 
-let pair_tests =
-  [ t "tup1"
-      "let t = (4, (5, 6)) in\n\
-      \            begin\n\
-      \              t[0] := 7;\n\
-      \              t\n\
-      \            end"
-      "" "(7, (5, 6))";
-    t "tup2"
-      "let t = (4, (5, nil)) in\n\
-      \            begin\n\
-      \              t[1] := nil;\n\
-      \              t\n\
-      \            end"
-      "" "(4, nil)";
-    t "tup3"
-      "let t = (4, (5, nil)) in\n\
-      \            begin\n\
-      \              t[1] := t;\n\
-      \              t\n\
-      \            end"
-      "" "(4, <cyclic tuple 1>)";
-    t "tup4" "let t = (4, 6) in\n            (t, t)" "" "((4, 6), (4, 6))" ]
-;;
-
-let input = [t "input1" "let x = input() in x + 2" "123" "125"]
 
 (** Collects a number of tests into one list, just by specifying the modules.*)
 let gather_tests (modules : (module TestSuite) list) =
@@ -58,7 +32,8 @@ let suite =
          [
           (* (module Test_racer.Suite); *)
           (* (module Test_garter.Suite); *)
-          (module Test_parser.Suite)
+          (module Test_parser.Suite);
+          (module Test_builtins.Suite)
         ]
 ;;
 
