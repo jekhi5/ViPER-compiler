@@ -21,7 +21,7 @@ open Liveness
 open Register_alloc
 open Codegen
 
-(** Tests for "Racer",  Viper's register-allocation system. *)
+(** Tests for "Racer", Viper's register-allocation system. *)
 
 (** Test naive stack allocation. *)
 let nsa =

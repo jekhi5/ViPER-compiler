@@ -102,7 +102,7 @@ let anf (p : tag program) : sourcespan aprogram =
         let c_imm, c_setup = helpI c in
         (CTryCatch (t_imm, except, c_imm, s), t_setup @ c_setup)
     | ETryCatch _ ->
-        raise (InternalCompilerError "Violated invatiant: Tried to catch a non-exception")
+        raise (InternalCompilerError "Violated invariant: Tried to catch a non-exception")
     | ECheck (checks, (_, s)) ->
         let new_checks, checks_setup = List.split (List.map helpI checks) in
         (CCheck (new_checks, s), List.concat checks_setup)

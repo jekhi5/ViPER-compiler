@@ -32,7 +32,7 @@ To build ViPER, run
 make && make install
 ```
 
-Now the ViPER compiler, `viperc`, will be available on your system. 
+Now the ViPER compiler, `viperc`, will be available on your system.
 
 Uninstall with
 
