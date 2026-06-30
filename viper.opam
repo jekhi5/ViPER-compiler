@@ -9,6 +9,8 @@ homepage: "https://github.com/jekhi5/ViPER-compiler"
 bug-reports: "https://github.com/jekhi5/ViPER-compiler/issues"
 license: "MIT"
 
+dev-repo: "git+https://github.com/jekhi5/ViPER-compiler.git"
+
 maintainer: [
     "Jacob Kline"
     "Emery Jacobowitz"
@@ -28,6 +30,12 @@ depends: [
     "ocamlformat" {>= "0.26.0"}
     "odoc" {with-doc}
     "ounit2" {>= "2.2.7"}
+    "bisect_ppx" {dev & >= "2.5.0"}
+    "bisect_ppx-ocamlbuild" {dev}
+]
+
+pin-depends: [
+  ["bisect_ppx-ocamlbuild.dev" "git+https://github.com/aantron/bisect_ppx-ocamlbuild.git"]
 ]
 
 build: [

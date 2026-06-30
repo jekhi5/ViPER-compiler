@@ -42,19 +42,18 @@ make uninstall
 
 ### Development
 
-The main interface is `scripts/run`, which wraps around the rules in the Makefile.
+The main interface is the Makefile. Here is a general workflow:
 
-By default, `./scripts/run` will compile ViPER and build the docs. It will also run `make test` to generate a file called `tester`. Running `./tester` will run the tests. Finally, it runs `make clean`, which removes all of the build artifacts and executables.
-
+```bash
+> make clean                    # Remove development artifacts
+> make                          # Build the project
+> make test                     # Build the tester
+> ./tester                      # Run the tests
+> bisect-ppx-report html        # Generate a detailed test coverage report
+> python scripts/server.py -c   # View the test coverage report at localhost:8080
 ```
-Usage: run [-tcdh]
 
-Options:
-  -t    Don't run `make test`.
-  -c    Don't run `make clean` after testing.
-  -d    Only build the documentation.
-  -h    Show this help message.
-```
+### Test Coverage
 
 ### Documentation
 
