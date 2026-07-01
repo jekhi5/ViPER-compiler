@@ -338,7 +338,7 @@ void error(uint64_t code, SNAKEVAL val)
     fprintf(stderr, "Error: index too large to get, got %ld\n", (uint64_t)val);
     break;
   case ERR_NIL_DEREF:
-    fprintf(stderr, "Error: tried to access component of nil\n");
+    fprintf(stderr, "Error: tried to dereference nil\n");
     break;
   case ERR_OUT_OF_MEMORY:
     fprintf(stderr, "Error: out of memory\n");
@@ -370,7 +370,7 @@ void error(uint64_t code, SNAKEVAL val)
   printHelp(stderr, val);
   fprintf(stderr, "\n");
   fflush(stderr);
-  naive_print_heap(stderr, HEAP, HEAP_END);
+  // naive_print_heap(stderr, HEAP, HEAP_END);
   fflush(stdout);
   free(HEAP);
   exit(code);
