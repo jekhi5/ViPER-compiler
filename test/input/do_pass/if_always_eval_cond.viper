@@ -1,0 +1,1 @@
+if print(5 < 6): print(17) else: print(38)
