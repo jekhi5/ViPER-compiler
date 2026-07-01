@@ -11,7 +11,7 @@ one. ViPER is a functional language and the most current version of our language
 
 Make sure that recent versions of {{:https://www.nasm.us}[nasm]} and {{:https://clang.llvm.org}clang} are installed on your system.
 
-Currently, ViPER primarily targets Linux. MacOS is occassionally supported. Windows is not supported. 
+ViPER primarily targets Linux. MacOS is usually supported, though platform-specific fixes may be slower. Windows is not supported. 
 
 ### Download
 
@@ -53,15 +53,13 @@ The main interface is the Makefile. Here is a general workflow:
 > python scripts/server.py -c   # View the test coverage report at localhost:8080
 ```
 
-### Test Coverage
-
 ### Documentation
 
 To view the documentation:
 
 ```bash
 # Build the docs
-./scripts/run -d # `make doc` also works
+make doc
 
 # Optionally serve them locally
 python scripts/server.py
