@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-serve_docs.py — Serves built documentation over HTTP on a forwarded port.
-No external dependencies required.
+server.py — Serves HTML to localhost for development.
+
+Run this script from the project root.
 
 Usage:
-    python serve_docs.py [port] [--coverage | -c]
+    python scripts/server.py [port] [--coverage | -c]
 """
 
 import http.server
@@ -17,7 +18,7 @@ from functools import partial
 # ---------------------------------------------------------------------------
 
 DOCS_ROOT = "docs/_html"
-COVERAGE_ROOT = "_coverage"  # placeholder: point this at your coverage report output dir
+COVERAGE_ROOT = "_coverage"
 DOCS_INDEX_FILE = "viper/index.html"
 COVERAGE_INDEX_FILE = "index.html"
 DEFAULT_PORT = 8080
@@ -46,7 +47,7 @@ class DocsHandler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         # Slightly tidier log lines
-        sys.stdout.write(f"[docs] {self.address_string()} — {fmt % args}\n")
+        sys.stdout.write(f"[localhost] {self.address_string()} — {fmt % args}\n")
         sys.stdout.flush()
 
 
@@ -79,7 +80,7 @@ def main():
     handler = partial(DocsHandler, directory=serve_root, index_file=index_file)
 
     with http.server.ThreadingHTTPServer((BIND_HOST, port), handler) as httpd:
-        print(f"Serving docs from : {serve_root}")
+        print(f"Serving HTML from : {serve_root}")
         print(f"Listening on      : http://{BIND_HOST}:{port}")
         print(f"Open in browser   : http://localhost:{port}/")
         print("Press Ctrl+C to stop.\n")
