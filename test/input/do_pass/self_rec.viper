@@ -1,0 +1,8 @@
+let rec 
+    fact = (lambda(n):
+    if n <= 1:
+        1
+    else:
+        n * fact(n - 1))
+
+fact(5)
