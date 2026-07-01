@@ -26,7 +26,7 @@ DOCS_OUTPUT_DIR=docs
 RUNTIME_DIR=$(CURDIR)/src
 
 PKGS=ounit2,extlib,unix,str
-BUILD=ocamlbuild -r -use-ocamlfind -cflag -annot -ocamlyacc 'ocamlyacc -v'
+BUILD=ocamlbuild -r -use-ocamlfind -plugin-tag 'package(bisect_ppx-ocamlbuild)' -cflag -annot -ocamlyacc 'ocamlyacc -v'
 
 main: src/*.ml src/parser.mly src/lexer.mll executable/config.ml
 	$(BUILD) -I src -package $(PKGS) main.native executable/viperc.native
@@ -73,7 +73,7 @@ uninstall:
 
 test: src/*.ml src/parser.mly src/lexer.mll main
 	mkdir -p test/output/do_err test/output/do_pass test/output/dont_err test/output/dont_pass
-	$(BUILD) -I src -package $(PKGS) test/test.native
+	BISECT_COVERAGE=YES $(BUILD) -I src -package $(PKGS) test/test.native
 	mv test.native tester
 
 test/output/%.run: test/output/%.o src/main.c src/gc.c
@@ -145,6 +145,7 @@ gctest.o: gctest.c gc.h
 clean:
 	rm -rf test/output/*.o test/output/*.s test/output/*.dSYM test/output/*.run test/*.log test/*.o
 	rm -rf test/output/*/*.o test/output/*/*.s test/output/*/*.dSYM test/output/*/*.run
-	rm -rf _build/
-	rm -f main tester viperc viper
+	rm -rf _build/ _coverage/
+	rm -f main tester viperc
 	rm -f executable/config.ml
+	rm -f *.coverage
