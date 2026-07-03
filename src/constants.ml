@@ -50,6 +50,7 @@ let err_SET_HIGH_INDEX = 13L
 let err_CALL_NOT_CLOSURE = 14L
 let err_CALL_ARITY_ERR = 15L
 let err_INDEX_NOT_NUM = 16L
+let err_UNPACK_ERR = 17L
 (* We added a Prim1 that just crashes the program. *)
 let err_CRASH = 99L
 (* ===== END ERROR TYPES ===== *)
