@@ -56,6 +56,7 @@ const uint64_t ERR_SET_HIGH_INDEX = 13;
 const uint64_t ERR_CALL_NOT_CLOSURE = 14;
 const uint64_t ERR_CALL_ARITY_ERR = 15;
 const uint64_t ERR_INDEX_NOT_NUMBER = 16;
+const uint64_t ERR_UNPACK_ERR = 17;
 const uint64_t ERR_CRASH = 99;
 
 // One entry per nested try/catch
@@ -329,7 +330,7 @@ void error(uint64_t code, SNAKEVAL val)
     printHelp(stderr, val);
     break;
   case ERR_GET_NOT_TUPLE:
-    fprintf(stderr, "Error: get expected tuple, got ");
+    fprintf(stderr, "Error: indexing expected a tuple, got ");
     printHelp(stderr, val);
     break;
   case ERR_GET_LOW_INDEX:
@@ -362,6 +363,9 @@ void error(uint64_t code, SNAKEVAL val)
     break;
   case ERR_INDEX_NOT_NUMBER:
     fprintf(stderr, "Error: index expected a number\n");
+    break;
+  case ERR_UNPACK_ERR:
+    fprintf(stderr, "Error: tuple cannot be unpacked into the given bindings of size %ld\n", (uint64_t)val >> 1);
     break;
   case ERR_CRASH:
     fprintf(stderr, "Error: CRASH\n");
