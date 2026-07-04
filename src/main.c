@@ -147,8 +147,10 @@ void printHelp(FILE *out, SNAKEVAL val)
   else if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
   {
     uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
-    fprintf(out, "[%p - 5] ==> <function arity %ld, closed %ld, fn-ptr %p>",
-            (uint64_t *)val, addr[0] / 2, addr[2] / 2, (uint64_t *)addr[1]);
+    fprintf(out, "<function arity %ld, closed %ld>",
+               addr[0] / 2, addr[2] / 2);
+    // fprintf(out, "[%p - 5] ==> <function arity %ld, closed %ld, fn-ptr %p>",
+    //         (uint64_t *)val, addr[0] / 2, addr[2] / 2, (uint64_t *)addr[1]);
     // some of this commented-out code may be useful for debugging purposes
 
     /* fprintf(out, "\nClosed-over values:\n"); */
@@ -207,7 +209,7 @@ void printHelp(FILE *out, SNAKEVAL val)
       printHelp(out, addr[i]);
     }
     if (len == 1)
-      fprintf(out, ", ");
+      fprintf(out, ",");
     fprintf(out, ")");
     // Unmark this tuple: restore its length
     *(addr) = len * 2; // length is encoded
