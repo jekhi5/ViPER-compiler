@@ -3,4 +3,4 @@
 def tup_inc(tup, index, amt):
   try tup[index] := tup[index] + amt catch RuntimeException as e in tup
 
-tup_inc((1, 2, 3), 0, 2)
+tup_inc(1, 0, 2)

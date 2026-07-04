@@ -4,5 +4,5 @@ let rec
         1
     else:
         n * fact(n - 1))
-
-fact(5)
+in
+    fact(5)
