@@ -1,0 +1,53 @@
+name: Build and Test
+
+on:
+  workflow_call:
+    inputs:
+      ocaml-compiler-version:
+        description: The OCaml compiler version with which to run the tests
+        type: string
+        required: false
+        default: '5.2.1'
+
+jobs:
+  test:
+    name: Run Tests
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        # As this is a compiler, ensure tests pass on a series of OS's
+        os:
+          - ubuntu-latest
+          - macos-latest
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Install Deps
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update && sudo apt-get install -y nasm
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install nasm
+          else
+            echo 'Error, cannot run tests on OS: "$RUNNER_OS"'
+            exit 1
+          fi
+
+      - name: Set-up OCaml and Opam
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: ${{ inputs.ocaml-compiler-version }}
+          dune-cache: true
+
+      - name: Opam install and run tests
+        run: |
+          opam install . --deps-only --with-test -y
+          eval $(opam env)
+          make main
+          ./scripts/gen_tests.py -v 1
+          make test
+          ./tester

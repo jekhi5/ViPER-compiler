@@ -2,51 +2,14 @@ name: Run Tests
 
 on: [pull_request]
 
-env:
-  OCAML_COMPILER: '5.2.1'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     name: Run Tests
-    timeout-minutes: 15
-    strategy:
-      matrix:
-        # As this is a compiler, ensure tests pass on a series of OS's
-        os:
-          - ubuntu-latest
-          - macos-latest
-      fail-fast: false # test all regardless of failures in others
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v7
-
-      - name: Install Deps - Linux
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y nasm
-
-      - name: Install Deps - MacOS
-        if: runner.os == 'macOS'
-        run: brew install nasm
-
-      - name: Set-up OCaml and Opam
-        uses: ocaml/setup-ocaml@v3
-        with:
-          ocaml-compiler: ${{ env.OCAML_COMPILER }}
-          dune-cache: true
-
-      - name: Opam install and run tests
-        run: |
-          opam install . --deps-only --with-test -y
-          eval $(opam env)
-          make main
-          ./scripts/gen_tests.py -v 1
-          make test
-          ./tester
+    uses: ./.github/workflows/_build_and_test.yaml
 
   linting:
     name: Check Formatting
@@ -59,7 +22,7 @@ jobs:
       - name: Set-up OCaml and Opam
         uses: ocaml/setup-ocaml@v3
         with:
-          ocaml-compiler: ${{ env.OCAML_COMPILER }}
+          ocaml-compiler: '5.2.1'
           dune-cache: true
 
       - name: Opam install
