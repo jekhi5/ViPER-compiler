@@ -910,14 +910,17 @@ let error_suffix =
   List.fold_left
     (fun asm (label, instrs) -> asm ^ sprintf "%s:%s\n" label instrs)
     "\n"
+    (* The register provided to each of these error cases is where the offending value is expected to be stored.
+       For example, [check_bool] keeps the checked value in RAX, so [not_a_bool_{if,logic}_label] sould look in RAX.
+    *)
     [ ( not_a_number_comp_label,
         to_asm (native_call (Label "?error") [Const err_COMP_NOT_NUM; Reg scratch_reg]) );
       ( not_a_number_arith_label,
         to_asm (native_call (Label "?error") [Const err_ARITH_NOT_NUM; Reg scratch_reg]) );
       ( not_a_bool_logic_label,
-        to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg scratch_reg]) );
+        to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg RAX]) );
       ( not_a_bool_if_label,
-        to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg scratch_reg]) );
+        to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg RAX]) );
       (overflow_label, to_asm (native_call (Label "?error") [Const err_OVERFLOW; Reg RAX]));
       ( not_a_tuple_access_label,
         to_asm (native_call (Label "?error") [Const err_GET_NOT_TUPLE; Reg scratch_reg]) );
