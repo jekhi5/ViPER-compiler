@@ -5,24 +5,19 @@
 
 ## Verifying Programs Execute Right
 
-Welcome to our compiler! We've worked very hard to make your experience with our language a
-positive one. ViPER is a functional language and the most current version of our language
-exists in the [`src/`](src/) directory.
+Welcome to our compiler! We've worked very hard to make your experience with our language a positive one. ViPER is a functional language and the most current version of our language exists in the [`src/`](src/) directory.
 
 Thank you for using our language! We hope your programs execute right!
 
-~ Jacob Kline and Emery Jacobowitz, Northeastern University Khoury College of Computer Science
-class of '25
+~ Jacob Kline and Emery Jacobowitz, Northeastern University Khoury College of Computer Science class of '25
 
 ## Installation
 
 ## System Dependencies
 
-Make sure that recent versions of {{:https://www.nasm.us}[nasm]} and
-{{:https://clang.llvm.org}clang} are installed on your system.
+Make sure that recent versions of {{:https://www.nasm.us}[nasm]} and {{:https://clang.llvm.org}clang} are installed on your system.
 
-ViPER primarily targets Linux. MacOS is usually supported, though platform-specific fixes may
-be slower. Windows is not supported.
+ViPER primarily targets Linux. MacOS is usually supported, though platform-specific fixes may be slower. Windows is not supported.
 
 ### Download
 
@@ -51,8 +46,7 @@ echo "export PATH=$PATH:~/.local/bin" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-You will need to add `~/.local/bin` to your path as the `viperc` install is put there.
-Once complete, `viperc` will now be available on your system!
+You will need to add `~/.local/bin` to your path as the `viperc` install is put there. Once complete, `viperc` will now be available on your system!
 
 Uninstall with
 
@@ -64,8 +58,7 @@ make uninstall
 
 To run your own programs:
 
-1. Install the `viperc` compiler as described in [Build from Source](#build-from-source),
-ensuring you add `~/.local/bin` to your path
+1. Install the `viperc` compiler as described in [Build from Source](#build-from-source), ensuring you add `~/.local/bin` to your path
 2. Call `viperc path_to_program.viper`
 
 View available options by running `viperc --help`
