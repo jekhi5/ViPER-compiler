@@ -48,6 +48,5 @@ jobs:
           opam install . --deps-only --with-test -y
           eval $(opam env)
           make main
-          ./scripts/gen_tests.py -v 1
           make test
-          ./tester
+          ./tester -ci true
