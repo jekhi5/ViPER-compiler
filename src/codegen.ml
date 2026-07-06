@@ -364,7 +364,7 @@ and compile_fun
   in
   let load_closure_setup =
     [ ILineComment "=== Load closure values ===";
-      (* Convert the `arity` and the `num_free` to be SNALVALs *)
+      (* Convert the `arity` and the `num_free` to be SNAKEVALs *)
       IInstrComment
         ( IMov (Sized (QWORD_PTR, RegOffset (0, heap_reg)), Const (Int64.of_int (arity * 2))),
           "Arity in SNAKEVAL" );

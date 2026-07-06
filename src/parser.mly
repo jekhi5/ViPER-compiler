@@ -60,7 +60,7 @@ expr :
   | BEGIN expr END { $2 }
   | binop_expr SEMI expr { ESeq($1, $3, full_span()) }
   | binop_expr { $1 }
-  // try () catch RuntimeExcexption as e in ()
+  // try () catch RuntimeException as e in ()
   | TRY expr CATCH snakeexcept AS bind IN expr { ETryCatch($2, $6, $4, $8, full_span()) }
 
 exprs :

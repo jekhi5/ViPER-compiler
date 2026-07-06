@@ -182,7 +182,7 @@ let compile_viper (std_input : string) : unit =
       else
         ();
       printf "%s" (ExtString.String.join "\n" (Errors.print_errors errs))
-  | Ok (asm_string, trace) as init_ok ->
+  | Ok (asm_string, trace) ->
       if !show_trace then
         eprintf "%s%s" (ExtString.String.join sep (Phases.print_trace trace)) sep
       else

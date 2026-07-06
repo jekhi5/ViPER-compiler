@@ -38,9 +38,9 @@ let parse (name : string) lexbuf : sourcespan program =
 
 (* Read a file into a string *)
 let string_of_file (file_name : string) : string =
-  let inchan = open_in file_name in
-  let ans = really_input_string inchan (in_channel_length inchan) in
-  close_in inchan; ans
+  let in_channel = open_in file_name in
+  let ans = really_input_string in_channel (in_channel_length in_channel) in
+  close_in in_channel; ans
 ;;
 
 let parse_string (name : string) (s : string) : sourcespan program =

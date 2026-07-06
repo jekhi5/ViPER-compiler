@@ -8,6 +8,7 @@ else
 ifeq ($(UNAME), Darwin)
   NASM_FORMAT=macho64
   CLANG_FLAGS=-mstackrealign -m64 -g -fstack-protector-all -Wstack-protector -fno-omit-frame-pointer -arch x86_64
+  SYS_CLEAN=find . -type d -name "*.run.dSYM" -exec rm -rf {} +
 endif
 endif
 
@@ -149,3 +150,4 @@ clean:
 	rm -f main tester viperc
 	rm -f executable/config.ml
 	rm -f *.coverage
+	$(SYS_CLEAN)
