@@ -45,6 +45,7 @@ let desugar (p : sourcespan program) : sourcespan program =
               let name = gensym "argtup" in
               let newbind = BName (name, false, tag) in
               (newbind, [(a, EId (name, tag), tag)])
+          | BBlank (ttag) -> (BName (gensym "blank", false, ttag), [])
           | _ -> (a, [])
         in
         let newargs, argbinds = List.split (List.map helpArg args) in
@@ -60,6 +61,7 @@ let desugar (p : sourcespan program) : sourcespan program =
       | _ ->
           let newname = gensym "tup" in
           (BName (newname, false, ttag), e, btag) :: expandTuple binds ttag (EId (newname, ttag)) )
+    | BBlank (ttag) -> [(BName (gensym "blank", false, ttag), e, btag)] 
     | _ -> [(b, e, btag)]
   and expandTuple binds tag source : sourcespan binding list =
     let tupleBind i b =
@@ -107,6 +109,7 @@ let desugar (p : sourcespan program) : sourcespan program =
           | BTuple (_, btag) ->
               let newparam = gensym "tuparg" in
               (BName (newparam, false, btag), helpBE (bind, EId (newparam, btag), btag))
+          | BBlank (ttag) -> (BName (gensym "blank", false, ttag), [])
           | _ -> (bind, [])
         in
         let params, newbinds = List.split (List.map expandBind binds) in
