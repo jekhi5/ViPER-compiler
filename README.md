@@ -1,5 +1,8 @@
 # The ViPER Compiler
 
+[![Build Status](https://github.com/jekhi5/ViPER-compiler/actions/workflows/main.yaml/badge.svg?event=push)](https://github.com/jekhi5/ViPER-compiler/actions)
+
+
 ## Verifying Programs Execute Right
 
 Welcome to our compiler! We've worked very hard to make your experience with our language a
@@ -39,6 +42,13 @@ To build ViPER, run
 
 ```bash
 make && make install
+```
+
+You will need to add `~/.local/bin` to your path, ideally via your shell's `rc` file (so it remains accessible between shell sessions):
+
+```bash
+echo "export PATH=$PATH:~/.local/bin" >> ~/.bashrc
+source ~/.bashrc
 ```
 
 You will need to add `~/.local/bin` to your path as the `viperc` install is put there.
