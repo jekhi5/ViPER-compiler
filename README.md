@@ -2,16 +2,24 @@
 
 ## Verifying Programs Execute Right
 
-Welcome to our compiler! We've worked very hard to make your experience with our language a positive
-one. ViPER is a functional language and the most current version of our language exists in the [`src/`](src/) directory.
+Welcome to our compiler! We've worked very hard to make your experience with our language a
+positive one. ViPER is a functional language and the most current version of our language
+exists in the [`src/`](src/) directory.
+
+Thank you for using our language! We hope your programs execute right!
+
+~ Jacob Kline and Emery Jacobowitz, Northeastern University Khoury College of Computer Science
+class of '25
 
 ## Installation
 
 ## System Dependencies
 
-Make sure that recent versions of {{:https://www.nasm.us}[nasm]} and {{:https://clang.llvm.org}clang} are installed on your system.
+Make sure that recent versions of {{:https://www.nasm.us}[nasm]} and
+{{:https://clang.llvm.org}clang} are installed on your system.
 
-ViPER primarily targets Linux. MacOS is usually supported, though platform-specific fixes may be slower. Windows is not supported. 
+ViPER primarily targets Linux. MacOS is usually supported, though platform-specific fixes may
+be slower. Windows is not supported.
 
 ### Download
 
@@ -26,19 +34,31 @@ git clone git@github.com:jekhi5/ViPER-compiler.git
 cd ViPER-compiler
 opam install .
 ```
+
 To build ViPER, run
 
 ```bash
 make && make install
 ```
 
-Now the ViPER compiler, `viperc`, will be available on your system. 
+You will need to add `~/.local/bin` to your path as the `viperc` install is put there.
+Once complete, `viperc` will now be available on your system!
 
 Uninstall with
 
 ```bash
 make uninstall
 ```
+
+### Running your own programs
+
+To run your own programs:
+
+1. Install the `viperc` compiler as described in [Build from Source](#build-from-source),
+ensuring you add `~/.local/bin` to your path
+2. Call `viperc path_to_program.viper`
+
+View available options by running `viperc --help`
 
 ### Development
 
@@ -65,14 +85,6 @@ make doc
 python scripts/server.py
 ```
 
-### Running your own programs
+### Adding to the testing framework
 
-To run your own programs:
-
-1. Write program files in the `test/input/do_pass` directory with the extension `*.viper`
-2. Run the [`./scripts/run`](./scripts/run) script (or just `./tester` if already built) to compile your program
-3. Run the compiled `.run` file at `./test/output/do_pass/YOUR_PROG_NAME.run`
-
-Thank you for using our language! We hope your programs execute right!
-
-~ Jacob Kline and Emery Jacobowitz, Northeastern University Khoury College of Computer Science class of '25
+Follow the directions in the [testing README](test/input/README.md)
