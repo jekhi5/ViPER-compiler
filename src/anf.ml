@@ -11,16 +11,28 @@ open Util
    ;;;;;;; ANFING ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
    ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; *)
 
+(** [anf_bind] represents a single intermediate binding accumulated during ANF conversion. Setup
+    lists are built up by [helpC] and [helpI] and later folded into a chain of [ALet] / [ALetRec] /
+    [ASeq] nodes by [helpA]. *)
 type 'a anf_bind =
-  | BSeq of 'a cexpr
-  | BLet of string * 'a cexpr
+  | BSeq of 'a cexpr  (** Evaluate the expression for its side effects; discard the result. *)
+  | BLet of string * 'a cexpr  (** Bind the result of a compound expression to a named temporary. *)
   | BLetRec of (string * 'a cexpr) list
+      (** Introduce a group of mutually-recursive bindings (each rhs must be a lambda). *)
 
+(** [anf p] converts a tag-annotated source [program] into an A-Normal Form program with sourcespan
+    annotations. Every complex sub-expression is pulled into an explicit let-binding so that all
+    primitive and function-call arguments are immediate (variables or literals). *)
 let anf (p : tag program) : sourcespan aprogram =
+  (* [helpP p] unwraps the top-level [Program] node and converts the body with [helpA]. Raises
+      [InternalCompilerError] if top-level declarations were not desugared before this pass. *)
   let rec helpP (p : tag program) : sourcespan aprogram =
     match p with
     | Program ([], body, _, (_, s)) -> AProgram (helpA body, s)
     | Program _ -> raise (InternalCompilerError "decls should have been desugared away")
+  (* [processBinding (bind, rhs, _)] extracts the name and ANF-converted right-hand side from a
+      single let-rec binding tuple. Raises [InternalCompilerError] if the pattern is not a plain
+      [BName] (tuple or blank patterns must be desugared before ANF). *)
   and processBinding (bind, rhs, _) =
     match bind with
     | BName (name, _, _) -> (name, helpC rhs)
@@ -29,6 +41,12 @@ let anf (p : tag program) : sourcespan aprogram =
           (InternalCompilerError
              (sprintf "Encountered a non-simple binding in ANFing a let-rec: %s"
                 (string_of_bind bind) ) )
+  (* [helpC e] converts a tagged expression into a compound expression ([cexpr]) plus an ordered
+      list of setup bindings that must precede it. The setup list is in outermost-first order;
+      [helpA] folds it into nested [ALet] / [ALetRec] / [ASeq] nodes. Call [helpC] when the
+      expression is allowed to be a non-immediate compound form (e.g. the right-hand side of a let,
+      a branch of an if-expression, or a sequence element). For positions that require an immediate
+      value, use [helpI] instead. *)
   and helpC (e : tag expr) : sourcespan cexpr * sourcespan anf_bind list =
     match e with
     | EPrim1 (op, arg, (_, s)) ->
@@ -102,7 +120,7 @@ let anf (p : tag program) : sourcespan aprogram =
         let c_imm, c_setup = helpI c in
         (CTryCatch (t_imm, except, c_imm, s), t_setup @ c_setup)
     | ETryCatch _ ->
-        raise (InternalCompilerError "Violated invatiant: Tried to catch a non-exception")
+        raise (InternalCompilerError "Violated invariant: Tried to catch a non-exception")
     | ECheck (checks, (_, s)) ->
         let new_checks, checks_setup = List.split (List.map helpI checks) in
         (CCheck (new_checks, s), List.concat checks_setup)
@@ -122,6 +140,11 @@ let anf (p : tag program) : sourcespan aprogram =
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
+  (* [helpI e] converts a tagged expression into an immediate expression ([immexpr]), which is a 
+      literal or a variable reference plus a setup list. If [e] is not already immediate, a fresh 
+      temporary name is generated from the expression's tag (e.g. ["binop_42"], ["if_7"]) and added 
+      as the last [BLet] in the setup, so the caller always receives a plain [ImmId]. Use [helpI] 
+      wherever an immediate is required: function arguments, primitive operands, tuple elements, etc. *)
   and helpI (e : tag expr) : sourcespan immexpr * sourcespan anf_bind list =
     match e with
     | ENumber (n, (_, s)) -> (ImmNum (n, s), [])
@@ -242,6 +265,10 @@ let anf (p : tag program) : sourcespan aprogram =
         ( ImmId (tmp, s),
           e1_setup @ e2_setup @ pred_setup
           @ [BLet (tmp, CTestOp2Pred (e1_ans, e2_ans, pred_ans, negation, s))] )
+  (* [helpA e] converts a tagged expression into a complete A-expression ([aexpr]) by calling
+      [helpC] and folding the resulting setup list into a chain of [ALet] / [ALetRec] / [ASeq]
+      wrappers around the final [ACExpr]. This is the entry point for positions that must yield a
+      full [aexpr]: lambda bodies, if-branches, and the top-level program body. *)
   and helpA (e : tag expr) : sourcespan aexpr =
     let ans, ans_setup = helpC e in
     List.fold_right
