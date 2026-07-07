@@ -1,12 +1,56 @@
-name: Placeholder
+name: Publish Syntax Highlighting
 
 on:
-  pull_request:
-    branches-ignore:
-      - '*'
+  push:
+    branches: [main]
+    paths:
+      - 'syntax-highlighting/**'
+
+permissions:
+  contents: write
 
 jobs:
-  placeholder-job:
+  publish:
+    name: Build and Release
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "Placeholder"
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get version
+        id: version
+        run: |
+          echo "version=$(node -p "require('./syntax-highlighting/VSCode/package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Build VS Code VSIX
+        run: |
+          npm install -g @vscode/vsce
+          cd syntax-highlighting/VSCode && vsce package --no-dependencies
+
+      - name: Build TextMate2 bundle
+        run: |
+          cp -rL syntax-highlighting/TextMate2/ViPER.tmbundle /tmp/ViPER.tmbundle
+          cd /tmp && zip -r ViPER.tmbundle.zip ViPER.tmbundle
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          TAG="syntax-v$VERSION"
+          VSIX="syntax-highlighting/VSCode/viper-language-$VERSION.vsix"
+          BUNDLE="/tmp/ViPER.tmbundle.zip"
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$VSIX" "$BUNDLE" --clobber
+          else
+            gh release create "$TAG" "$VSIX" "$BUNDLE" \
+              --title "Syntax Highlighting v$VERSION" \
+              --notes "VS Code (.vsix) and TextMate2 (.tmbundle.zip) syntax highlighting for ViPER."
+          fi
