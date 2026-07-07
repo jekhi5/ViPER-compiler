@@ -1,0 +1,36 @@
+{
+  "name": "viper-language",
+  "displayName": "ViPER",
+  "description": "Syntax highlighting for the ViPER language",
+  "publisher": "viper",
+  "version": "0.0.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jekhi5/ViPER-compiler.git"
+  },
+  "engines": {
+    "vscode": "^1.0.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "viper",
+        "aliases": [
+          "ViPER",
+          "viper"
+        ],
+        "extensions": [
+          ".viper"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "viper",
+        "scopeName": "source.viper",
+        "path": "./viper.tmLanguage.json"
+      }
+    ]
+  }
+}

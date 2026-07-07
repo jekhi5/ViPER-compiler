@@ -1,0 +1,189 @@
+{
+  "name": "ViPER",
+  "scopeName": "source.viper",
+  "fileTypes": ["viper"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#function-definition" },
+    { "include": "#lambda" },
+    { "include": "#literals" },
+    { "include": "#keywords-control" },
+    { "include": "#keywords-storage" },
+    { "include": "#keywords-other" },
+    { "include": "#support-types" },
+    { "include": "#support-functions" },
+    { "include": "#test-operators" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "name": "comment.line.number-sign.viper",
+      "match": "#[^\n]*"
+    },
+
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.viper",
+          "begin": "\"",
+          "end": "\""
+        },
+        {
+          "name": "string.quoted.single.viper",
+          "begin": "'",
+          "end": "'"
+        }
+      ]
+    },
+
+    "literals": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.viper",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.viper",
+          "match": "\\b[0-9]+\\b"
+        },
+        {
+          "name": "constant.language.boolean.viper",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.viper",
+          "match": "\\bnil\\b"
+        }
+      ]
+    },
+
+    "function-definition": {
+      "comment": "begin ends at )\\s*:",
+      "name": "meta.function.viper",
+      "begin": "\\b(def)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*(\\()",
+      "beginCaptures": {
+        "1": { "name": "storage.type.function.viper" },
+        "2": { "name": "entity.name.function.viper" },
+        "3": { "name": "punctuation.bracket.viper" }
+      },
+      "end": "(\\))\\s*(:)",
+      "endCaptures": {
+        "1": { "name": "punctuation.bracket.viper" },
+        "2": { "name": "punctuation.section.function.begin.viper" }
+      },
+      "patterns": [
+        { "name": "variable.parameter.viper", "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b" },
+        { "name": "punctuation.separator.comma.viper", "match": "," },
+        { "name": "punctuation.bracket.viper", "match": "[()]" }
+      ]
+    },
+
+    "lambda": {
+      "patterns": [
+        {
+          "comment": "Lambda with params: (lambda(x, y): body))",
+          "name": "meta.lambda.viper",
+          "begin": "(\\blambda\\b|λ)\\s*(\\()",
+          "beginCaptures": {
+            "1": { "name": "storage.type.function.viper" },
+            "2": { "name": "punctuation.bracket.viper" }
+          },
+          "end": "(\\))\\s*(:)",
+          "endCaptures": {
+            "1": { "name": "punctuation.bracket.viper" },
+            "2": { "name": "punctuation.section.function.begin.viper" }
+          },
+          "patterns": [
+            { "name": "variable.parameter.viper", "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b" },
+            { "name": "punctuation.separator.comma.viper", "match": "," },
+            { "name": "punctuation.bracket.viper", "match": "[()]" }
+          ]
+        },
+        {
+          "comment": "Zero-argument lambda: (lambda: body)",
+          "match": "(\\blambda\\b|λ)\\s*(:)",
+          "captures": {
+            "1": { "name": "storage.type.function.viper" },
+            "2": { "name": "punctuation.section.function.begin.viper" }
+          }
+        }
+      ]
+    },
+
+    "keywords-control": {
+      "name": "keyword.control.viper",
+      "match": "\\b(if|else|let|in|rec|begin|end|try|catch|as|check|raise)\\b"
+    },
+
+    "keywords-storage": {
+      "comment": "and is the mutual-recursion connector between def declarations",
+      "name": "storage.type.function.viper",
+      "match": "\\band\\b"
+    },
+
+    "keywords-other": {
+      "name": "keyword.other.viper",
+      "match": "\\bshadow\\b"
+    },
+
+    "support-types": {
+      "name": "entity.name.type.exception.viper",
+      "match": "\\b(RuntimeException|ValueException)\\b"
+    },
+
+    "support-functions": {
+      "name": "support.function.builtin.viper",
+      "match": "\\b(add1|sub1|print|printStack|crash|isbool|isnum|istuple)\\b"
+    },
+
+    "test-operators": {
+      "name": "keyword.other.assert.viper",
+      "match": "\\b(spits|sheds|broods|bites)\\b"
+    },
+
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.viper",
+          "match": ":="
+        },
+        {
+          "name": "keyword.operator.comparison.viper",
+          "match": "==|>=|<=|>|<"
+        },
+        {
+          "name": "keyword.operator.logical.viper",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.arithmetic.viper",
+          "match": "[+\\-*/]"
+        }
+      ]
+    },
+
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.statement.viper",
+          "match": ";"
+        },
+        {
+          "name": "punctuation.separator.comma.viper",
+          "match": ","
+        },
+        {
+          "comment": "Colons not captured by function-definition or lambda (after if, else, check)",
+          "name": "punctuation.separator.colon.viper",
+          "match": ":"
+        },
+        {
+          "name": "punctuation.bracket.viper",
+          "match": "[()\\[\\]]"
+        }
+      ]
+    }
+  }
+}
