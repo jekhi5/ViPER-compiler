@@ -48,7 +48,7 @@ jobs:
           BUNDLE="/tmp/ViPER.tmbundle.zip"
 
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$VSIX" "$BUNDLE" --clobber
+            gh release upload "$TAG" "$VSIX" "$BUNDLE"
           else
             gh release create "$TAG" "$VSIX" "$BUNDLE" \
               --title "Syntax Highlighting v$VERSION" \

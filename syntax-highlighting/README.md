@@ -6,6 +6,8 @@ Extensions for VS Code and TextMate2.
 
 **Always edit `viper.tmLanguage.json` at the root of this directory.** The copies inside `VSCode/` and `TextMate2/` are symlinks and must not be edited directly.
 
+**Do not forget to update the version in the [VSCode/package.json](VSCode/package.json) file. If you do not, your release upload will fail as there is already an existing release with that tag number!**
+
 ## Building
 
 **VS Code VSIX:**
