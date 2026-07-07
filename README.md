@@ -34,13 +34,6 @@ To build ViPER, run
 make && make install
 ```
 
-You will need to add `~/.local/bin` to your path, ideally via your shell's `rc` file (so it remains accessible between shell sessions):
-
-```bash
-echo "export PATH=$PATH:~/.local/bin" >> ~/.bashrc
-source ~/.bashrc
-```
-
 You will need to add `~/.local/bin` to your path as the `viperc` install is put there. Once complete, `viperc` will now be available on your system!
 
 Uninstall with
