@@ -17,7 +17,6 @@ let suite =
            (module Test_well_formed.Suite) ]
 ;;
 
-(* @ fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra @ live_out @ oom
-       @ gc @ input *)
+let file_tests = "file_tests" >::: [input_file_test_suite ()]
 
-let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
+let () = run_test_tt_main ("all_tests" >::: [suite; file_tests])
