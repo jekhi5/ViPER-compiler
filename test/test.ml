@@ -16,7 +16,7 @@ let suite =
            (module Test_builtins.Suite) ]
 ;;
 
-(* @ fvc @ nsa @ ra @ coloring @ interf @ pair_tests @ run_with_ra @ live_out @ oom
+(* @ fvc @ nsa @ ra @ coloring @ interference @ pair_tests @ run_with_ra @ live_out @ oom
        @ gc @ input *)
 
 let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])

@@ -170,7 +170,7 @@ let free_vars_cache (AProgram (body, _) : 'a aprogram) : freevars aprogram =
     | ALetRec (binds, body, _) ->
         let new_binds, free_binds =
           (* This fold means that LetRec free variables are unidirectional!
-           * Mutual recursion is not possible!
+           * TODO: Mutual recursion is not possible!
            *)
           List.fold_left
             (fun (acc, free) (name, cexpr) ->

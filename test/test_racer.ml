@@ -196,7 +196,7 @@ let tigc name program expected =
 
 let empty_map = StringMap.empty
 
-let interf =
+let interference =
   [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R12); ("b", Reg R13)]);
     tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
       (assoc_to_map [("x", Reg R12); ("y", Reg R12)]);
@@ -229,5 +229,5 @@ let run_with_ra =
 ;;
 
 module Suite : TestSuite = struct
-  let suite = nsa @ ra @ coloring @ interf @ run_with_ra
+  let suite = nsa @ ra @ coloring @ interference @ run_with_ra
 end

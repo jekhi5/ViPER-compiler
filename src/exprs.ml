@@ -81,7 +81,7 @@ and 'a expr =
   | ELambda of 'a bind list * 'a expr * 'a
   | ELetRec of 'a binding list * 'a expr * 'a
   | EException of except * 'a
-  (* try () catch RuntimeExcexption as e in () *)
+  (* try () catch RuntimeException as e in () *)
   | ETryCatch of 'a expr * 'a bind * 'a expr * 'a expr * 'a
   | ECheck of 'a expr list * 'a
   | ETestOp1 of 'a expr * 'a expr * bool * 'a
