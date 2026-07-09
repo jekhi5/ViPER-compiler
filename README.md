@@ -10,7 +10,7 @@ Welcome to our compiler! We've worked very hard to make your experience with our
 
 ### System Dependencies
 
-Make sure that recent versions of {{:https://www.nasm.us}[nasm]} and {{:https://clang.llvm.org}clang} are installed on your system.
+Make sure that recent versions of [nasm](https://www.nasm.us) and [clang](https://clang.llvm.org) are installed on your system.
 
 ViPER primarily targets Linux. MacOS is usually supported, though platform-specific fixes may be slower. Windows is not supported.
 
