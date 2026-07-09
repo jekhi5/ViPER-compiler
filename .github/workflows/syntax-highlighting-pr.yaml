@@ -1,12 +1,31 @@
-name: Placeholder2
+name: Validate Syntax Highlighting
 
 on:
   pull_request:
-    branches-ignore:
-      - '*'
+    paths:
+      - 'syntax-highlighting/**'
 
 jobs:
-  placeholder-job:
+  validate:
+    name: Validate Syntax Highlighting
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "Placeholder"
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Validate JSON
+        run: |
+          python3 -m json.tool syntax-highlighting/viper.tmLanguage.json > /dev/null && echo "SUCCESS: viper.tmLanguage.json"
+          python3 -m json.tool syntax-highlighting/VSCode/package.json > /dev/null && echo "SUCCESS: package.json"
+          python3 -m json.tool syntax-highlighting/VSCode/language-configuration.json > /dev/null && echo "SUCCESS: language-configuration.json"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify VSIX builds
+        run: |
+          npm install -g @vscode/vsce
+          cd syntax-highlighting/VSCode && vsce package --no-dependencies

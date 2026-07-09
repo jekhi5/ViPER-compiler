@@ -51,6 +51,22 @@ To run your own programs:
 
 View available options by running `viperc --help`
 
+### Syntax highlighting
+
+ViPER syntax highlighting is available for VS Code and TextMate2. Download the latest release from the [releases page](https://github.com/jekhi5/ViPER-compiler/releases).
+
+#### VS Code
+
+1. Download `viper-language-x.x.x.vsix`
+2. **Cmd+Shift+P** -> **Extensions: Install from VSIX...** -> select the file
+
+#### TextMate2
+
+1. Download `ViPER.tmbundle.zip` and unzip it
+2. Double-click `ViPER.tmbundle` to install
+
+For development setup and build instructions, see [`syntax-highlighting/`](syntax-highlighting/).
+
 ### Development
 
 The main interface is the Makefile. Here is a general workflow:
