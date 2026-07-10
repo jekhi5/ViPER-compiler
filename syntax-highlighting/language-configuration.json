@@ -2,6 +2,10 @@
   "comments": {
     "lineComment": "#"
   },
+  "indentationRules": {
+    "increaseIndentPattern": "^((?!#).)*(:\\s*$|\\btry\\s*$|\\bin\\s*$|\\bbegin\\s*$|\\blet(\\s+rec)?\\s*$)",
+    "decreaseIndentPattern": "^\\s*(end|catch|else|in)\\b"
+  },
   "autoClosingPairs": [
     ["(", ")"],
     ["[", "]"],

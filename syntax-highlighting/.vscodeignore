@@ -1,0 +1,4 @@
+TextMate2/
+generate_textmate_bundle.py
+highlight_test.viper
+*.vsix
