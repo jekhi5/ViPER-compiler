@@ -1,0 +1,26 @@
+import json
+import pathlib
+import plistlib
+
+# Grammar
+grammar = json.loads(pathlib.Path('viper.tmLanguage.json').read_text())
+grammar.setdefault('uuid', 'F8066248-75AD-4B4C-AA7A-2830B9265321')
+syntaxes = pathlib.Path('TextMate2/ViPER.tmbundle/Syntaxes')
+syntaxes.mkdir(parents=True, exist_ok=True)
+(syntaxes / 'ViPER.tmLanguage').write_bytes(plistlib.dumps(grammar, fmt=plistlib.FMT_XML))
+
+# Indentation preferences
+lang_config = json.loads(pathlib.Path('language-configuration.json').read_text())
+indent = lang_config.get('indentationRules', {})
+prefs = {
+    'name': 'Indentation Rules',
+    'scope': 'source.viper',
+    'settings': {
+        'increaseIndentPattern': indent.get('increaseIndentPattern', ''),
+        'decreaseIndentPattern': indent.get('decreaseIndentPattern', ''),
+    },
+    'uuid': '1F496C0F-5B74-44FB-93CD-6876857E1D23',
+}
+preferences = pathlib.Path('TextMate2/ViPER.tmbundle/Preferences')
+preferences.mkdir(parents=True, exist_ok=True)
+(preferences / 'Indentation.tmPreferences').write_bytes(plistlib.dumps(prefs, fmt=plistlib.FMT_XML))
