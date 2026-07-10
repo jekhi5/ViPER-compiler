@@ -8,15 +8,17 @@ Edit [`src/viper.tmLanguage.json`](src/viper.tmLanguage.json) to change the gram
 
 ## Installing
 
-**VS Code:** install the `.vsix` from the release page via **Extensions -> ··· -> Install from VSIX**.
+You can find installs for both VSCode and TextMate2 at the [Release page](https://github.com/jekhi5/ViPER-compiler/releases) of ViPER.
+
+**VS Code:** Download the `.vsix` file. Install it within VSCode via **Extensions -> ··· -> Install from VSIX**.
 
 **TextMate2:** download `ViPER.tmbundle.zip` from the release page, unzip it, and double-click `ViPER.tmbundle`.
 
-A color theme must be active for syntax highlighting to appear. Go to **TextMate → Preferences → Fonts & Colors** and select any non-plain theme (e.g. Twilight, Monokai).
+A color theme must be active for syntax highlighting to appear. Download one and select it via **View → Theme** in TextMate2.
 
 ## Updating
 
-**VS Code:** install the new `.vsix` the same way — it replaces the old version automatically.
+**VS Code:** install the new `.vsix` the same way--it replaces the old version automatically.
 
 **TextMate2:** double-clicking a new bundle does **NOT** replace the old one; TextMate2 installs it alongside, causing conflicts. Always remove the old bundle first:
 
@@ -28,9 +30,9 @@ Then double-click the new `ViPER.tmbundle`.
 
 ## Building
 
-Run from within the `syntax-highlighting` directory.
-
 **VS Code VSIX** (requires [`vsce`](https://github.com/microsoft/vscode-vsce)):
+
+Run from within the `syntax-highlighting` directory.
 
 ```bash
 vsce package --no-dependencies
