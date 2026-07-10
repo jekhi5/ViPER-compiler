@@ -22,14 +22,14 @@
         "extensions": [
           ".viper"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./src/language-configuration.json"
       }
     ],
     "grammars": [
       {
         "language": "viper",
         "scopeName": "source.viper",
-        "path": "./viper.tmLanguage.json"
+        "path": "./src/viper.tmLanguage.json"
       }
     ]
   }

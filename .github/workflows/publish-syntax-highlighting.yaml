@@ -45,7 +45,7 @@ jobs:
           cd syntax-highlighting && vsce package --no-dependencies
 
       - name: Generate TextMate2 Bundle Files
-        run: python3 syntax-highlighting/generate_textmate_bundle.py
+        run: python3 syntax-highlighting/scripts/generate_textmate_bundle.py
 
       - name: Publish release
         env:

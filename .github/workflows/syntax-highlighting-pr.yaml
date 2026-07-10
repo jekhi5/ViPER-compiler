@@ -18,9 +18,9 @@ jobs:
 
       - name: Validate JSON
         run: |
-          python3 -m json.tool syntax-highlighting/viper.tmLanguage.json > /dev/null && echo "SUCCESS: viper.tmLanguage.json"
+          python3 -m json.tool syntax-highlighting/src/viper.tmLanguage.json > /dev/null && echo "SUCCESS: viper.tmLanguage.json"
           python3 -m json.tool syntax-highlighting/package.json > /dev/null && echo "SUCCESS: package.json"
-          python3 -m json.tool syntax-highlighting/language-configuration.json > /dev/null && echo "SUCCESS: language-configuration.json"
+          python3 -m json.tool syntax-highlighting/src/language-configuration.json > /dev/null && echo "SUCCESS: language-configuration.json"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
