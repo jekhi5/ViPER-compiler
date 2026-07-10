@@ -13,14 +13,11 @@ syntaxes.mkdir(parents=True, exist_ok=True)
 (syntaxes / 'ViPER.tmLanguage').write_bytes(plistlib.dumps(grammar, fmt=plistlib.FMT_XML))
 
 # Indentation preferences
-lang_config = json.loads((SRC / 'language-configuration.json').read_text())
-indent = lang_config.get('indentationRules', {})
 prefs = {
     'name': 'Indentation Rules',
     'scope': 'source.viper',
     'settings': {
-        'increaseIndentPattern': indent.get('increaseIndentPattern', ''),
-        'decreaseIndentPattern': indent.get('decreaseIndentPattern', ''),
+        'disableIndentCorrections': True,
     },
     'uuid': '1F496C0F-5B74-44FB-93CD-6876857E1D23',
 }
