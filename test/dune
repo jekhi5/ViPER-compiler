@@ -7,5 +7,6 @@
   test_parser
   test_garter
   test_builtins
-  test_well_formed)
+  test_well_formed
+  test_desugar)
  (libraries viper_impl))
