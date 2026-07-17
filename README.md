@@ -1,6 +1,8 @@
 # The ViPER Compiler
 
 [![Build Status](https://github.com/jekhi5/ViPER-compiler/actions/workflows/main.yaml/badge.svg?event=push)](https://github.com/jekhi5/ViPER-compiler/actions)
+[![Syntax Highlighting Build](https://github.com/jekhi5/ViPER-compiler/actions/workflows/publish-syntax-highlighting.yaml/badge.svg?event=push)](https://github.com/jekhi5/ViPER-compiler/actions)
+[![Syntax Highlighting Version](https://img.shields.io/github/v/release/jekhi5/ViPER-compiler?filter=syntax-v*&label=syntax+highlighting)](https://github.com/jekhi5/ViPER-compiler/releases)
 
 ## Verifying Programs Execute Right
 

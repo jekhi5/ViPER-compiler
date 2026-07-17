@@ -13,19 +13,32 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
+        with:
+          sparse-checkout: 'syntax-highlighting'
 
       - name: Validate JSON
         run: |
-          python3 -m json.tool syntax-highlighting/viper.tmLanguage.json > /dev/null && echo "SUCCESS: viper.tmLanguage.json"
-          python3 -m json.tool syntax-highlighting/VSCode/package.json > /dev/null && echo "SUCCESS: package.json"
-          python3 -m json.tool syntax-highlighting/VSCode/language-configuration.json > /dev/null && echo "SUCCESS: language-configuration.json"
+          python3 -m json.tool syntax-highlighting/src/viper.tmLanguage.json > /dev/null && echo "SUCCESS: viper.tmLanguage.json"
+          python3 -m json.tool syntax-highlighting/package.json > /dev/null && echo "SUCCESS: package.json"
+          python3 -m json.tool syntax-highlighting/src/language-configuration.json > /dev/null && echo "SUCCESS: language-configuration.json"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
+      - name: Check version bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./syntax-highlighting/package.json').version")
+          TAG="syntax-v$VERSION"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "ERROR: $TAG already released. Bump the version in syntax-highlighting/package.json."
+            exit 1
+          fi
+
       - name: Verify VSIX builds
         run: |
           npm install -g @vscode/vsce
-          cd syntax-highlighting/VSCode && vsce package --no-dependencies
+          cd syntax-highlighting && vsce package --no-dependencies

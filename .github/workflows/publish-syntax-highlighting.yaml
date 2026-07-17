@@ -17,26 +17,35 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
+        with:
+          sparse-checkout: 'syntax-highlighting'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.13' 
+      
+      - name: Install Python dependencies
+        run: |
+          pip install json plistlib pathlib
 
       - name: Get version
         id: version
         run: |
-          echo "version=$(node -p "require('./syntax-highlighting/VSCode/package.json').version")" >> $GITHUB_OUTPUT
+          echo "version=$(node -p "require('./syntax-highlighting/package.json').version")" >> $GITHUB_OUTPUT
 
       - name: Build VS Code VSIX
         run: |
           npm install -g @vscode/vsce
-          cd syntax-highlighting/VSCode && vsce package --no-dependencies
+          cd syntax-highlighting && vsce package --no-dependencies
 
-      - name: Build TextMate2 bundle
-        run: |
-          cp -rL syntax-highlighting/TextMate2/ViPER.tmbundle /tmp/ViPER.tmbundle
-          cd /tmp && zip -r ViPER.tmbundle.zip ViPER.tmbundle
+      - name: Generate TextMate2 Bundle Files
+        run: python3 syntax-highlighting/scripts/generate_textmate_bundle.py
 
       - name: Publish release
         env:
@@ -44,13 +53,25 @@ jobs:
         run: |
           VERSION=${{ steps.version.outputs.version }}
           TAG="syntax-v$VERSION"
-          VSIX="syntax-highlighting/VSCode/viper-language-$VERSION.vsix"
-          BUNDLE="/tmp/ViPER.tmbundle.zip"
+          VSIX="syntax-highlighting/viper-language-$VERSION.vsix"
+          BUNDLE="syntax-highlighting/TextMate2/ViPER.tmbundle"
+          README="syntax-highlighting/README.md"
 
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$VSIX" "$BUNDLE"
-          else
-            gh release create "$TAG" "$VSIX" "$BUNDLE" \
-              --title "Syntax Highlighting v$VERSION" \
-              --notes "VS Code (.vsix) and TextMate2 (.tmbundle.zip) syntax highlighting for ViPER."
+            echo "ERROR: $TAG already exists. This should have been caught in the PR check."
+            exit 1
           fi
+
+          # Find the most recent syntax-highlighting Release on which to 
+          # base the generated changelog
+          PREV_TAG=$(gh release list --limit 100 --json tagName \
+            --jq '[.[] | select(.tagName | startswith("syntax-v"))][0].tagName // ""')
+
+          NOTES_FLAGS="--generate-notes"
+          if [ -n "$PREV_TAG" ]; then
+            NOTES_FLAGS="$NOTES_FLAGS --notes-start-tag $PREV_TAG"
+          fi
+
+          gh release create "$TAG" "$VSIX" "$BUNDLE" "$README" \
+            --title "Syntax Highlighting v$VERSION" \
+            $NOTES_FLAGS
