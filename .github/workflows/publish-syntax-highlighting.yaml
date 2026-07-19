@@ -29,10 +29,6 @@ jobs:
         uses: actions/setup-python@v6.3.0
         with:
           python-version: '3.13' 
-      
-      - name: Install Python dependencies
-        run: |
-          pip install json plistlib pathlib
 
       - name: Get version
         id: version
