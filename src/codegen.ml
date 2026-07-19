@@ -125,21 +125,21 @@ let check_function =
     IJne (Label err_call_not_closure_label) ]
 ;;
 
-let check_tuple_index (tup_reg : arg) (idx_reg : arg) = [
-  IMov (Reg RAX, tup_reg);
-  ISub (Reg RAX, Const tuple_tag);
-  IMov (Reg RAX, Sized (QWORD_PTR, RegOffset (0, RAX)));
-  IMov (Reg scratch_reg, idx_reg);
-  (* At this point: 
+let check_tuple_index (tup_reg : arg) (idx_reg : arg) =
+  [ IMov (Reg RAX, tup_reg);
+    ISub (Reg RAX, Const tuple_tag);
+    IMov (Reg RAX, Sized (QWORD_PTR, RegOffset (0, RAX)));
+    IMov (Reg scratch_reg, idx_reg);
+    (* At this point: 
       - RAX contains the tuple size
       - Scratch contains the index
   *)
-  ICmp (Reg scratch_reg, Reg RAX);
-  IJge (Label index_high_label);
-  ISar (Reg scratch_reg, Const 1L);
-  ICmp (Reg scratch_reg, Const 0L);
-  IJl (Label index_low_label)
-]
+    ICmp (Reg scratch_reg, Reg RAX);
+    IJge (Label index_high_label);
+    ISar (Reg scratch_reg, Const 1L);
+    ICmp (Reg scratch_reg, Const 0L);
+    IJl (Label index_low_label) ]
+;;
 
 (* Helper for numeric comparisons *)
 let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
@@ -737,8 +737,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
            * - By the time we evaluate a CheckSize, we have already guaranteed that e1 is a tuple
            * - We create CheckSize during desugaring, and we only ever make `e2` an ENumber.
            *)
-           (* e1: tuple -- [e1+0] : length (snakeval) *)
-           (* e2: length -- snakeval *)
+          (* e1: tuple -- [e1+0] : length (snakeval) *)
+          (* e2: length -- snakeval *)
           [ IMov (Reg RAX, e1_reg);
             ISub (Reg RAX, Const tuple_tag);
             IMov (Reg RAX, Sized (QWORD_PTR, RegOffset (0, RAX)));
@@ -828,13 +828,12 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ [IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
       @ check_tuple_index tup_reg idx_reg
-      @  [
-        IMov (Reg RAX, tup_reg); 
-        ISub (Reg RAX, Const tuple_tag); 
-        IMov (Reg scratch_reg, idx_reg);
-        ISar (Reg scratch_reg, Const 1L);
-        (* IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, scratch_reg, word_size, word_size))); *)
-        ILineComment "Multiply the value in scratch by 8 with no further offset" ]
+      @ [ IMov (Reg RAX, tup_reg);
+          ISub (Reg RAX, Const tuple_tag);
+          IMov (Reg scratch_reg, idx_reg);
+          ISar (Reg scratch_reg, Const 1L);
+          (* IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, scratch_reg, word_size, word_size))); *)
+          ILineComment "Multiply the value in scratch by 8 with no further offset" ]
       @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, scratch_reg, word_size, word_size))
       (* @ [IJmp (Label crash_label);] *)
       @ [ILineComment "===== End get-item ====="]
@@ -919,8 +918,7 @@ let error_suffix =
         to_asm (native_call (Label "?error") [Const err_ARITH_NOT_NUM; Reg scratch_reg]) );
       ( not_a_bool_logic_label,
         to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg RAX]) );
-      ( not_a_bool_if_label,
-        to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg RAX]) );
+      (not_a_bool_if_label, to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg RAX]));
       (overflow_label, to_asm (native_call (Label "?error") [Const err_OVERFLOW; Reg RAX]));
       ( not_a_tuple_access_label,
         to_asm (native_call (Label "?error") [Const err_GET_NOT_TUPLE; Reg scratch_reg]) );
