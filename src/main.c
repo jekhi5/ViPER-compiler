@@ -367,7 +367,9 @@ void error(uint64_t code, SNAKEVAL val)
     fprintf(stderr, "Error: index expected a number\n");
     break;
   case ERR_UNPACK_ERR:
-    fprintf(stderr, "Error: tuple cannot be unpacked into the given bindings of size %ld\n", (uint64_t)val >> 1);
+    fprintf(stderr, "Error: tuple cannot be unpacked into the given bindings of size ");
+    printHelp(stderr, val);
+    fprintf(stderr, "\n");
     break;
   case ERR_CRASH:
     fprintf(stderr, "Error: CRASH\n");
@@ -380,7 +382,7 @@ void error(uint64_t code, SNAKEVAL val)
   printHelp(stderr, val);
   fprintf(stderr, "\n");
   fflush(stderr);
-  // naive_print_heap(stderr, HEAP, HEAP_END);
+  naive_print_heap(stderr, HEAP, HEAP_END);
   fflush(stdout);
   free(HEAP);
   exit(code);

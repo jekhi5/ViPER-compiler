@@ -95,10 +95,6 @@ let check_num (goto : string) : instruction list =
 
 (* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
 let check_tuple (goto : string) : instruction list =
-  (* This mangles RAX, btw.
-     We must either reset rax after this,
-     or use a temp register here.
-  *)
   [ IMov (Reg scratch_reg2, Reg RAX);
     IAnd (Reg scratch_reg2, HexConst tuple_tag_mask);
     IMov (Reg scratch_reg, HexConst tuple_tag);
@@ -125,10 +121,19 @@ let check_function =
     IJne (Label err_call_not_closure_label) ]
 ;;
 
+(** [check_tuple_index tup_reg idx_reg] enforces that
+  the value stored in [idx_reg] is a valid index for  
+  the tuple pointed to by [tup_reg].
+  Assumes that [idx_reg] has already been typechecked to contain an integer.
+*)
 let check_tuple_index (tup_reg : arg) (idx_reg : arg) =
+  (* This mangles RAX, btw.
+     We must either reset rax after this,
+     or use a temp register here.
+  *)
   [ IMov (Reg RAX, tup_reg);
     ISub (Reg RAX, Const tuple_tag);
-    IMov (Reg RAX, Sized (QWORD_PTR, RegOffset (0, RAX)));
+    IMov (Reg RAX, RegOffset (0, RAX));
     IMov (Reg scratch_reg, idx_reg);
     (* At this point: 
       - RAX contains the tuple size
@@ -136,7 +141,6 @@ let check_tuple_index (tup_reg : arg) (idx_reg : arg) =
   *)
     ICmp (Reg scratch_reg, Reg RAX);
     IJge (Label index_high_label);
-    ISar (Reg scratch_reg, Const 1L);
     ICmp (Reg scratch_reg, Const 0L);
     IJl (Label index_low_label) ]
 ;;
@@ -741,7 +745,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           (* e2: length -- snakeval *)
           [ IMov (Reg RAX, e1_reg);
             ISub (Reg RAX, Const tuple_tag);
-            IMov (Reg RAX, Sized (QWORD_PTR, RegOffset (0, RAX)));
+            IMov (Reg RAX, RegOffset (0, RAX));
             IMov (Reg scratch_reg, e2_reg);
             (* RAX contains actual length, scratch_reg contains expected length. *)
             ICmp (Reg RAX, Reg scratch_reg);
@@ -832,10 +836,8 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           ISub (Reg RAX, Const tuple_tag);
           IMov (Reg scratch_reg, idx_reg);
           ISar (Reg scratch_reg, Const 1L);
-          (* IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, scratch_reg, word_size, word_size))); *)
           ILineComment "Multiply the value in scratch by 8 with no further offset" ]
       @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, scratch_reg, word_size, word_size))
-      (* @ [IJmp (Label crash_label);] *)
       @ [ILineComment "===== End get-item ====="]
   | CSetItem (tup, idx, value, _) ->
       let tup_reg = compile_imm tup env_env env_name in
