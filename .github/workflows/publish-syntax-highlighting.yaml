@@ -50,8 +50,10 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           TAG="syntax-v$VERSION"
           VSIX="syntax-highlighting/viper-language-$VERSION.vsix"
-          BUNDLE="syntax-highlighting/TextMate2/ViPER.tmbundle"
+          BUNDLE_ZIP="syntax-highlighting/TextMate2/ViPER.tmbundle.zip"
           README="syntax-highlighting/README.md"
+
+          (cd syntax-highlighting/TextMate2 && zip -r ViPER.tmbundle.zip ViPER.tmbundle)
 
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "ERROR: $TAG already exists. This should have been caught in the PR check."
@@ -68,6 +70,6 @@ jobs:
             NOTES_FLAGS="$NOTES_FLAGS --notes-start-tag $PREV_TAG"
           fi
 
-          gh release create "$TAG" "$VSIX" "$BUNDLE" "$README" \
+          gh release create "$TAG" "$VSIX" "$BUNDLE_ZIP" "$README" \
             --title "Syntax Highlighting v$VERSION" \
             $NOTES_FLAGS
