@@ -41,7 +41,7 @@ vsce package --no-dependencies
 **TextMate2 bundle:**
 
 ```bash
-python3 scripts/generate_textmate_bundle.py 
+python3 scripts/generate_textmate_bundle.py
 ```
 
 The TextMate2 plist files are gitignored and generated from `src/viper.tmLanguage.json` and `src/language-configuration.json` at release time.
