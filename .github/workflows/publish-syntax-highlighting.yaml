@@ -18,6 +18,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           sparse-checkout: 'syntax-highlighting'
 
       - name: Setup Node.js
@@ -60,16 +61,14 @@ jobs:
             exit 1
           fi
 
-          # Find the most recent syntax-highlighting Release on which to 
+          # Find the most recent syntax-highlighting release on which to
           # base the generated changelog
           PREV_TAG=$(gh release list --limit 100 --json tagName \
             --jq '[.[] | select(.tagName | startswith("syntax-v"))][0].tagName // ""')
 
-          NOTES_FLAGS="--generate-notes"
-          if [ -n "$PREV_TAG" ]; then
-            NOTES_FLAGS="$NOTES_FLAGS --notes-start-tag $PREV_TAG"
-          fi
+          NOTES_FILE=$(mktemp)
+          bash syntax-highlighting/generate_release_notes.sh "$PREV_TAG" HEAD > "$NOTES_FILE"
 
           gh release create "$TAG" "$VSIX" "$BUNDLE_ZIP" "$README" \
             --title "Syntax Highlighting v$VERSION" \
-            $NOTES_FLAGS
+            --notes-file "$NOTES_FILE"
