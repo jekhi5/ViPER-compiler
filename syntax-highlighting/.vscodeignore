@@ -2,3 +2,4 @@ TextMate2/
 scripts/
 highlight_test.viper
 *.vsix
+generate_release_notes.sh
