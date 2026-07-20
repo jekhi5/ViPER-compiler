@@ -314,26 +314,32 @@ void error(uint64_t code, SNAKEVAL val)
   case ERR_COMP_NOT_NUM:
     fprintf(stderr, "Error: comparison expected a number, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_ARITH_NOT_NUM:
     fprintf(stderr, "Error: arithmetic expected a number, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_LOGIC_NOT_BOOL:
     fprintf(stderr, "Error: logic expected a boolean, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_IF_NOT_BOOL:
     fprintf(stderr, "Error: if expected a boolean, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_OVERFLOW:
     fprintf(stderr, "Error: Integer overflow, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_GET_NOT_TUPLE:
     fprintf(stderr, "Error: indexing expected a tuple, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_GET_LOW_INDEX:
     fprintf(stderr, "Error: index too small to get, got %ld\n", (uint64_t)val);
@@ -359,6 +365,7 @@ void error(uint64_t code, SNAKEVAL val)
   case ERR_CALL_NOT_CLOSURE:
     fprintf(stderr, "Error: tried to call a non-closure value: ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_CALL_ARITY_ERR:
     fprintf(stderr, "Error: arity mismatch in call\n");
@@ -377,6 +384,7 @@ void error(uint64_t code, SNAKEVAL val)
   default:
     fprintf(stderr, "Error: Unknown error code: %ld, val: ", code);
     printHelp(stderr, val);
+    printf("\n");
   }
   fprintf(stderr, "\n%p ==> ", (uint64_t *)val);
   printHelp(stderr, val);

@@ -121,11 +121,9 @@ let check_function =
     IJne (Label err_call_not_closure_label) ]
 ;;
 
-(** [check_tuple_index tup_reg idx_reg] enforces that
-  the value stored in [idx_reg] is a valid index for  
-  the tuple pointed to by [tup_reg].
-  Assumes that [idx_reg] has already been typechecked to contain an integer.
-*)
+(** [check_tuple_index tup_reg idx_reg] enforces that the value stored in [idx_reg] is a valid index
+    for the tuple pointed to by [tup_reg]. Assumes that [idx_reg] has already been typechecked to
+    contain an integer. *)
 let check_tuple_index (tup_reg : arg) (idx_reg : arg) =
   (* This mangles RAX, btw.
      We must either reset rax after this,
