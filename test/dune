@@ -1,4 +1,11 @@
 (test
  (name test)
- (modules test test_builtins test_funcs test_garter test_parser test_racer)
+ (modules
+  test
+  test_builtins
+  test_funcs
+  test_garter
+  test_parser
+  test_racer
+  test_desugar)
  (libraries viper_impl))
