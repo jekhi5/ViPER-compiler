@@ -95,10 +95,6 @@ let check_num (goto : string) : instruction list =
 
 (* Enforces that the value in RAX is a tuple. Goes to the specified label if not. *)
 let check_tuple (goto : string) : instruction list =
-  (* This mangles RAX, btw.
-     We must either reset rax after this,
-     or use a temp register here.
-  *)
   [ IMov (Reg scratch_reg2, Reg RAX);
     IAnd (Reg scratch_reg2, HexConst tuple_tag_mask);
     IMov (Reg scratch_reg, HexConst tuple_tag);
@@ -123,6 +119,28 @@ let check_function =
     (* put the checked value into RAX before potentially jumping.*)
     ICmp (Reg scratch_reg, Const closure_tag);
     IJne (Label err_call_not_closure_label) ]
+;;
+
+(** [check_tuple_index tup_reg idx_reg] enforces that the value stored in [idx_reg] is a valid index
+    for the tuple pointed to by [tup_reg]. Assumes that [idx_reg] has already been typechecked to
+    contain an integer. *)
+let check_tuple_index (tup_reg : arg) (idx_reg : arg) =
+  (* This mangles RAX, btw.
+     We must either reset rax after this,
+     or use a temp register here.
+  *)
+  [ IMov (Reg RAX, tup_reg);
+    ISub (Reg RAX, Const tuple_tag);
+    IMov (Reg RAX, RegOffset (0, RAX));
+    IMov (Reg scratch_reg, idx_reg);
+    (* At this point: 
+      - RAX contains the tuple size
+      - Scratch contains the index
+  *)
+    ICmp (Reg scratch_reg, Reg RAX);
+    IJge (Label index_high_label);
+    ICmp (Reg scratch_reg, Const 0L);
+    IJl (Label index_low_label) ]
 ;;
 
 (* Helper for numeric comparisons *)
@@ -721,13 +739,14 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
            * - By the time we evaluate a CheckSize, we have already guaranteed that e1 is a tuple
            * - We create CheckSize during desugaring, and we only ever make `e2` an ENumber.
            *)
+          (* e1: tuple -- [e1+0] : length (snakeval) *)
+          (* e2: length -- snakeval *)
           [ IMov (Reg RAX, e1_reg);
-            IMov (Reg scratch_reg, RegOffset (0, RAX));
-            IMov (Reg RAX, e2_reg);
-            ISar (Reg RAX, Const 1L);
-            ICmp (Reg scratch_reg, Reg RAX);
-            IMul (Reg RAX, Const 2L);
-            (* Note that RAX stores the expected arity. *)
+            ISub (Reg RAX, Const tuple_tag);
+            IMov (Reg RAX, RegOffset (0, RAX));
+            IMov (Reg scratch_reg, e2_reg);
+            (* RAX contains actual length, scratch_reg contains expected length. *)
+            ICmp (Reg RAX, Reg scratch_reg);
             IJne (Label err_unpack_err_label) ]
       | ReportTestFailMismatch ->
           let first = List.nth first_six_args_registers 0 in
@@ -810,40 +829,37 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ check_not_nil nil_deref_label
       @ [IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
+      @ check_tuple_index tup_reg idx_reg
       @ [ IMov (Reg RAX, tup_reg);
           ISub (Reg RAX, Const tuple_tag);
-          IMov (Reg R11, idx_reg);
-          ICmp (Reg R11, Reg RAX);
-          IJge (Label index_high_label);
-          IShr (Reg R11, Const 1L);
-          ICmp (Reg R11, Const 0L);
-          IJl (Label index_low_label);
-          IMov (Reg RAX, Sized (QWORD_PTR, RegOffsetReg (RAX, R11, word_size, word_size)));
-          ILineComment "Multiply the value in R11 by 8 with no further offset" ]
-      @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, R11, word_size, word_size))
+          IMov (Reg scratch_reg, idx_reg);
+          ISar (Reg scratch_reg, Const 1L);
+          ILineComment "Multiply the value in scratch by 8 with no further offset" ]
+      @ move_with_scratch (Reg RAX) (RegOffsetReg (RAX, scratch_reg, word_size, word_size))
       @ [ILineComment "===== End get-item ====="]
   | CSetItem (tup, idx, value, _) ->
       let tup_reg = compile_imm tup env_env env_name in
       let idx_reg = compile_imm idx env_env env_name in
       let val_reg = compile_imm value env_env env_name in
-      let tuple_slot_offset = RegOffsetReg (RAX, R11, word_size, word_size) in
       [ILineComment "==== Begin set-item ===="; IMov (Reg RAX, tup_reg)]
       @ check_tuple not_a_tuple_access_label
       @ [IMov (Reg RAX, tup_reg)]
       @ check_not_nil nil_deref_label
       @ [IMov (Reg RAX, idx_reg)]
       @ check_num not_a_number_index_label
+      @ check_tuple_index tup_reg idx_reg
       @ [ IMov (Reg RAX, tup_reg);
           ISub (Reg RAX, Const tuple_tag);
-          IMov (Reg R11, idx_reg);
-          ICmp (Reg R11, Reg RAX);
-          IJge (Label index_high_label);
-          IShr (Reg R11, Const 1L);
-          ICmp (Reg R11, Const 0L);
-          IJl (Label index_low_label);
+          IMov (Reg scratch_reg, idx_reg);
+          ISar (Reg scratch_reg, Const 1L);
           IMov (Reg scratch_reg2, val_reg);
+          (* The current situation:
+            - RAX       = untagged tuple
+            - scratch   = untagged index
+            - scratch2  = tagged replacement value
+          *)
           IInstrComment
-            ( IMov (tuple_slot_offset, Reg scratch_reg2),
+            ( IMov (RegOffsetReg (RAX, scratch_reg, word_size, word_size), Reg scratch_reg2),
               "Store the location of the relevant value in RAX" );
           IMov (Reg RAX, Reg scratch_reg2);
           ILineComment "===== End set-item =====" ]
@@ -893,14 +909,16 @@ let error_suffix =
   List.fold_left
     (fun asm (label, instrs) -> asm ^ sprintf "%s:%s\n" label instrs)
     "\n"
+    (* The register provided to each of these error cases is where the offending value is expected to be stored.
+       For example, [check_bool] keeps the checked value in RAX, so [not_a_bool_{if,logic}_label] sould look in RAX.
+    *)
     [ ( not_a_number_comp_label,
         to_asm (native_call (Label "?error") [Const err_COMP_NOT_NUM; Reg scratch_reg]) );
       ( not_a_number_arith_label,
         to_asm (native_call (Label "?error") [Const err_ARITH_NOT_NUM; Reg scratch_reg]) );
       ( not_a_bool_logic_label,
-        to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg scratch_reg]) );
-      ( not_a_bool_if_label,
-        to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg scratch_reg]) );
+        to_asm (native_call (Label "?error") [Const err_LOGIC_NOT_BOOL; Reg RAX]) );
+      (not_a_bool_if_label, to_asm (native_call (Label "?error") [Const err_IF_NOT_BOOL; Reg RAX]));
       (overflow_label, to_asm (native_call (Label "?error") [Const err_OVERFLOW; Reg RAX]));
       ( not_a_tuple_access_label,
         to_asm (native_call (Label "?error") [Const err_GET_NOT_TUPLE; Reg scratch_reg]) );
@@ -916,6 +934,9 @@ let error_suffix =
         to_asm (native_call (Label "?error") [Const err_CALL_NOT_CLOSURE; Reg scratch_reg]) );
       ( err_arity_mismatch_label,
         to_asm (native_call (Label "?error") [Const err_CALL_ARITY_ERR; Reg scratch_reg]) );
+      (* Wishlist: a separate error function that takes multiple SNAKEVALs, so we can show both the tuple and the size. *)
+      ( err_unpack_err_label,
+        to_asm (native_call (Label "?error") [Const err_UNPACK_ERR; Reg scratch_reg]) );
       (crash_label, to_asm (native_call (Label "?error") [Const err_CRASH])) ]
 ;;
 

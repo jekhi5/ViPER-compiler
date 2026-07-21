@@ -1,0 +1,3 @@
+The identifier x, used at <do_err/error_within_def, 7:8-7:9>, is not in scope
+The identifier y, used at <do_err/error_within_def, 11:8-11:9>, is not in scope
+The function called at <do_err/error_within_def, 13:4-13:13> expected an arity of 1, but received 2 arguments

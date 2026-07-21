@@ -55,6 +55,8 @@ const uint64_t ERR_SET_LOW_INDEX = 12;
 const uint64_t ERR_SET_HIGH_INDEX = 13;
 const uint64_t ERR_CALL_NOT_CLOSURE = 14;
 const uint64_t ERR_CALL_ARITY_ERR = 15;
+const uint64_t ERR_INDEX_NOT_NUMBER = 16;
+const uint64_t ERR_UNPACK_ERR = 17;
 const uint64_t ERR_CRASH = 99;
 
 // One entry per nested try/catch
@@ -145,8 +147,10 @@ void printHelp(FILE *out, SNAKEVAL val)
   else if ((val & CLOSURE_TAG_MASK) == CLOSURE_TAG)
   {
     uint64_t *addr = (uint64_t *)(val - CLOSURE_TAG);
-    fprintf(out, "[%p - 5] ==> <function arity %ld, closed %ld, fn-ptr %p>",
-            (uint64_t *)val, addr[0] / 2, addr[2] / 2, (uint64_t *)addr[1]);
+    fprintf(out, "<function arity %ld, closed %ld>",
+               addr[0] / 2, addr[2] / 2);
+    // fprintf(out, "[%p - 5] ==> <function arity %ld, closed %ld, fn-ptr %p>",
+    //         (uint64_t *)val, addr[0] / 2, addr[2] / 2, (uint64_t *)addr[1]);
     // some of this commented-out code may be useful for debugging purposes
 
     /* fprintf(out, "\nClosed-over values:\n"); */
@@ -205,7 +209,7 @@ void printHelp(FILE *out, SNAKEVAL val)
       printHelp(out, addr[i]);
     }
     if (len == 1)
-      fprintf(out, ", ");
+      fprintf(out, ",");
     fprintf(out, ")");
     // Unmark this tuple: restore its length
     *(addr) = len * 2; // length is encoded
@@ -310,26 +314,32 @@ void error(uint64_t code, SNAKEVAL val)
   case ERR_COMP_NOT_NUM:
     fprintf(stderr, "Error: comparison expected a number, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_ARITH_NOT_NUM:
     fprintf(stderr, "Error: arithmetic expected a number, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_LOGIC_NOT_BOOL:
     fprintf(stderr, "Error: logic expected a boolean, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_IF_NOT_BOOL:
     fprintf(stderr, "Error: if expected a boolean, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_OVERFLOW:
     fprintf(stderr, "Error: Integer overflow, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_GET_NOT_TUPLE:
-    fprintf(stderr, "Error: get expected tuple, got ");
+    fprintf(stderr, "Error: indexing expected a tuple, got ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_GET_LOW_INDEX:
     fprintf(stderr, "Error: index too small to get, got %ld\n", (uint64_t)val);
@@ -338,7 +348,7 @@ void error(uint64_t code, SNAKEVAL val)
     fprintf(stderr, "Error: index too large to get, got %ld\n", (uint64_t)val);
     break;
   case ERR_NIL_DEREF:
-    fprintf(stderr, "Error: tried to access component of nil\n");
+    fprintf(stderr, "Error: tried to dereference nil\n");
     break;
   case ERR_OUT_OF_MEMORY:
     fprintf(stderr, "Error: out of memory\n");
@@ -355,9 +365,18 @@ void error(uint64_t code, SNAKEVAL val)
   case ERR_CALL_NOT_CLOSURE:
     fprintf(stderr, "Error: tried to call a non-closure value: ");
     printHelp(stderr, val);
+    printf("\n");
     break;
   case ERR_CALL_ARITY_ERR:
     fprintf(stderr, "Error: arity mismatch in call\n");
+    break;
+  case ERR_INDEX_NOT_NUMBER:
+    fprintf(stderr, "Error: index expected a number\n");
+    break;
+  case ERR_UNPACK_ERR:
+    fprintf(stderr, "Error: tuple cannot be unpacked into the given bindings of size ");
+    printHelp(stderr, val);
+    fprintf(stderr, "\n");
     break;
   case ERR_CRASH:
     fprintf(stderr, "Error: CRASH\n");
@@ -365,6 +384,7 @@ void error(uint64_t code, SNAKEVAL val)
   default:
     fprintf(stderr, "Error: Unknown error code: %ld, val: ", code);
     printHelp(stderr, val);
+    printf("\n");
   }
   fprintf(stderr, "\n%p ==> ", (uint64_t *)val);
   printHelp(stderr, val);
