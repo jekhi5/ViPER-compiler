@@ -7,8 +7,60 @@ open Constants
 open Env
 open Util
 
+let rec find_locs x (binds : 'a bind list) : 'a list =
+  match binds with
+  | [] -> []
+  | BBlank _ :: rest -> find_locs x rest
+  | BName (y, _, loc) :: rest ->
+      if x = y then
+        loc :: find_locs x rest
+      else
+        find_locs x rest
+  | BTuple (binds, _) :: rest -> find_locs x binds @ find_locs x rest
+;;
+
+let rec find_dupes (binds : 'a bind list) : exn list =
+  match binds with
+  | [] -> []
+  | BBlank _ :: rest -> find_dupes rest
+  | BName (x, _, def) :: rest ->
+      List.map (fun use -> DuplicateId (x, use, def)) (find_locs x rest) @ find_dupes rest
+  | BTuple (binds, _) :: rest -> find_dupes (binds @ rest)
+;;
+
+let rec process_binds (rem_binds : 'a bind list) (env : scope_info name_envt) (letrec : bool) =
+  match rem_binds with
+  | [] -> (env, [])
+  | BBlank _ :: rest -> process_binds rest env letrec
+  | BTuple (binds, _) :: rest -> process_binds (binds @ rest) env letrec
+  | BName (x, allow_shadow, xloc) :: rest ->
+      let shadow =
+        if allow_shadow then
+          []
+        else
+          match find_opt env x with
+          | None -> []
+          | Some (existing, _, _) ->
+              if letrec && xloc = existing then
+                []
+              else
+                [ShadowId (x, xloc, existing)]
+      in
+      let new_env = StringMap.add x (xloc, None, None) env in
+      let newer_env, errs = process_binds rest new_env letrec in
+      (newer_env, shadow @ errs)
+;;
+
 let is_well_formed (p : sourcespan program) : sourcespan program fallible =
-  let rec wf_E e (env : scope_info name_envt) =
+  let rec process_bindings bindings env =
+    match bindings with
+    | [] -> (env, [])
+    | (b, e, _) :: rest ->
+        let errs_e = wf_E e env in
+        let env', errs = process_binds [b] env true in
+        let env'', errs' = process_bindings rest env in
+        (env'', errs @ errs_e @ errs')
+  and wf_E e (env : scope_info name_envt) =
     debug_printf "In wf_E: %s\n" (ExtString.String.join ", " (env_keys env));
     match e with
     | ESeq (e1, e2, _) -> wf_E e1 env @ wf_E e2 env
@@ -31,50 +83,13 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     | EPrim2 (_, l, r, _) -> wf_E l env @ wf_E r env
     | EIf (c, t, f, _) -> wf_E c env @ wf_E t env @ wf_E f env
     | ELet (bindings, body, _) ->
-        let rec find_locs x (binds : 'a bind list) : 'a list =
-          match binds with
-          | [] -> []
-          | BBlank _ :: rest -> find_locs x rest
-          | BName (y, _, loc) :: rest ->
-              if x = y then
-                loc :: find_locs x rest
-              else
-                find_locs x rest
-          | BTuple (binds, _) :: rest -> find_locs x binds @ find_locs x rest
-        in
-        let rec find_dupes (binds : 'a bind list) : exn list =
-          match binds with
-          | [] -> []
-          | BBlank _ :: rest -> find_dupes rest
-          | BName (x, _, def) :: rest ->
-              List.map (fun use -> DuplicateId (x, use, def)) (find_locs x rest) @ find_dupes rest
-          | BTuple (binds, _) :: rest -> find_dupes (binds @ rest)
-        in
         let dupeIds = find_dupes (List.map (fun (b, _, _) -> b) bindings) in
-        let rec process_binds (rem_binds : 'a bind list) (env : scope_info name_envt) =
-          match rem_binds with
-          | [] -> (env, [])
-          | BBlank _ :: rest -> process_binds rest env
-          | BTuple (binds, _) :: rest -> process_binds (binds @ rest) env
-          | BName (x, allow_shadow, xloc) :: rest ->
-              let shadow =
-                if allow_shadow then
-                  []
-                else
-                  match find_opt env x with
-                  | None -> []
-                  | Some (existing, _, _) -> [ShadowId (x, xloc, existing)]
-              in
-              let new_env = StringMap.add x (xloc, None, None) env in
-              let newer_env, errs = process_binds rest new_env in
-              (newer_env, shadow @ errs)
-        in
         let rec process_bindings bindings (env : scope_info name_envt) =
           match bindings with
           | [] -> (env, [])
           | (b, e, _) :: rest ->
               let errs_e = wf_E e env in
-              let env', errs = process_binds [b] env in
+              let env', errs = process_binds [b] env false in
               let env'', errs' = process_bindings rest env' in
               (env'', errs @ errs_e @ errs')
         in
@@ -104,58 +119,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
             binds
         in
         let nonfun_errs = List.map (fun (b, _, where) -> LetRecNonFunction (b, where)) nonfuns in
-        let rec find_locs x (binds : 'a bind list) : 'a list =
-          match binds with
-          | [] -> []
-          | BBlank _ :: rest -> find_locs x rest
-          | BName (y, _, loc) :: rest ->
-              if x = y then
-                loc :: find_locs x rest
-              else
-                find_locs x rest
-          | BTuple (binds, _) :: rest -> find_locs x binds @ find_locs x rest
-        in
-        let rec find_dupes (binds : 'a bind list) : exn list =
-          match binds with
-          | [] -> []
-          | BBlank _ :: rest -> find_dupes rest
-          | BName (x, _, def) :: rest ->
-              List.map (fun use -> DuplicateId (x, use, def)) (find_locs x rest)
-          | BTuple (binds, _) :: rest -> find_dupes (binds @ rest)
-        in
         let dupeIds = find_dupes (List.map (fun (b, _, _) -> b) binds) in
-        let rec process_binds (rem_binds : sourcespan bind list) (env : scope_info name_envt) =
-          match rem_binds with
-          | [] -> (env, [])
-          | BBlank _ :: rest -> process_binds rest env
-          | BTuple (binds, _) :: rest -> process_binds (binds @ rest) env
-          | BName (x, allow_shadow, xloc) :: rest ->
-              let shadow =
-                if allow_shadow then
-                  []
-                else
-                  match find_opt env x with
-                  | None -> []
-                  | Some (existing, _, _) ->
-                      if xloc = existing then
-                        []
-                      else
-                        [ShadowId (x, xloc, existing)]
-              in
-              let new_env = StringMap.add x (xloc, None, None) env in
-              let newer_env, errs = process_binds rest new_env in
-              (newer_env, shadow @ errs)
-        in
-        let env, bind_errs = process_binds (List.map (fun (b, _, _) -> b) binds) env in
-        let rec process_bindings bindings env =
-          match bindings with
-          | [] -> (env, [])
-          | (b, e, _) :: rest ->
-              let env, errs = process_binds [b] env in
-              let errs_e = wf_E e env in
-              let env', errs' = process_bindings rest env in
-              (env', errs @ errs_e @ errs')
-        in
+        let env, bind_errs = process_binds (List.map (fun (b, _, _) -> b) binds) env true in
         let new_env, binding_errs = process_bindings binds env in
         let rhs_problems = List.map (fun (_, rhs, _) -> wf_E rhs new_env) binds in
         let body_problems = wf_E body new_env in
@@ -252,7 +217,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
     (errs, env)
   in
   match p with
-  | Program (decls, body, _, _) -> (
+  | Program (decls, body, testblocks, _) -> (
       let initial_env = initial_val_env in
       let initial_env =
         StringMap.fold
@@ -282,7 +247,8 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
       in
       let env, exns = List.fold_left help_G (initial_env, dupe_funbinds all_decls) decls in
       debug_printf "In wf_P: %s\n" (ExtString.String.join ", " (env_keys env));
-      let exns = exns @ wf_E body env in
+      let test_exns = List.concat_map (fun tests -> wf_E tests env) testblocks in
+      let exns = exns @ wf_E body env @ test_exns in
       match exns with
       | [] -> Ok p
       | _ -> Error exns )

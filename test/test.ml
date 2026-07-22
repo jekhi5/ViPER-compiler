@@ -13,10 +13,10 @@ let suite =
          [ (* (module Test_racer.Suite); *)
            (* (module Test_garter.Suite); *)
            (module Test_parser.Suite);
-           (module Test_builtins.Suite) ]
+           (module Test_builtins.Suite);
+           (module Test_well_formed.Suite) ]
 ;;
 
-(* @ fvc @ nsa @ ra @ coloring @ interference @ pair_tests @ run_with_ra @ live_out @ oom
-       @ gc @ input *)
+let file_tests = "file_tests" >::: [input_file_test_suite ()]
 
-let () = run_test_tt_main ("all_tests" >::: [suite; input_file_test_suite ()])
+let () = run_test_tt_main ("all_tests" >::: [suite; file_tests])
