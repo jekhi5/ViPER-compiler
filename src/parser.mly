@@ -7,6 +7,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %}
 
 %token <int64> NUM
+%token <float> FLOAT
 %token <string> ID
 %token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE TRY CATCH AS SHEDS BROODS BITES
 
@@ -24,6 +25,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 
 const :
   | NUM { ENumber($1, full_span()) }
+  | FLOAT { EFloat($1, full_span()) }
   | TRUE { EBool(true, full_span()) }
   | FALSE { EBool(false, full_span()) }
   | NIL %prec SEMI { ENil(full_span()) }

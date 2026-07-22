@@ -12,18 +12,31 @@ let dummy_span = (Lexing.dummy_pos, Lexing.dummy_pos)
 (* ===== END OCAML TYPE ALIASES ===== *)
 
 (* ===== BINARY TYPE REPRESENTATIONS ===== *)
+
+(* 
+  integer	0
+  tuple	  0001
+  fwdptr	0011
+  closure	0101
+  bool	  0111
+  float	  1001
+*)
+
 let const_true = HexConst 0xFFFFFFFFFFFFFFFFL
 let const_false = HexConst 0x7FFFFFFFFFFFFFFFL
 let bool_mask = HexConst 0x8000000000000000L
 let bool_tag = 0x0000000000000007L
-let bool_tag_mask = 0x0000000000000007L
+let bool_tag_mask = 0x000000000000000FL
 let num_tag = 0x0000000000000000L
 let num_tag_mask = 0x0000000000000001L
 let closure_tag = 0x0000000000000005L
-let closure_tag_mask = 0x0000000000000007L
+let closure_tag_mask = 0x000000000000000FL
 let tuple_tag = 0x0000000000000001L
-let tuple_tag_mask = 0x0000000000000007L
+let tuple_tag_mask = 0x000000000000000FL
 let const_nil = HexConst tuple_tag
+
+let float_tag = 0x0000000000000009L
+let float_tag_mask = 0x000000000000000FL
 
 (* We are digging into the booleans here.
  * 0011111... is representative of a runtime exception (like you tried to do addition with a boolean)

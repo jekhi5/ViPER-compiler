@@ -18,6 +18,10 @@ let ignore_new_line lexbuf =
 let dec_digit = ['0'-'9']
 let signed_int = dec_digit+ | ('-' dec_digit+)
 
+let sign = ['+' '-']
+let exponential = ['e' 'E'] sign dec_digit+
+let floating_point = ('-'? dec_digit* '.' dec_digit* exponential?) | ('-'? dec_digit+ exponential)
+
 let ident = ['a'-'z' 'A'-'Z' '_']['a'-'z' 'A'-'Z' '0'-'9' '_']*
 
 let blank = [' ' '\t']+
@@ -37,6 +41,7 @@ rule token = parse
   | blank { token lexbuf }
   | '\n' { new_line lexbuf; token lexbuf }
   | signed_int as x { NUM (Int64.of_string x) }
+  | floating_point as x { FLOAT (Float.of_string x)}
   | ":=" { COLONEQ }
   | ":" { COLON }
   | "def" { DEF }

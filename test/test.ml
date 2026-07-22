@@ -13,7 +13,8 @@ let suite =
          [ (* (module Test_racer.Suite); *)
            (* (module Test_garter.Suite); *)
            (module Test_parser.Suite);
-           (module Test_builtins.Suite) ]
+           (module Test_builtins.Suite);
+           (module Test_float.Suite) ]
 ;;
 
 (* @ fvc @ nsa @ ra @ coloring @ interference @ pair_tests @ run_with_ra @ live_out @ oom

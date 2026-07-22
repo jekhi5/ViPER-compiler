@@ -74,6 +74,7 @@ and 'a expr =
   | EPrim2 of prim2 * 'a expr * 'a expr * 'a
   | EIf of 'a expr * 'a expr * 'a expr * 'a
   | ENumber of int64 * 'a
+  | EFloat of float * 'a
   | EBool of bool * 'a
   | ENil of 'a
   | EId of string * 'a
@@ -117,6 +118,8 @@ and 'a cexpr =
   | CTestOp1 of 'a immexpr * 'a immexpr * bool * 'a
   | CTestOp2 of 'a immexpr * 'a immexpr * test_type * bool * 'a
   | CTestOp2Pred of 'a immexpr * 'a immexpr * 'a immexpr * bool * 'a
+  (* Floats are compound expressions because they are heap allocated. *)
+  | CFloat of float * 'a
 
 and 'a aexpr =
   (* anf expressions *)
@@ -146,6 +149,7 @@ let get_tag_E e =
    |EIf (_, _, _, t)
    |ENil t
    |ENumber (_, t)
+   |EFloat (_, t)
    |EBool (_, t)
    |EId (_, t)
    |EApp (_, _, _, t)
@@ -164,7 +168,7 @@ let get_tag_E e =
 
 let get_tag_I (e : 'a immexpr) =
   match e with
-  | ImmBool (_, t) | ImmNil t | ImmExcept (_, t) | ImmId (_, t) | ImmNum (_, t) -> t
+  | ImmBool (_, t) | ImmNil t | ImmExcept (_, t) | ImmId (_, t) | ImmNum (_, t)  -> t 
 ;;
 
 let get_tag_C (e : 'a cexpr) =
@@ -182,6 +186,7 @@ let get_tag_C (e : 'a cexpr) =
    |CTestOp2 (_, _, _, _, t)
    |CTestOp2Pred (_, _, _, _, t)
    |CTryCatch (_, _, _, t)
+   |CFloat (_, t)
    |CTuple (_, t) -> t
 ;;
 
@@ -205,6 +210,7 @@ let rec map_tag_E (f : 'a -> 'b) (e : sourcespan expr) : ('b * 'c) expr =
       ESetItem (map_tag_E f e, map_tag_E f idx, map_tag_E f newval, (f s, s))
   | EId (x, s) -> EId (x, (f s, s))
   | ENumber (n, s) -> ENumber (n, (f s, s))
+  | EFloat (n, s) -> EFloat (n, (f s, s))
   | EBool (b, s) -> EBool (b, (f s, s))
   | ENil s -> ENil (f s, s)
   | EPrim1 (op, e, s) ->
@@ -321,6 +327,7 @@ and untagE (e : 'a expr) =
   | ESetItem (e, idx, newval, _) -> ESetItem (untagE e, untagE idx, untagE newval, ())
   | EId (x, _) -> EId (x, ())
   | ENumber (n, _) -> ENumber (n, ())
+  | EFloat (n, _) -> EFloat (n, ())
   | EBool (b, _) -> EBool (b, ())
   | ENil _ -> ENil ()
   | EPrim1 (op, e, _) -> EPrim1 (op, untagE e, ())
@@ -411,6 +418,9 @@ let atag (p : sourcespan aprogram) : tag aprogram =
     | CTestOp2Pred (e1, e2, e3, n, s) ->
         let test_op_2_pred_tag = tag () in
         CTestOp2Pred (helpI e1, helpI e2, helpI e3, n, (test_op_2_pred_tag, s))
+    | CFloat (n, s) ->
+        let float_tag = tag () in
+        CFloat (n, (float_tag, s)) 
   and helpI (i : 'a immexpr) : tag immexpr =
     match i with
     | ImmNil s -> ImmNil (tag (), s)

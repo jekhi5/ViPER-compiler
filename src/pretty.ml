@@ -129,6 +129,7 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         sprintf "%s[%s] := %s %s" (string_of_expr e) (string_of_expr idx) (string_of_expr newval)
           (print_a a)
     | ENumber (n, a) -> Int64.to_string n ^ print_a a
+    | EFloat (n, a) -> Float.to_string n ^ print_a a
     | EBool (b, a) -> string_of_bool b ^ print_a a
     | ENil a -> "nil " ^ print_a a
     | EId (x, a) -> x ^ print_a a
@@ -308,7 +309,7 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
             else
               "" )
           (string_of_immexpr pred) (string_of_immexpr e1) (string_of_immexpr e2) (print_a a)
-
+    | CFloat (n, a) -> Float.to_string n ^ print_a a
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
   | ImmNil a -> "nil" ^ print_a a
@@ -429,6 +430,10 @@ let rec format_expr (fmt : Format.formatter) (print_a : 'a -> string) (e : 'a ex
   | ENumber (n, a) ->
       open_label fmt "ENumber" (print_a a);
       pp_print_string fmt (Int64.to_string n);
+      close_paren fmt
+  | EFloat (n, a) ->
+      open_label fmt "EFloat" (print_a a);
+      pp_print_string fmt (Float.to_string n);
       close_paren fmt
   | EBool (b, a) ->
       open_label fmt "EBool" (print_a a);

@@ -22,6 +22,7 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
           [Overflow (n, loc)]
         else
           []
+    | EFloat (n, loc) -> [] (* Floats are heap allocated, so an overflowing flaot will be a parser error. *)
     | EId (x, loc) ->
         if StringMap.mem x env then
           []
