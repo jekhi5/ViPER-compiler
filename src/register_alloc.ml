@@ -89,6 +89,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
     match e with
     | CPrim1 _
      |CPrim2 _
+     |CFloat _
      |CApp _
      |CImmExpr _
      |CTuple _

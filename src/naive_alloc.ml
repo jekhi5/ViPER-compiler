@@ -18,6 +18,7 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
     match cexp with
     | CPrim1 _
      |CPrim2 _
+     |CFloat _
      |CApp _
      |CImmExpr _
      |CTuple _

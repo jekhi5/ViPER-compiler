@@ -21,6 +21,8 @@ type reg =
   | R15
   | RBX
   | CL
+  | XMM0
+  | XMM1
 
 type size =
   | QWORD_PTR
@@ -31,6 +33,7 @@ type size =
 type arg =
   | Const of int64
   | HexConst of int64
+  | FloatConst of float 
   | Reg of reg
   | RegOffset of int * reg (* int is # words of offset *)
   | RegOffsetReg of reg * reg * int * int
@@ -71,6 +74,7 @@ type instruction =
   | IJnz of arg
   | ILineComment of string
   | IInstrComment of instruction * string
+  | IMovsd of arg * arg
 
 let r_to_asm (r : reg) : string =
   match r with
@@ -91,12 +95,15 @@ let r_to_asm (r : reg) : string =
   | R15 -> "R15"
   | RBX -> "RBX"
   | CL -> "CL"
+  | XMM0 -> "XMM0"
+  | XMM1 -> "XMM1"
 ;;
 
 let rec arg_to_asm (a : arg) : string =
   match a with
   | Const n -> sprintf "%Ld" n
   | HexConst n -> sprintf "0x%Lx" n
+  | FloatConst n -> sprintf "dq %f" n
   | Reg r -> r_to_asm r
   | RegOffset (n, r) ->
       if n >= 0 then
@@ -151,6 +158,7 @@ let rec i_to_asm (i : instruction) : string =
   | ITest (arg, comp) -> sprintf "  test %s, %s" (arg_to_asm arg) (arg_to_asm comp)
   | ILineComment str -> sprintf "  ;; %s" str
   | IInstrComment (instr, str) -> sprintf "%s ; %s" (i_to_asm instr) str
+  | IMovsd (dest, value) -> sprintf "  movsd %s, %s" (arg_to_asm dest) (arg_to_asm value)
 ;;
 
 let to_asm (is : instruction list) : string =

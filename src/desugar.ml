@@ -90,6 +90,7 @@ let desugar (p : sourcespan program) : sourcespan program =
     | ESetItem (e, idx, newval, tag) -> ESetItem (helpE e, helpE idx, helpE newval, tag)
     | EId (x, tag) -> EId (x, tag)
     | ENumber (n, tag) -> ENumber (n, tag)
+    | EFloat (n, tag) -> EFloat (n, tag)
     | EBool (b, tag) -> EBool (b, tag)
     | ENil (t, tag) -> ENil (t, tag)
     | EPrim1 (op, e, tag) -> EPrim1 (op, helpE e, tag)

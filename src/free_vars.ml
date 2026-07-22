@@ -39,6 +39,7 @@ let free_vars (e : 'a aexpr) : StringSet.t =
     | CTestOp2 (e1, e2, _, _, _) -> helpI e1 bound_ids |> u (helpI e2 bound_ids)
     | CTestOp2Pred (e1, e2, pred, _, _) ->
         helpI e1 bound_ids |> u (helpI e2 bound_ids) |> u (helpI pred bound_ids)
+    | CFloat (n, _) -> StringSet.empty
   and helpA (e : 'a aexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
     | ASeq (first, next, _) -> helpC first bound_ids |> u (helpA next bound_ids)
@@ -153,6 +154,8 @@ let free_vars_cache (AProgram (body, _) : 'a aprogram) : freevars aprogram =
         let new_pred, free_pred = helpI pred in
         let free = free_e1 |> u free_e2 |> u free_pred in
         (CTestOp2Pred (new_e1, new_e2, new_pred, negation, free), free)
+    | CFloat (n, _) -> (CFloat (n, empty), empty)
+
   and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
     | ASeq (first, next, _) ->

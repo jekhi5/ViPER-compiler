@@ -25,11 +25,13 @@ extern void report_fail() asm("?report_fail");
 extern void report_fail_exception() asm("?report_fail_exception");
 
 const uint64_t NUM_TAG_MASK = 0x0000000000000001;
-const uint64_t BOOL_TAG_MASK = 0x0000000000000007;
-const uint64_t TUPLE_TAG_MASK = 0x0000000000000007;
-const uint64_t CLOSURE_TAG_MASK = 0x0000000000000007;
-const uint64_t FWD_PTR_TAG_MASK = 0x0000000000000007;
+const uint64_t BOOL_TAG_MASK = 0x000000000000000F;
+const uint64_t TUPLE_TAG_MASK = 0x000000000000000F;
+const uint64_t CLOSURE_TAG_MASK = 0x000000000000000F;
+const uint64_t FWD_PTR_TAG_MASK = 0x000000000000000F;
+const uint64_t FLOAT_TAG_MASK = 0x000000000000000F;
 const uint64_t NUM_TAG = 0x0000000000000000;
+const uint64_t FLOAT_TAG = 0x0000000000000009;
 const uint64_t BOOL_TAG = 0x0000000000000007;
 const uint64_t TUPLE_TAG = 0x0000000000000001;
 const uint64_t CLOSURE_TAG = 0x0000000000000005;
@@ -127,6 +129,14 @@ void printHelp(FILE *out, SNAKEVAL val)
   else if ((val & NUM_TAG_MASK) == NUM_TAG)
   {
     fprintf(out, "%ld", ((int64_t)val) >> 1); // deliberately int64, so that it's signed
+  }
+  else if ((val & FLOAT_TAG_MASK) == FLOAT_TAG)
+  {
+    uint64_t *addr = (uint64_t *)(val - FLOAT_TAG);
+    double d;
+    memcpy(&d, (void*)addr, sizeof(d));
+    // fprintf(out, "%#018lx\n", *addr);
+    fprintf(out, "%g", d);
   }
   else if (val == BOOL_TRUE)
   {

@@ -17,6 +17,50 @@ open Register_alloc
 (*  Code-gen utilities *)
 (*  ==================================================================================== *)
 
+
+(** [label_{a,c,imm}expr e] is a utility for creating arbitrary names based on expr type and tag.
+    Fill in the cases as they are needed.
+*)
+let rec label_aexpr (aexpr : tag aexpr) : string =
+  match aexpr with
+  | ACExpr (cexpr) -> label_cexpr cexpr
+  | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ (string_of_aexpr aexpr)))
+
+and label_cexpr (cexpr : tag cexpr) : string =
+  match cexpr with
+    | CFloat (_, (t, _)) -> (sprintf "float_#%d" t)
+    | CImmExpr (immexpr) -> label_immexpr immexpr      
+    | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ (string_of_cexpr cexpr)))
+
+and label_immexpr (immexpr : tag immexpr) : string =
+  match immexpr with
+        | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ (string_of_immexpr immexpr)))
+
+(** [collect_float_constants e] traverses the expression [e] and finds all leaves containing floats.
+    It creates a mapping of unique names to float values, which will be used to intern
+    floats in a data section.
+
+    TODO: implement deduplication
+*)
+let rec collect_float_constants (ast : tag aexpr) : (string * float) list =
+  let helpC e =
+    match e with
+      | CFloat (n, (float_tag, _)) ->  [label_cexpr e, n]
+      | _ -> []
+  in match ast with
+  | ASeq (cexpr, aexpr, _) 
+  | ALet (_, cexpr, aexpr, _) -> List.append (helpC cexpr) (collect_float_constants aexpr)
+  | ALetRec (binds, body, _) -> List.append (List.concat_map (fun (_, cexpr) -> helpC cexpr) binds) (collect_float_constants body)
+  | ACExpr (cexpr) -> helpC cexpr
+
+(** [float_prefix mapping] emits an assembly .rodata section containing names and float values found in [mapping].
+    This is necessary because float literals are unsupported for many operations in the assembly.
+*)
+let float_prefix (mapping : (string * float) list) : string =
+  let header = "section .rodata\n" in
+  let declarations = List.map (fun (name, value) -> sprintf "  %s  %s\n" name (arg_to_asm (FloatConst value))) mapping in
+  header ^ (List.fold_left (^) "" declarations) ^ "\n"
+
 let decompose_sourcespan ((pstart, pend) : sourcespan) : int * int * int * int =
   (pstart.pos_lnum, pstart.pos_cnum - pstart.pos_bol, pend.pos_lnum, pend.pos_cnum - pend.pos_bol)
 ;;
@@ -40,7 +84,7 @@ let check_memory size =
 
 let check_tag value tag err_label =
   [ IMov (Reg scratch_reg, value);
-    IAnd (Reg scratch_reg, Const 0x7L);
+    IAnd (Reg scratch_reg, Const 0xFL);
     (* 0x7 = 0...01111, i.e. the tag bits.*)
     ICmp (Reg scratch_reg, Const tag);
     IJne (Label err_label) ]
@@ -891,6 +935,14 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
   | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
   | CTestOp1 _ -> raise (InternalCompilerError "CTestOp1 Desugared away")
   | CTestOp2Pred _ -> raise (InternalCompilerError "CTestOp2Pred Desugared away")
+  | CFloat (n, (t, _)) ->
+    [
+      IMovsd (Reg XMM0, LabelContents (label_cexpr e));
+      IMovsd (RegOffset (0, R15), Reg XMM0);
+      IMov (Reg RAX, Reg R15);
+      IOr (Reg RAX, Const float_tag);
+      IAdd (Reg R15, Const (Int64.of_int (word_size * 2)))
+    ]
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with
@@ -963,8 +1015,9 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
   let suffix = error_suffix in
   match anfed with
   | AProgram (body, ((tag, _) : tag)) ->
-      (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
-      let prologue, comp_main, epilogue =
+    let float_constants = float_prefix (collect_float_constants body ) in  
+    (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
+      (let prologue, comp_main, epilogue =
         compile_fun ocsh_name ["$heap"; "$size"] body env tag 0 []
       in
       let heap_start =
@@ -986,5 +1039,5 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
         @ [IMov (Reg RDI, Reg R12)]
       in
       let main = prologue @ set_stack_bottom @ heap_start @ comp_main @ epilogue in
-      sprintf "%s%s%s\n" prelude (to_asm main) suffix
+      sprintf "%s%s%s%s\n" float_constants prelude (to_asm main) suffix : string)
 ;;
