@@ -10,6 +10,5 @@
   test_parser
   test_racer
   test_util
-  test_util
   test_well_formed)
  (libraries viper_impl))
