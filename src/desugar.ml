@@ -21,7 +21,7 @@ let desugar (p : sourcespan program) : sourcespan program =
         in
         let wrap_G g body =
           match g with
-          | [] -> body
+          | [] -> body (* Unreachable, since the fold won't call [wrap_G] on an empty list.*)
           | f :: r ->
               let span = List.fold_left merge_sourcespans (get_tag_D f) (List.map get_tag_D r) in
               ELetRec (helpG g, body, span)
@@ -129,7 +129,6 @@ let desugar (p : sourcespan program) : sourcespan program =
         let excptn_id =
           match new_bind with
           | BName (name, _, _) -> EId (name, tag)
-          | BBlank _ -> EId (gensym "blank_exn", tag)
           | _ -> raise (InternalCompilerError "Found non-bname in a try catch")
         in
         let excptn_check =

@@ -14,6 +14,7 @@ let suite =
            (* (module Test_garter.Suite); *)
            (module Test_parser.Suite);
            (module Test_builtins.Suite);
+           (module Test_desugar.Suite);
            (module Test_well_formed.Suite) ]
 ;;
 
