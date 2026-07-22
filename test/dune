@@ -3,10 +3,11 @@
  (modules
   test
   test_builtins
+  test_desugar
   test_funcs
   test_garter
   test_parser
   test_racer
-  test_desugar
+  test_util
   test_well_formed)
  (libraries viper_impl))
