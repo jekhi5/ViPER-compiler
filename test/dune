@@ -4,11 +4,11 @@
   test
   test_builtins
   test_desugar
+  test_errors
   test_funcs
   test_garter
   test_parser
   test_racer
-  test_util
   test_util
   test_well_formed)
  (libraries viper_impl))

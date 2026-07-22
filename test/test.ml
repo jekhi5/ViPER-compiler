@@ -12,6 +12,7 @@ let suite =
   >::: gather_tests
          [ (module Test_builtins.Suite);
            (module Test_desugar.Suite);
+           (module Test_errors.Suite);
            (module Test_parser.Suite);
            (module Test_util.Suite);
            (module Test_well_formed.Suite) ]
