@@ -1,5 +1,4 @@
 open Test_funcs
-open Util
 open OUnit2
 
 (* Tests for the utility functions for ViPER *)
