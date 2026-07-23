@@ -15,22 +15,6 @@ let rec find ls x =
         find rest x
 ;;
 
-let rec find_one (l : 'a list) (elt : 'a) : bool =
-  match l with
-  | [] -> false
-  | x :: xs -> elt = x || find_one xs elt
-;;
-
-let rec find_dup (l : 'a list) : 'a option =
-  match l with
-  | [] | [_] -> None
-  | x :: xs ->
-      if find_one xs x then
-        Some x
-      else
-        find_dup xs
-;;
-
 let rec take xs n =
   match (xs, n) with
   | _, 0 -> []

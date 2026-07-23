@@ -171,3 +171,14 @@ let tli name program expected =
   let result = compute_live_in body empty_set in
   name >:: fun _ -> assert_equal expected result ~printer:(string_of_aexpr_with 100 string_of_set)
 ;;
+
+(** [tae name real expected] creates an OUnit2 test that uses [assert_equal] to test equality with
+    [=] *)
+let tae (name : string) (expected : 'a) (real : 'a) = name >:: fun _ -> assert_equal expected real
+
+(** [tar name real expected] creates an OUnit2 test that uses [assert_raises]. [expected] should be
+    an actual exception type with the expected error message. [real] should be the exceptional code
+    wrapped in a [(fun _ -> ...)] *)
+let tar (name : string) (expected : exn) (real : unit -> 'a) =
+  name >:: fun _ -> assert_raises expected real
+;;
