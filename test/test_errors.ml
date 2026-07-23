@@ -6,10 +6,6 @@ open OUnit2
 
 (* Tests for the error functions for ViPER *)
 
-let make_pos fname lnum bol cnum =
-  {Lexing.pos_fname= fname; pos_lnum= lnum; pos_bol= bol; pos_cnum= cnum}
-;;
-
 let span1 = (make_pos "test" 1 0 5, make_pos "test" 1 0 10)
 
 (* sprintf "%s, %d:%d-%d:%d" "test" 1 5 1 10 *)

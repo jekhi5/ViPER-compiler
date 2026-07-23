@@ -144,10 +144,11 @@ gctest.o: gctest.c gc.h
 
 
 clean:
+	rm -f *.coverage
+	rm -f executable/config.ml
+	rm -f main tester viperc
+	rm -rf _build/ _coverage/
+	rm -rf docs
 	rm -rf test/output/*.o test/output/*.s test/output/*.dSYM test/output/*.run test/*.log test/*.o
 	rm -rf test/output/*/*.o test/output/*/*.s test/output/*/*.dSYM test/output/*/*.run
-	rm -rf _build/ _coverage/
-	rm -f main tester viperc
-	rm -f executable/config.ml
-	rm -f *.coverage
 	$(SYS_CLEAN)
