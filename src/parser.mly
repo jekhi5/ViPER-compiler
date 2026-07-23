@@ -10,8 +10,7 @@ let tok_span(start, endtok) = (Parsing.rhs_start_pos start, Parsing.rhs_end_pos 
 %token <string> ID
 %token DEF ANDDEF ADD1 SUB1 LPARENSPACE LPARENNOSPACE RPAREN LBRACK RBRACK LET IN EQUAL COMMA PLUS MINUS TIMES IF COLON ELSECOLON EOF PRINT PRINTSTACK TRUE FALSE ISBOOL ISNUM ISTUPLE EQEQ LESSSPACE GREATER LESSEQ GREATEREQ AND OR NOT COLONEQ SEMI NIL LAMBDA BEGIN END SHADOW REC UNDERSCORE CRASH CHECK SPITS RAISE EXRUNTIME EXVALUE TRY CATCH AS SHEDS BROODS BITES
 
-%right SEMI
-%left COLON COLONEQ
+%left COLONEQ
 %left PLUS MINUS TIMES GREATER LESSSPACE GREATEREQ LESSEQ EQEQ AND OR
 %left LPARENNOSPACE
 
@@ -26,7 +25,7 @@ const :
   | NUM { ENumber($1, full_span()) }
   | TRUE { EBool(true, full_span()) }
   | FALSE { EBool(false, full_span()) }
-  | NIL %prec SEMI { ENil(full_span()) }
+  | NIL { ENil(full_span()) }
   | snakeexcept { $1 }
   
 snakeexcept:
@@ -76,7 +75,7 @@ tuple_expr :
   | LPARENSPACE expr COMMA exprs RPAREN { ETuple($2::$4, full_span()) }
 
 id :
-  | ID %prec COLON { EId($1, full_span()) }
+  | ID { EId($1, full_span()) }
 
 
 prim2 :
@@ -107,8 +106,8 @@ binop_operand :
   | tuple_expr { $1 }
   | binop_operand LBRACK expr RBRACK { EGetItem($1, $3, full_span()) }
   // Function calls
-  | binop_operand LPARENNOSPACE exprs RPAREN %prec LPARENNOSPACE { EApp($1, $3, Unknown, full_span()) }
-  | binop_operand LPARENNOSPACE RPAREN %prec LPARENNOSPACE { EApp($1, [], Unknown, full_span()) }
+  | binop_operand LPARENNOSPACE exprs RPAREN { EApp($1, $3, Unknown, full_span()) }
+  | binop_operand LPARENNOSPACE RPAREN { EApp($1, [], Unknown, full_span()) }
   // Parentheses
   | LPARENSPACE expr RPAREN { $2 }
   | LPARENNOSPACE expr RPAREN { $2 }
@@ -134,11 +133,11 @@ bind :
   | LPARENSPACE binds RPAREN { BTuple($2, full_span()) }
 
 blankbind :
-  | UNDERSCORE %prec SEMI { BBlank(full_span()) }
+  | UNDERSCORE { BBlank(full_span()) }
 
 namebind :
-  | ID %prec SEMI { BName($1, false, full_span()) }
-  | SHADOW ID %prec SEMI { BName($2, true, full_span()) }
+  | ID { BName($1, false, full_span()) }
+  | SHADOW ID { BName($2, true, full_span()) }
 
 decl :
   | DEF ID LPARENNOSPACE RPAREN COLON expr { DFun($2, [], $6, full_span()) }
