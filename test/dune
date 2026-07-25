@@ -6,6 +6,7 @@
   test_desugar
   test_env
   test_errors
+  test_exprs
   test_funcs
   test_garter
   test_parser

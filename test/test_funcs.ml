@@ -182,3 +182,7 @@ let tae (name : string) (expected : 'a) (real : 'a) = name >:: fun _ -> assert_e
 let tar (name : string) (expected : exn) (real : unit -> 'a) =
   name >:: fun _ -> assert_raises expected real
 ;;
+
+let make_pos fname lnum bol cnum =
+  {Lexing.pos_fname= fname; pos_lnum= lnum; pos_bol= bol; pos_cnum= cnum}
+;;
