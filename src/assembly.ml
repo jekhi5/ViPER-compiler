@@ -75,6 +75,11 @@ type instruction =
   | ILineComment of string
   | IInstrComment of instruction * string
   | IMovsd of arg * arg
+  | ICvtInt2Float of arg * arg
+  | ICvtFloat2Int of arg * arg
+  | IAddsd of arg * arg
+  | ISubsd of arg * arg
+  | IMulsd of arg * arg
 
 let r_to_asm (r : reg) : string =
   match r with
@@ -159,6 +164,11 @@ let rec i_to_asm (i : instruction) : string =
   | ILineComment str -> sprintf "  ;; %s" str
   | IInstrComment (instr, str) -> sprintf "%s ; %s" (i_to_asm instr) str
   | IMovsd (dest, value) -> sprintf "  movsd %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | ICvtInt2Float (dest, value) -> sprintf "  cvtsi2sd %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | ICvtFloat2Int (dest, value) -> sprintf "  cvtsd2si %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | IAddsd (dest, to_add) -> sprintf "  addsd %s, %s" (arg_to_asm dest) (arg_to_asm to_add)
+  | ISubsd (dest, to_sub) -> sprintf "  subsd %s, %s" (arg_to_asm dest) (arg_to_asm to_sub)
+  | IMulsd (dest, to_mul) -> sprintf "  mulsd %s, %s" (arg_to_asm dest) (arg_to_asm to_mul)
 ;;
 
 let to_asm (is : instruction list) : string =

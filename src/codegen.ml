@@ -45,12 +45,14 @@ and label_immexpr (immexpr : tag immexpr) : string =
 let rec collect_float_constants (ast : tag aexpr) : (string * float) list =
   let helpC e =
     match e with
-      | CFloat (n, (float_tag, _)) ->  [label_cexpr e, n]
+      | CFloat (n, _) -> [label_cexpr e, n]
+      | CIf (_, thn, els, _) -> (collect_float_constants thn) @ (collect_float_constants els)
+      | CLambda(_, body, _) -> collect_float_constants body
       | _ -> []
   in match ast with
   | ASeq (cexpr, aexpr, _) 
-  | ALet (_, cexpr, aexpr, _) -> List.append (helpC cexpr) (collect_float_constants aexpr)
-  | ALetRec (binds, body, _) -> List.append (List.concat_map (fun (_, cexpr) -> helpC cexpr) binds) (collect_float_constants body)
+  | ALet (_, cexpr, aexpr, _) -> (helpC cexpr) @ (collect_float_constants aexpr)
+  | ALetRec (binds, body, _) -> (List.concat_map (fun (_, cexpr) -> helpC cexpr) binds) @ (collect_float_constants body)
   | ACExpr (cexpr) -> helpC cexpr
 
 (** [float_prefix mapping] emits an assembly .rodata section containing names and float values found in [mapping].
@@ -93,7 +95,7 @@ let check_tag value tag err_label =
 let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
 
 (* Sets the last four bits of the value in thze given location to 0. *)
-let untag_snakeval arg = IAnd (arg, HexConst 0xFFFFFFF8L)
+let untag_snakeval arg = IAnd (arg, Sized (QWORD_PTR, (HexConst 0xFFFFFFF0L)))
 
 let crash = [IJmp (Label index_high_label)]
 
@@ -129,11 +131,20 @@ let check_exception (goto : string) : instruction list =
     IJnz (Label goto) ]
 ;;
 
-(* Enforces that the value in RAX is a num. Goes to the specified label if not. *)
-let check_num (goto : string) : instruction list =
+(** [check_int goto] Enforces that the value in RAX is an integer. Jumps to the specified [goto] label if not. *)
+let check_int (goto : string) : instruction list =
   [ IMov (Reg scratch_reg, Reg RAX);
-    IMov (Reg scratch_reg2, HexConst num_tag_mask);
+    IMov (Reg scratch_reg2, HexConst int_tag_mask);
     ITest (Reg scratch_reg, Reg scratch_reg2);
+    IJnz (Label goto) ]
+;;
+
+
+(** [check_float goto] Enforces that the value in RAX is a float. Jumps to the specified [goto] label if not. *)
+let check_float (goto : string) : instruction list =
+  [ IMov (Reg scratch_reg, Reg RAX);
+    IAnd (Reg scratch_reg, HexConst float_tag_mask);
+    ICmp (Reg scratch_reg, HexConst float_tag);
     IJnz (Label goto) ]
 ;;
 
@@ -202,9 +213,9 @@ let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instructio
   in
   let comp_done_label = sprintf "%s_done#%d" string_op t in
   [IMov (Reg RAX, e1)]
-  @ check_num not_a_number_comp_label
+  @ check_int not_a_number_comp_label
   @ [IMov (Reg RAX, e2)]
-  @ check_num not_a_number_comp_label
+  @ check_int not_a_number_comp_label
   @ [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
       IMov (Reg RAX, e1);
       (* cmp is weird and breaks if we don't use a temp register... *)
@@ -219,34 +230,102 @@ let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instructio
       ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
 ;;
 
-(* Helper for arithmetic operations *)
-let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) : instruction list =
-  (* Move the first arg into RAX so we can type-check it. *)
-  [IMov (Reg RAX, e1)]
-  @ check_num not_a_number_arith_label
-  @ [IMov (Reg RAX, e2)]
-  @ check_num not_a_number_arith_label
-  @
-  match op with
-  (* Arithmetic operators *)
-  | Plus -> [IMov (Reg scratch_reg, e1); IAdd (Reg RAX, Reg scratch_reg); check_overflow]
-  (* Make sure to check for overflow BEFORE shifting on multiplication! *)
-  | Times ->
-      [ IMov (Reg scratch_reg, e1);
-        IMul (Reg RAX, Reg scratch_reg);
-        check_overflow;
-        ISar (Reg RAX, Const 1L) ]
-  (* For minus, we need to move e1 back into RAX to compensate for the lack of commutativity, 
-   * while also preserving the order in which our arguments will fail a typecheck.
-   * So, `false - true` will fail on `false` every time.
-   *)
-  | Minus ->
-      [ IMov (Reg scratch_reg, e2);
-        IMov (Reg RAX, e1);
-        ISub (Reg RAX, Reg scratch_reg);
-        check_overflow ]
-  (* Comparison operators *)
-  | _ -> raise (InternalCompilerError "Expected arithmetic operator.")
+(** [aritmetic_prim2 op e1 e2] is a helper for arithmetic operations.
+  Math ops are polymorphic between floats and ints, so each operation needs to
+  check the types of both operands, and dispatch into the correct case.
+*)
+let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
+  let arg1_int_label = sprintf "arg1_int#%d" t in
+  let arg1_float_arg2_int_label = sprintf "arg1_float_arg2_int#%d" t in
+  let both_int_label = sprintf "both_int#%d" t in
+  let float_op_label = sprintf "float_%s#%d" (name_of_op2 op) t in
+  let end_label = sprintf "prim2_end#%d" t in
+  (* Move the first arg into RAX so we can type-check it. 
+    If Int, jump to that case. *)
+  [ ILineComment (sprintf "=== Begin arithemtic #%d ===" t);
+    IMov (Reg RAX, e1);
+    IMov (Reg scratch_reg, HexConst int_tag_mask);
+    ITest (Reg RAX, Reg scratch_reg);
+    IJz (Label arg1_int_label);
+  ] 
+  (* If arg1 is a float, fall through. If not, type error. *)
+  @ check_float not_a_number_arith_label @
+  
+  (* Case 1: arg1 is a float *)
+  [
+    IInstrComment(IMov (Reg RAX, e1), "Load e1.");
+    untag_snakeval (Reg RAX);
+    IMovsd (Reg float_reg, RegOffset (0, RAX)); (* XMM0 will store arg1. *)
+    IMov (Reg RAX, e2);
+    IMov (Reg scratch_reg, HexConst int_tag_mask);
+    ITest (Reg RAX, Reg scratch_reg);
+    IJz (Label arg1_float_arg2_int_label);
+  ] @ check_float not_a_number_arith_label @
+  [
+  (* Case 1.1 -- both floats *)
+  untag_snakeval (Reg RAX);
+  IMovsd (Reg float_reg2, RegOffset (0, RAX));
+  IJmp (Label float_op_label);
+
+  (* Case 1.2 -- arg1 float, arg2 int *)
+  ILabel (arg1_float_arg2_int_label);
+  IInstrComment(IMov (Reg RAX, e2), "Load e2.");
+  ISar (Reg RAX, Const 1L);
+  ICvtInt2Float (Reg float_reg2, Reg RAX);
+  IJmp (Label float_op_label);
+
+  (* Case 2: arg1 is an int *)
+  ILabel arg1_int_label;
+  IInstrComment(IMov (Reg RAX, e2), "Load e2.");
+  IMov (Reg scratch_reg, HexConst int_tag_mask);
+  ITest (Reg RAX, Reg scratch_reg);
+  IJz (Label both_int_label);
+  ] @ check_float not_a_number_arith_label @
+  [
+  (* Case 2.1 - arg1 int, arg2 float *)
+  IInstrComment(IMov (Reg RAX, e1), "Load e1.");
+  ISar (Reg RAX, Const 1L);
+  ICvtInt2Float (Reg float_reg, Reg RAX);
+  IInstrComment(IMov (Reg RAX, e2), "Load e2.");
+  untag_snakeval (Reg RAX);
+  IMovsd (Reg float_reg2, RegOffset (0, RAX));
+  IJmp (Label float_op_label);
+
+
+  (* Case 2.2 -- both ints *)
+  ILabel both_int_label;
+  IInstrComment(IMov (Reg RAX, e1), "Load e1.");
+  ISar (Reg RAX, Const 1L);
+  IMov (Reg scratch_reg, e2);
+  ISar (Reg scratch_reg, Const 1L);
+  (match op with
+  | Plus -> IAdd (Reg RAX, Reg scratch_reg)
+  | Times -> IMul (Reg RAX, Reg scratch_reg)
+  | Minus -> ISub (Reg RAX, Reg scratch_reg)
+  | _ -> raise (InternalCompilerError "Expected arithmetic operator."));
+  check_overflow;
+  IMul (Reg RAX, Const 2L);
+  IJmp (Label end_label);
+
+  (* Handle the float math. Assume operands are in XMM0 and XMM1. 
+      1. Apply operation, put result in XMM0.
+      2. Allocate new space on the heap.
+      3. Move result into that space.
+      4. Put tagged pointer into RAX. 
+  *)
+  ILabel float_op_label;
+  (match op with
+  | Plus -> IAddsd (Reg float_reg, Reg float_reg2)
+  | Times -> IMulsd (Reg float_reg, Reg float_reg2)
+  | Minus -> ISubsd (Reg float_reg, Reg float_reg2)
+  | _ -> raise (InternalCompilerError "Expected arithmetic operator."));
+  IMovsd (RegOffset (0, R15), Reg float_reg);
+  IMov (Reg RAX, Reg R15);
+  IOr (Reg RAX, Const float_tag);
+  IAdd (Reg R15, Const (Int64.of_int (word_size * 2)));
+  ILabel end_label;
+  ILineComment (sprintf "=== End arithemtic #%d ===" t)
+  ]
 ;;
 
 (* Helper for boolean and *)
@@ -690,10 +769,10 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let e_reg = compile_imm e env_env env_name in
       match op with
       | Add1 ->
-          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          (IMov (Reg RAX, e_reg) :: check_int not_a_number_arith_label)
           @ [IAdd (Reg RAX, Const 2L); check_overflow]
       | Sub1 ->
-          (IMov (Reg RAX, e_reg) :: check_num not_a_number_arith_label)
+          (IMov (Reg RAX, e_reg) :: check_int not_a_number_arith_label)
           @ [IAdd (Reg RAX, Const (-2L)); check_overflow]
       (* `xor` can't take a 64-bit literal, *)
       | Not ->
@@ -714,7 +793,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
           let false_label = sprintf "is_num_false#%d" t in
           let done_label = sprintf "is_num_done#%d" t in
           [ILineComment (sprintf "BEGIN is_num%d -------------" t); IMov (Reg RAX, e_reg)]
-          @ check_num false_label
+          @ check_int false_label
           @ [ IMov (Reg RAX, const_true);
               IJmp (Label done_label);
               ILabel false_label;
@@ -760,7 +839,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let e1_reg = compile_imm e1 env_env env_name in
       let e2_reg = compile_imm e2 env_env env_name in
       match op with
-      | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg
+      | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg t
       | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1_reg e2_reg t
       | And -> and_prim2 e1_reg e2_reg t
       | Or -> or_prim2 e1_reg e2_reg t
@@ -872,7 +951,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ [IMov (Reg RAX, tup_reg)]
       @ check_not_nil nil_deref_label
       @ [IMov (Reg RAX, idx_reg)]
-      @ check_num not_a_number_index_label
+      @ check_int not_a_number_index_label
       @ check_tuple_index tup_reg idx_reg
       @ [ IMov (Reg RAX, tup_reg);
           ISub (Reg RAX, Const tuple_tag);
@@ -890,7 +969,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       @ [IMov (Reg RAX, tup_reg)]
       @ check_not_nil nil_deref_label
       @ [IMov (Reg RAX, idx_reg)]
-      @ check_num not_a_number_index_label
+      @ check_int not_a_number_index_label
       @ check_tuple_index tup_reg idx_reg
       @ [ IMov (Reg RAX, tup_reg);
           ISub (Reg RAX, Const tuple_tag);
@@ -937,8 +1016,9 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
   | CTestOp2Pred _ -> raise (InternalCompilerError "CTestOp2Pred Desugared away")
   | CFloat (n, (t, _)) ->
     [
-      IMovsd (Reg XMM0, LabelContents (label_cexpr e));
-      IMovsd (RegOffset (0, R15), Reg XMM0);
+      ILineComment (sprintf "Compiling float_#%d (%s)" t (Float.to_string n));
+      IMovsd (Reg float_reg, LabelContents (label_cexpr e));
+      IMovsd (RegOffset (0, R15), Reg float_reg);
       IMov (Reg RAX, Reg R15);
       IOr (Reg RAX, Const float_tag);
       IAdd (Reg R15, Const (Int64.of_int (word_size * 2)))
@@ -1015,7 +1095,8 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
   let suffix = error_suffix in
   match anfed with
   | AProgram (body, ((tag, _) : tag)) ->
-    let float_constants = float_prefix (collect_float_constants body ) in  
+    let float_constants = float_prefix (collect_float_constants body ) in 
+    (* let _ = printf "%s\n" float_constants in *)
     (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
       (let prologue, comp_main, epilogue =
         compile_fun ocsh_name ["$heap"; "$size"] body env tag 0 []
