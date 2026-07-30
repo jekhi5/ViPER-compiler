@@ -168,7 +168,7 @@ let get_tag_E e =
 
 let get_tag_I (e : 'a immexpr) =
   match e with
-  | ImmBool (_, t) | ImmNil t | ImmExcept (_, t) | ImmId (_, t) | ImmNum (_, t)  -> t 
+  | ImmBool (_, t) | ImmNil t | ImmExcept (_, t) | ImmId (_, t) | ImmNum (_, t) -> t
 ;;
 
 let get_tag_C (e : 'a cexpr) =
@@ -420,7 +420,7 @@ let atag (p : sourcespan aprogram) : tag aprogram =
         CTestOp2Pred (helpI e1, helpI e2, helpI e3, n, (test_op_2_pred_tag, s))
     | CFloat (n, s) ->
         let float_tag = tag () in
-        CFloat (n, (float_tag, s)) 
+        CFloat (n, (float_tag, s))
   and helpI (i : 'a immexpr) : tag immexpr =
     match i with
     | ImmNil s -> ImmNil (tag (), s)

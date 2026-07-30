@@ -33,7 +33,7 @@ type size =
 type arg =
   | Const of int64
   | HexConst of int64
-  | FloatConst of float 
+  | FloatConst of float
   | Reg of reg
   | RegOffset of int * reg (* int is # words of offset *)
   | RegOffsetReg of reg * reg * int * int
