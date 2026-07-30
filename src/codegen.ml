@@ -17,51 +17,57 @@ open Register_alloc
 (*  Code-gen utilities *)
 (*  ==================================================================================== *)
 
-
 (** [label_{a,c,imm}expr e] is a utility for creating arbitrary names based on expr type and tag.
-    Fill in the cases as they are needed.
-*)
+    Fill in the cases as they are needed. *)
 let rec label_aexpr (aexpr : tag aexpr) : string =
   match aexpr with
-  | ACExpr (cexpr) -> label_cexpr cexpr
-  | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ (string_of_aexpr aexpr)))
+  | ACExpr cexpr -> label_cexpr cexpr
+  | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ string_of_aexpr aexpr))
 
 and label_cexpr (cexpr : tag cexpr) : string =
   match cexpr with
-    | CFloat (_, (t, _)) -> (sprintf "float_#%d" t)
-    | CImmExpr (immexpr) -> label_immexpr immexpr      
-    | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ (string_of_cexpr cexpr)))
+  | CFloat (_, (t, _)) -> sprintf "float_#%d" t
+  | CImmExpr immexpr -> label_immexpr immexpr
+  | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ string_of_cexpr cexpr))
 
 and label_immexpr (immexpr : tag immexpr) : string =
   match immexpr with
-        | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ (string_of_immexpr immexpr)))
+  | _ -> raise (NotYetImplemented ("Labeling not implemented for " ^ string_of_immexpr immexpr))
+;;
 
 (** [collect_float_constants e] traverses the expression [e] and finds all leaves containing floats.
-    It creates a mapping of unique names to float values, which will be used to intern
-    floats in a data section.
+    It creates a mapping of unique names to float values, which will be used to intern floats in a
+    data section.
 
-    TODO: implement deduplication
-*)
+    TODO: implement deduplication *)
 let rec collect_float_constants (ast : tag aexpr) : (string * float) list =
   let helpC e =
     match e with
-      | CFloat (n, _) -> [label_cexpr e, n]
-      | CIf (_, thn, els, _) -> (collect_float_constants thn) @ (collect_float_constants els)
-      | CLambda(_, body, _) -> collect_float_constants body
-      | _ -> []
-  in match ast with
-  | ASeq (cexpr, aexpr, _) 
-  | ALet (_, cexpr, aexpr, _) -> (helpC cexpr) @ (collect_float_constants aexpr)
-  | ALetRec (binds, body, _) -> (List.concat_map (fun (_, cexpr) -> helpC cexpr) binds) @ (collect_float_constants body)
-  | ACExpr (cexpr) -> helpC cexpr
+    | CFloat (n, _) -> [(label_cexpr e, n)]
+    | CIf (_, thn, els, _) -> collect_float_constants thn @ collect_float_constants els
+    | CLambda (_, body, _) -> collect_float_constants body
+    | _ -> []
+  in
+  match ast with
+  | ASeq (cexpr, aexpr, _) | ALet (_, cexpr, aexpr, _) ->
+      helpC cexpr @ collect_float_constants aexpr
+  | ALetRec (binds, body, _) ->
+      List.concat_map (fun (_, cexpr) -> helpC cexpr) binds @ collect_float_constants body
+  | ACExpr cexpr -> helpC cexpr
+;;
 
-(** [float_prefix mapping] emits an assembly .rodata section containing names and float values found in [mapping].
-    This is necessary because float literals are unsupported for many operations in the assembly.
-*)
+(** [float_prefix mapping] emits an assembly .rodata section containing names and float values found
+    in [mapping]. This is necessary because float literals are unsupported for many operations in
+    the assembly. *)
 let float_prefix (mapping : (string * float) list) : string =
   let header = "section .rodata\n" in
-  let declarations = List.map (fun (name, value) -> sprintf "  %s  %s\n" name (arg_to_asm (FloatConst value))) mapping in
-  header ^ (List.fold_left (^) "" declarations) ^ "\n"
+  let declarations =
+    List.map
+      (fun (name, value) -> sprintf "  %s  %s\n" name (arg_to_asm (FloatConst value)))
+      mapping
+  in
+  header ^ List.fold_left ( ^ ) "" declarations ^ "\n"
+;;
 
 let decompose_sourcespan ((pstart, pend) : sourcespan) : int * int * int * int =
   (pstart.pos_lnum, pstart.pos_cnum - pstart.pos_bol, pend.pos_lnum, pend.pos_cnum - pend.pos_bol)
@@ -95,7 +101,7 @@ let check_tag value tag err_label =
 let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
 
 (* Sets the last four bits of the value in thze given location to 0. *)
-let untag_snakeval arg = IAnd (arg, Sized (QWORD_PTR, (HexConst 0xFFFFFFF0L)))
+let untag_snakeval arg = IAnd (arg, Sized (QWORD_PTR, HexConst 0xFFFFFFF0L))
 
 let crash = [IJmp (Label index_high_label)]
 
@@ -131,7 +137,8 @@ let check_exception (goto : string) : instruction list =
     IJnz (Label goto) ]
 ;;
 
-(** [check_int goto] Enforces that the value in RAX is an integer. Jumps to the specified [goto] label if not. *)
+(** [check_int goto] Enforces that the value in RAX is an integer. Jumps to the specified [goto]
+    label if not. *)
 let check_int (goto : string) : instruction list =
   [ IMov (Reg scratch_reg, Reg RAX);
     IMov (Reg scratch_reg2, HexConst int_tag_mask);
@@ -139,8 +146,8 @@ let check_int (goto : string) : instruction list =
     IJnz (Label goto) ]
 ;;
 
-
-(** [check_float goto] Enforces that the value in RAX is a float. Jumps to the specified [goto] label if not. *)
+(** [check_float goto] Enforces that the value in RAX is a float. Jumps to the specified [goto]
+    label if not. *)
 let check_float (goto : string) : instruction list =
   [ IMov (Reg scratch_reg, Reg RAX);
     IAnd (Reg scratch_reg, HexConst float_tag_mask);
@@ -230,10 +237,9 @@ let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instructio
       ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
 ;;
 
-(** [aritmetic_prim2 op e1 e2] is a helper for arithmetic operations.
-  Math ops are polymorphic between floats and ints, so each operation needs to
-  check the types of both operands, and dispatch into the correct case.
-*)
+(** [aritmetic_prim2 op e1 e2] is a helper for arithmetic operations. Math ops are polymorphic
+    between floats and ints, so each operation needs to check the types of both operands, and
+    dispatch into the correct case. *)
 let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
   let arg1_int_label = sprintf "arg1_int#%d" t in
   let arg1_float_arg2_int_label = sprintf "arg1_float_arg2_int#%d" t in
@@ -246,86 +252,76 @@ let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instruc
     IMov (Reg RAX, e1);
     IMov (Reg scratch_reg, HexConst int_tag_mask);
     ITest (Reg RAX, Reg scratch_reg);
-    IJz (Label arg1_int_label);
-  ] 
+    IJz (Label arg1_int_label) ]
   (* If arg1 is a float, fall through. If not, type error. *)
-  @ check_float not_a_number_arith_label @
-  
+  @ check_float not_a_number_arith_label
   (* Case 1: arg1 is a float *)
-  [
-    IInstrComment(IMov (Reg RAX, e1), "Load e1.");
-    untag_snakeval (Reg RAX);
-    IMovsd (Reg float_reg, RegOffset (0, RAX)); (* XMM0 will store arg1. *)
-    IMov (Reg RAX, e2);
-    IMov (Reg scratch_reg, HexConst int_tag_mask);
-    ITest (Reg RAX, Reg scratch_reg);
-    IJz (Label arg1_float_arg2_int_label);
-  ] @ check_float not_a_number_arith_label @
-  [
-  (* Case 1.1 -- both floats *)
-  untag_snakeval (Reg RAX);
-  IMovsd (Reg float_reg2, RegOffset (0, RAX));
-  IJmp (Label float_op_label);
-
-  (* Case 1.2 -- arg1 float, arg2 int *)
-  ILabel (arg1_float_arg2_int_label);
-  IInstrComment(IMov (Reg RAX, e2), "Load e2.");
-  ISar (Reg RAX, Const 1L);
-  ICvtInt2Float (Reg float_reg2, Reg RAX);
-  IJmp (Label float_op_label);
-
-  (* Case 2: arg1 is an int *)
-  ILabel arg1_int_label;
-  IInstrComment(IMov (Reg RAX, e2), "Load e2.");
-  IMov (Reg scratch_reg, HexConst int_tag_mask);
-  ITest (Reg RAX, Reg scratch_reg);
-  IJz (Label both_int_label);
-  ] @ check_float not_a_number_arith_label @
-  [
-  (* Case 2.1 - arg1 int, arg2 float *)
-  IInstrComment(IMov (Reg RAX, e1), "Load e1.");
-  ISar (Reg RAX, Const 1L);
-  ICvtInt2Float (Reg float_reg, Reg RAX);
-  IInstrComment(IMov (Reg RAX, e2), "Load e2.");
-  untag_snakeval (Reg RAX);
-  IMovsd (Reg float_reg2, RegOffset (0, RAX));
-  IJmp (Label float_op_label);
-
-
-  (* Case 2.2 -- both ints *)
-  ILabel both_int_label;
-  IInstrComment(IMov (Reg RAX, e1), "Load e1.");
-  ISar (Reg RAX, Const 1L);
-  IMov (Reg scratch_reg, e2);
-  ISar (Reg scratch_reg, Const 1L);
-  (match op with
-  | Plus -> IAdd (Reg RAX, Reg scratch_reg)
-  | Times -> IMul (Reg RAX, Reg scratch_reg)
-  | Minus -> ISub (Reg RAX, Reg scratch_reg)
-  | _ -> raise (InternalCompilerError "Expected arithmetic operator."));
-  check_overflow;
-  IMul (Reg RAX, Const 2L);
-  IJmp (Label end_label);
-
-  (* Handle the float math. Assume operands are in XMM0 and XMM1. 
+  @ [ IInstrComment (IMov (Reg RAX, e1), "Load e1.");
+      untag_snakeval (Reg RAX);
+      IMovsd (Reg float_reg, RegOffset (0, RAX));
+      (* XMM0 will store arg1. *)
+      IMov (Reg RAX, e2);
+      IMov (Reg scratch_reg, HexConst int_tag_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label arg1_float_arg2_int_label) ]
+  @ check_float not_a_number_arith_label
+  @ [ (* Case 1.1 -- both floats *)
+      untag_snakeval (Reg RAX);
+      IMovsd (Reg float_reg2, RegOffset (0, RAX));
+      IJmp (Label float_op_label);
+      (* Case 1.2 -- arg1 float, arg2 int *)
+      ILabel arg1_float_arg2_int_label;
+      IInstrComment (IMov (Reg RAX, e2), "Load e2.");
+      ISar (Reg RAX, Const 1L);
+      ICvtInt2Float (Reg float_reg2, Reg RAX);
+      IJmp (Label float_op_label);
+      (* Case 2: arg1 is an int *)
+      ILabel arg1_int_label;
+      IInstrComment (IMov (Reg RAX, e2), "Load e2.");
+      IMov (Reg scratch_reg, HexConst int_tag_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label both_int_label) ]
+  @ check_float not_a_number_arith_label
+  @ [ (* Case 2.1 - arg1 int, arg2 float *)
+      IInstrComment (IMov (Reg RAX, e1), "Load e1.");
+      ISar (Reg RAX, Const 1L);
+      ICvtInt2Float (Reg float_reg, Reg RAX);
+      IInstrComment (IMov (Reg RAX, e2), "Load e2.");
+      untag_snakeval (Reg RAX);
+      IMovsd (Reg float_reg2, RegOffset (0, RAX));
+      IJmp (Label float_op_label);
+      (* Case 2.2 -- both ints *)
+      ILabel both_int_label;
+      IInstrComment (IMov (Reg RAX, e1), "Load e1.");
+      ISar (Reg RAX, Const 1L);
+      IMov (Reg scratch_reg, e2);
+      ISar (Reg scratch_reg, Const 1L);
+      ( match op with
+      | Plus -> IAdd (Reg RAX, Reg scratch_reg)
+      | Times -> IMul (Reg RAX, Reg scratch_reg)
+      | Minus -> ISub (Reg RAX, Reg scratch_reg)
+      | _ -> raise (InternalCompilerError "Expected arithmetic operator.") );
+      check_overflow;
+      IMul (Reg RAX, Const 2L);
+      IJmp (Label end_label);
+      (* Handle the float math. Assume operands are in XMM0 and XMM1. 
       1. Apply operation, put result in XMM0.
       2. Allocate new space on the heap.
       3. Move result into that space.
       4. Put tagged pointer into RAX. 
   *)
-  ILabel float_op_label;
-  (match op with
-  | Plus -> IAddsd (Reg float_reg, Reg float_reg2)
-  | Times -> IMulsd (Reg float_reg, Reg float_reg2)
-  | Minus -> ISubsd (Reg float_reg, Reg float_reg2)
-  | _ -> raise (InternalCompilerError "Expected arithmetic operator."));
-  IMovsd (RegOffset (0, R15), Reg float_reg);
-  IMov (Reg RAX, Reg R15);
-  IOr (Reg RAX, Const float_tag);
-  IAdd (Reg R15, Const (Int64.of_int (word_size * 2)));
-  ILabel end_label;
-  ILineComment (sprintf "=== End arithemtic #%d ===" t)
-  ]
+      ILabel float_op_label;
+      ( match op with
+      | Plus -> IAddsd (Reg float_reg, Reg float_reg2)
+      | Times -> IMulsd (Reg float_reg, Reg float_reg2)
+      | Minus -> ISubsd (Reg float_reg, Reg float_reg2)
+      | _ -> raise (InternalCompilerError "Expected arithmetic operator.") );
+      IMovsd (RegOffset (0, R15), Reg float_reg);
+      IMov (Reg RAX, Reg R15);
+      IOr (Reg RAX, Const float_tag);
+      IAdd (Reg R15, Const (Int64.of_int (word_size * 2)));
+      ILabel end_label;
+      ILineComment (sprintf "=== End arithemtic #%d ===" t) ]
 ;;
 
 (* Helper for boolean and *)
@@ -1015,14 +1011,12 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
   | CTestOp1 _ -> raise (InternalCompilerError "CTestOp1 Desugared away")
   | CTestOp2Pred _ -> raise (InternalCompilerError "CTestOp2Pred Desugared away")
   | CFloat (n, (t, _)) ->
-    [
-      ILineComment (sprintf "Compiling float_#%d (%s)" t (Float.to_string n));
-      IMovsd (Reg float_reg, LabelContents (label_cexpr e));
-      IMovsd (RegOffset (0, R15), Reg float_reg);
-      IMov (Reg RAX, Reg R15);
-      IOr (Reg RAX, Const float_tag);
-      IAdd (Reg R15, Const (Int64.of_int (word_size * 2)))
-    ]
+      [ ILineComment (sprintf "Compiling float_#%d (%s)" t (Float.to_string n));
+        IMovsd (Reg float_reg, LabelContents (label_cexpr e));
+        IMovsd (RegOffset (0, R15), Reg float_reg);
+        IMov (Reg RAX, Reg R15);
+        IOr (Reg RAX, Const float_tag);
+        IAdd (Reg R15, Const (Int64.of_int (word_size * 2))) ]
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with
@@ -1095,30 +1089,31 @@ let compile_prog (anfed, (env : arg name_envt name_envt)) =
   let suffix = error_suffix in
   match anfed with
   | AProgram (body, ((tag, _) : tag)) ->
-    let float_constants = float_prefix (collect_float_constants body ) in 
-    (* let _ = printf "%s\n" float_constants in *)
-    (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
-      (let prologue, comp_main, epilogue =
-        compile_fun ocsh_name ["$heap"; "$size"] body env tag 0 []
-      in
-      let heap_start =
-        [ ILineComment "heap start";
-          IInstrComment
-            ( IMov (Sized (QWORD_PTR, Reg heap_reg), Reg (List.nth first_six_args_registers 0)),
-              "Load heap_reg with our argument, the heap pointer" );
-          IInstrComment
-            ( IAdd (Sized (QWORD_PTR, Reg heap_reg), Const 15L),
-              "Align it to the nearest multiple of 16" );
-          IMov (Reg scratch_reg, HexConst 0xFFFFFFFFFFFFFFF0L);
-          IInstrComment
-            ( IAnd (Sized (QWORD_PTR, Reg heap_reg), Reg scratch_reg),
-              "by adding no more than 15 to it" ) ]
-      in
-      let set_stack_bottom =
-        [IMov (Reg R12, Reg RDI)]
-        @ native_call (Label "?set_stack_bottom") [Reg RBP]
-        @ [IMov (Reg RDI, Reg R12)]
-      in
-      let main = prologue @ set_stack_bottom @ heap_start @ comp_main @ epilogue in
-      sprintf "%s%s%s%s\n" float_constants prelude (to_asm main) suffix : string)
+      let float_constants = float_prefix (collect_float_constants body) in
+      (* let _ = printf "%s\n" float_constants in *)
+      (* $heap and $size are mock parameter names, just so that compile_fun knows our_code_starts_here takes in 2 parameters *)
+      ( let prologue, comp_main, epilogue =
+          compile_fun ocsh_name ["$heap"; "$size"] body env tag 0 []
+        in
+        let heap_start =
+          [ ILineComment "heap start";
+            IInstrComment
+              ( IMov (Sized (QWORD_PTR, Reg heap_reg), Reg (List.nth first_six_args_registers 0)),
+                "Load heap_reg with our argument, the heap pointer" );
+            IInstrComment
+              ( IAdd (Sized (QWORD_PTR, Reg heap_reg), Const 15L),
+                "Align it to the nearest multiple of 16" );
+            IMov (Reg scratch_reg, HexConst 0xFFFFFFFFFFFFFFF0L);
+            IInstrComment
+              ( IAnd (Sized (QWORD_PTR, Reg heap_reg), Reg scratch_reg),
+                "by adding no more than 15 to it" ) ]
+        in
+        let set_stack_bottom =
+          [IMov (Reg R12, Reg RDI)]
+          @ native_call (Label "?set_stack_bottom") [Reg RBP]
+          @ [IMov (Reg RDI, Reg R12)]
+        in
+        let main = prologue @ set_stack_bottom @ heap_start @ comp_main @ epilogue in
+        sprintf "%s%s%s%s\n" float_constants prelude (to_asm main) suffix
+        : string )
 ;;

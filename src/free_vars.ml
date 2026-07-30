@@ -155,7 +155,6 @@ let free_vars_cache (AProgram (body, _) : 'a aprogram) : freevars aprogram =
         let free = free_e1 |> u free_e2 |> u free_pred in
         (CTestOp2Pred (new_e1, new_e2, new_pred, negation, free), free)
     | CFloat (n, _) -> (CFloat (n, empty), empty)
-
   and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
     | ASeq (first, next, _) ->
