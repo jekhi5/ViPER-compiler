@@ -27,8 +27,8 @@ let const_false = HexConst 0x7FFFFFFFFFFFFFFFL
 let bool_mask = HexConst 0x8000000000000000L
 let bool_tag = 0x0000000000000007L
 let bool_tag_mask = 0x000000000000000FL
-let num_tag = 0x0000000000000000L
-let num_tag_mask = 0x0000000000000001L
+let int_tag = 0x0000000000000000L
+let int_tag_mask = 0x0000000000000001L
 let closure_tag = 0x0000000000000005L
 let closure_tag_mask = 0x000000000000000FL
 let tuple_tag = 0x0000000000000001L
@@ -101,4 +101,7 @@ let callee_saved_regs : arg list = [Reg R12; Reg R14; Reg RBX]
 let heap_reg = R15
 let scratch_reg = R11
 let scratch_reg2 = R10
+
+let float_reg = XMM0
+let float_reg2 = XMM1
 (* ===== END REGISTER DEFINITIONS ===== *)
