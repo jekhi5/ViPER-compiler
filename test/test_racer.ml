@@ -66,14 +66,19 @@ let ra =
             ("bar", Reg R12);
             ("lam_21", Reg R13);
             ("baz", Reg R12) ] );
-        ("lam_8", [("x", RegOffset (3, RBP))]) ];
+        ("lam_8", [("x", RegOffset (3, RBP))]);
+        ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
+        ("lam_21", []) ];
     tra "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
-      [ ("ocsh_0", []);
-        ("lam_5", [("x", RegOffset (3, RBP))]);
+      [ ("ocsh_0", [("foo", Reg R12); ("lam_5", Reg R13)]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_6", Reg R13)]);
         ("lam_6", [("y", RegOffset (3, RBP))]) ];
+    (* `foo` must be able to find itself by name for self-recursive calls (mirroring
+       naive_alloc's self-reference), so its own env carries `foo => RegOffset(2, RBP)`
+       alongside its argument `x`. *)
     tra "letrec1" "let rec foo = (lambda(x): x) in 1"
-      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
-        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ];
+      [ ("ocsh_0", [("foo", Reg R12)]);
+        ("foo", [("foo", RegOffset (2, RBP)); ("x", RegOffset (3, RBP))]) ];
     tra "number" "1" [("ocsh_0", [])];
     tra "nested_let_and_lambda"
       "\n\
@@ -225,9 +230,112 @@ let run_with_ra =
     tr "boa1" "1 + 2 + 3 + 4 + 5" "" "15";
     tr "boa2" "(((1 + 2) + 3) + (4 + 5))" "" "15";
     tr "nested_lambdas1" "let foo = (lambda(x): (lambda(y): y + x)) in 3" "" "3";
-    tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12" ]
+    tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12";
+    tr "fv_vs_live_counterexample"
+      "let x = true in\n  let y = if true: (let b = 5 in b) else: 6 in\n  x" "" "true";
+    t "selfrec_naive"
+      "let rec fact = (lambda(n): if n == 1: n else: n * (fact(sub1(n)))) in fact(5)" "" "120"
+    (* Segfaults under [Register]: callee-saved registers aren't preserved across calls. See issue #87.
+       tr "selfrec_register"
+         "let rec fact = (lambda(n): if n == 1: n else: n * (fact(sub1(n)))) in fact(5)" "" "120"; *)
+  ]
+;;
+
+let graph_utils =
+  [ tae "getNeighborsPresent" ["b"; "c"]
+      (List.sort compare (get_neighbors (graph [("a", ["b"; "c"])]) "a"));
+    tae "getNeighborsAbsent" [] (get_neighbors (graph [("a", ["b"])]) "missing");
+    tae "getVertices" ["a"; "b"; "c"] (List.sort compare (get_vertices (graph [("a", ["b"; "c"])])));
+    tae "stringOfGraphSingleEdge" "a: b\nb: a" (string_of_graph (graph [("a", ["b"])]));
+    tae "mergeGraphsUnionsEdges" ["b"; "c"]
+      (List.sort compare
+         (get_neighbors (merge_graphs (graph [("a", ["b"])]) (graph [("a", ["c"])])) "a") ) ]
+;;
+
+(* NOTE: these helpers skip desugaring, so ECheck/ETestOp1/ETestOp2 survive to ANF as 
+   their C-forms (in the real pipeline desugar rewrites them away). *)
+let ra_constructs =
+  [ tra "tupleCtor" "(1, 2, 3)" [("ocsh_0", [])];
+    tra "getItem" "let t = (1, 2) in t[0]" [("ocsh_0", [("t", Reg R12)])];
+    tra "setItem" "let t = (1, 2) in t[0] := 5" [("ocsh_0", [("t", Reg R12)])];
+    tra "sequence" "print(1); print(2); 3" [("ocsh_0", [])];
+    tra "nilImm" "nil" [("ocsh_0", [])];
+    tra "tryCatch" "try raise(RuntimeException) catch RuntimeException as b in 5"
+      [("ocsh_0", [("unary_3", Reg R12)])] ]
+;;
+
+let liveness_direct =
+  [ teq "getCacheImmNum"
+      (string_of_set (get_cache (ACExpr (CImmExpr (ImmNum (5L, set ["x"]))))))
+      "(, x)";
+    teq "getCacheImmNil"
+      (string_of_set (get_cache (ACExpr (CImmExpr (ImmNil (set ["y"]))))))
+      "(, y)";
+    teq "stringOfSet" (string_of_set (set ["a"; "b"])) "(, a, b)";
+    teq "stringOfSetEmpty" (string_of_set empty_set) "()" ]
+;;
+
+let letop c = ALet ("t", c, ACExpr (CImmExpr (ImmId ("t", dummy))), dummy)
+
+let ra_testops =
+  [ traw "raCheck" (letop (CCheck ([ImmNum (1L, dummy)], dummy))) [("ocsh_0", [("t", Reg R12)])];
+    traw "raTestOp1"
+      (letop (CTestOp1 (ImmNum (1L, dummy), ImmNum (2L, dummy), false, dummy)))
+      [("ocsh_0", [("t", Reg R12)])];
+    traw "raTestOp2"
+      (letop (CTestOp2 (ImmNum (1L, dummy), ImmNum (2L, dummy), DeepEq, false, dummy)))
+      [("ocsh_0", [("t", Reg R12)])];
+    traw "raTestOp2Pred"
+      (letop
+         (CTestOp2Pred (ImmNum (1L, dummy), ImmNum (2L, dummy), ImmNum (3L, dummy), false, dummy)) )
+      [("ocsh_0", [("t", Reg R12)])] ]
+;;
+
+(* NOTE: The source pipeline can't reach these as `anf` rejects non-lambda and multi-binding let-recs,
+   and no surface syntax yields an empty let-rec. So, these tests use ANF'ed programs that are custom and wouldn't
+   otherwise be possible in the language (even though our OCaml for Racer would support it). The non-lambda arm 
+   intentionally assigns the bound name no location (bc LetRec is not yet truly implemented). *)
+let ra_letrec_defensive =
+  [ traw "raLetRecEmpty"
+      (ALetRec ([], ACExpr (CImmExpr (ImmNum (1L, dummy))), dummy))
+      [("ocsh_0", [])];
+    traw "raLetRecNonLambda"
+      (ALetRec
+         ([("x", CImmExpr (ImmNum (5L, dummy)))], ACExpr (CImmExpr (ImmId ("x", dummy))), dummy) )
+      [("ocsh_0", [])];
+    ( "raLetRecMultiRaises"
+    >:: fun _ ->
+    assert_raises (Errors.NotYetImplemented "lol") (fun () ->
+        register_allocation
+          (AProgram
+             ( ALetRec
+                 ( [("a", CImmExpr (ImmNum (1L, dummy))); ("b", CImmExpr (ImmNum (2L, dummy)))],
+                   ACExpr (CImmExpr (ImmNum (3L, dummy))),
+                   dummy ),
+               dummy ) ) ) ) ]
+;;
+
+(* Direct tests for the test-op arms of [free_vars] (the un-cached variant), which
+   [compute_live_in] only ever invokes on immediate wrappers, never on these cexpr forms. *)
+let fv_testops =
+  [ teq "fvCheck" (string_of_set (free_vars (ACExpr (CCheck ([ImmId ("a", ())], ()))))) "(, a)";
+    teq "fvTestOp1"
+      (string_of_set (free_vars (ACExpr (CTestOp1 (ImmId ("a", ()), ImmId ("b", ()), false, ())))))
+      "(, a, b)";
+    teq "fvTestOp2"
+      (string_of_set
+         (free_vars (ACExpr (CTestOp2 (ImmId ("a", ()), ImmId ("b", ()), DeepEq, false, ())))) )
+      "(, a, b)";
+    teq "fvTestOp2Pred"
+      (string_of_set
+         (free_vars
+            (ACExpr (CTestOp2Pred (ImmId ("a", ()), ImmId ("b", ()), ImmId ("p", ()), false, ()))) ) )
+      "(, a, b, p)" ]
 ;;
 
 module Suite : TestSuite = struct
-  let suite = nsa @ ra @ coloring @ interference @ run_with_ra
+  let suite =
+    nsa @ ra @ coloring @ interference @ run_with_ra @ graph_utils @ ra_constructs @ liveness_direct
+    @ ra_testops @ ra_letrec_defensive @ fv_testops
+  ;;
 end

@@ -84,7 +84,7 @@ let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg
 ;;
 
 let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt name_envt =
-  let rec helpC (e : freevars cexpr) (env_name : string) (env_env : arg name_envt name_envt) :
+  let rec helpC (e : livevars cexpr) (env_name : string) (env_env : arg name_envt name_envt) :
       arg name_envt name_envt =
     match e with
     | CPrim1 _
@@ -111,7 +111,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         in
         helpA body env_name args_env
   (* helper for ANF expressions *)
-  and helpA (e : freevars aexpr) (env_name : string) (env_env : arg name_envt name_envt) :
+  and helpA (e : livevars aexpr) (env_name : string) (env_env : arg name_envt name_envt) :
       arg name_envt name_envt =
     match e with
     | ACExpr cexp -> helpC cexp env_name env_env
@@ -131,7 +131,10 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         let add_base_env_for_lambda = StringMap.add id StringMap.empty env_env in
         let lambda_color_map = color_graph (interfere e) (safe_find_opt env_name env_env) in
         let lambda_offset = helpC lambda id add_base_env_for_lambda in
-        let body_offset = helpA body env_name lambda_offset in
+        (* The lambda must be able to find itself by name for self-recursive calls, mirroring
+           naive_alloc's [with_self_reference]. *)
+        let with_self_reference = update_envt_envt id id (RegOffset (2, RBP)) lambda_offset in
+        let body_offset = helpA body env_name with_self_reference in
         let offset =
           safe_find_opt id lambda_color_map
             ~callee_tag:("ALet of lambda\n" ^ string_of_name_envt lambda_color_map)
@@ -156,7 +159,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
         helpA next env_name fst_env
     | _ -> raise (NotYetImplemented "lol")
   in
-  let (AProgram (body, _)) = free_vars_cache prog in
+  let (AProgram (body, _)) = live_in_program (free_vars_cache prog) in
   let initial_env = assoc_to_map [(ocsh_name, StringMap.empty)] in
   let body_env = helpA body ocsh_name initial_env in
   (prog, body_env)

@@ -463,22 +463,83 @@ let test_doesnt_err filename _ =
       assert_failure (sprintf "Expected program to succeed, but it didn't:\nReceived: %s" errmsg)
 ;;
 
+(* Set VIPER_DIFF_ALLOC=1 to additionally run every do_pass program once under [Naive] and once
+   under [Register] (ignoring whatever strategy its .options declares) and assert the two runs
+   agree. [Naive] gives every variable its own location, so it can't suffer register-reuse
+   corruption, thus, any divergence from [Register] here is a register-allocation bug. Off by
+   default since it doubles the compile+link+run cost of the do_pass corpus. *)
+let differential_alloc_enabled =
+  lazy
+    ( match Sys.getenv_opt "VIPER_DIFF_ALLOC" with
+    | Some ("1" | "true") -> true
+    | _ -> false )
+;;
+
+let test_run_differential
+    ?(no_builtins = false)
+    ?(args = [])
+    ?(std_input = "")
+    program_str
+    outfile
+    _ =
+  let run_strat strat suffix =
+    let full_outfile = sprintf "test/output/%s.%s" outfile suffix in
+    try
+      let program = parse_string outfile program_str in
+      run program full_outfile run_no_vg no_builtins args std_input strat
+    with err -> Error (Printexc.to_string err)
+  in
+  let naive_result = run_strat Naive "naive" in
+  let register_result = run_strat Register "register" in
+  assert_equal naive_result register_result ~printer:result_printer
+    ~msg:(sprintf "Naive vs Register allocation diverged for %s" outfile)
+;;
+
+let test_does_run_differential filename test_ctxt =
+  let filename = Filename.remove_extension filename in
+  let progfile = sprintf "test/input/do_pass/%s.viper" filename in
+  let argsfile = sprintf "test/input/do_pass/%s.args" filename in
+  let infile = sprintf "test/input/do_pass/%s.in" filename in
+  let opts = read_options (sprintf "test/input/do_pass/%s.options" filename) in
+  let prog = string_of_file progfile in
+  let args = parse_args argsfile opts in
+  let input =
+    if Sys.file_exists infile then
+      string_of_file infile
+    else
+      ""
+  in
+  test_run_differential ~no_builtins:opts.no_builtins ~args ~std_input:input prog
+    ("do_pass/" ^ filename) test_ctxt
+;;
+
 let input_file_test_suite () =
   let safe_readdir dir ext =
     try List.filter (fun f -> Filename.check_suffix f ext) (Array.to_list (Sys.readdir dir))
     with _ -> []
   in
-  "input-file-suite"
-  >::: [ "do_pass"
-         >::: List.map (fun f -> f >:: test_does_run f) (safe_readdir "test/input/do_pass" ".viper");
-         "do_err"
-         >::: List.map (fun f -> f >:: test_does_err f) (safe_readdir "test/input/do_err" ".viper");
-         "dont_pass"
-         >::: List.map
-                (fun f -> f >:: test_doesnt_run f)
-                (safe_readdir "test/input/dont_pass" ".viper");
-         "dont_err"
-         >::: List.map
-                (fun f -> f >:: test_doesnt_err f)
-                (safe_readdir "test/input/dont_err" ".viper") ]
+  let base_suites =
+    [ "do_pass"
+      >::: List.map (fun f -> f >:: test_does_run f) (safe_readdir "test/input/do_pass" ".viper");
+      "do_err"
+      >::: List.map (fun f -> f >:: test_does_err f) (safe_readdir "test/input/do_err" ".viper");
+      "dont_pass"
+      >::: List.map
+             (fun f -> f >:: test_doesnt_run f)
+             (safe_readdir "test/input/dont_pass" ".viper");
+      "dont_err"
+      >::: List.map (fun f -> f >:: test_doesnt_err f) (safe_readdir "test/input/dont_err" ".viper")
+    ]
+  in
+  let suites =
+    if Lazy.force differential_alloc_enabled then
+      base_suites
+      @ [ "do_pass-differential-alloc"
+          >::: List.map
+                 (fun f -> f >:: test_does_run_differential f)
+                 (safe_readdir "test/input/do_pass" ".viper") ]
+    else
+      base_suites
+  in
+  "input-file-suite" >::: suites
 ;;
