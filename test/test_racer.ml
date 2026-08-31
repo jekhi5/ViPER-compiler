@@ -66,14 +66,19 @@ let ra =
             ("bar", Reg R12);
             ("lam_21", Reg R13);
             ("baz", Reg R12) ] );
-        ("lam_8", [("x", RegOffset (3, RBP))]) ];
+        ("lam_8", [("x", RegOffset (3, RBP))]);
+        ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
+        ("lam_21", []) ];
     tra "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
-      [ ("ocsh_0", []);
-        ("lam_5", [("x", RegOffset (3, RBP))]);
+      [ ("ocsh_0", [("foo", Reg R12); ("lam_5", Reg R13)]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_6", Reg R13)]);
         ("lam_6", [("y", RegOffset (3, RBP))]) ];
+    (* `foo` must be able to find itself by name for self-recursive calls (mirroring
+       naive_alloc's self-reference), so its own env carries `foo => RegOffset(2, RBP)`
+       alongside its argument `x`. *)
     tra "letrec1" "let rec foo = (lambda(x): x) in 1"
-      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
-        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ];
+      [ ("ocsh_0", [("foo", Reg R12)]);
+        ("foo", [("foo", RegOffset (2, RBP)); ("x", RegOffset (3, RBP))]) ];
     tra "number" "1" [("ocsh_0", [])];
     tra "nested_let_and_lambda"
       "\n\
@@ -225,7 +230,18 @@ let run_with_ra =
     tr "boa1" "1 + 2 + 3 + 4 + 5" "" "15";
     tr "boa2" "(((1 + 2) + 3) + (4 + 5))" "" "15";
     tr "nested_lambdas1" "let foo = (lambda(x): (lambda(y): y + x)) in 3" "" "3";
-    tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12" ]
+    tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12";
+    tr "fv_vs_live_counterexample"
+      "let x = true in\n\
+      \  let y = if true: (let b = 5 in b) else: 6 in\n\
+      \  x"
+      "" "true";
+    t "selfrec_naive"
+      "let rec fact = (lambda(n): if n == 1: n else: n * (fact(sub1(n)))) in fact(5)" "" "120"
+    (* Segfaults under [Register]: callee-saved registers aren't preserved across calls. See issue #87.
+       tr "selfrec_register"
+         "let rec fact = (lambda(n): if n == 1: n else: n * (fact(sub1(n)))) in fact(5)" "" "120"; *)
+  ]
 ;;
 
 module Suite : TestSuite = struct

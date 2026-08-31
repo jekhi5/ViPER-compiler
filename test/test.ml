@@ -16,6 +16,7 @@ let suite =
            (module Test_errors.Suite);
            (module Test_exprs.Suite);
            (module Test_parser.Suite);
+           (module Test_racer.Suite);
            (module Test_util.Suite);
            (module Test_well_formed.Suite) ]
 ;;
