@@ -163,6 +163,23 @@ let tra name program expected =
     ~printer:(fun s -> s)
 ;;
 
+(* A synthetic ANF tag (the real pipeline threads (int * sourcespan) tags). *)
+let dummy = (0, Constants.dummy_span)
+
+(* [traw name body expected] runs [register_allocation] on a hand-built ANF [body]. This
+   reaches arms the source-level helpers can't: `anf` discards `check: ... end` blocks and
+   `desugar` rewrites ECheck/ETestOp1/ETestOp2 away, so CCheck/CTestOp* never survive to the
+   analyses through a real program. *)
+let traw name body expected =
+  let _, locations = register_allocation (AProgram (body, dummy)) in
+  name
+  >:: fun _ ->
+  assert_equal
+    (string_of_name_envt_envt (envt_envt_of_list expected))
+    (string_of_name_envt_envt locations)
+    ~printer:(fun s -> s)
+;;
+
 (** [tli name program expected] tests that the [compute_live_in] result on the body of the given
     [program], given as a source string, matches the [expected] AExpr. A test [name] must be given.
 *)
