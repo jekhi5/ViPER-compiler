@@ -528,9 +528,8 @@ let input_file_test_suite () =
              (fun f -> f >:: test_doesnt_run f)
              (safe_readdir "test/input/dont_pass" ".viper");
       "dont_err"
-      >::: List.map
-             (fun f -> f >:: test_doesnt_err f)
-             (safe_readdir "test/input/dont_err" ".viper") ]
+      >::: List.map (fun f -> f >:: test_doesnt_err f) (safe_readdir "test/input/dont_err" ".viper")
+    ]
   in
   let suites =
     if Lazy.force differential_alloc_enabled then
@@ -538,7 +537,7 @@ let input_file_test_suite () =
       @ [ "do_pass-differential-alloc"
           >::: List.map
                  (fun f -> f >:: test_does_run_differential f)
-                 (safe_readdir "test/input/do_pass" ".viper"); ]
+                 (safe_readdir "test/input/do_pass" ".viper") ]
     else
       base_suites
   in
