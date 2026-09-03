@@ -145,6 +145,9 @@ let anf (p : tag program) : sourcespan aprogram =
     | EBool (b, (_, s)) -> (ImmBool (b, s), [])
     | EId (name, (_, s)) -> (ImmId (name, s), [])
     | ENil (_, s) -> (ImmNil s, [])
+    | EFloat (n, (tag, s)) ->
+        let tmp = sprintf "float_%d" tag in
+        (ImmId (tmp, s), [BLet (tmp, CFloat (n, s))])
     | ESeq (e1, e2, _) ->
         let _, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in

@@ -30,6 +30,7 @@ let get_cache (expr : StringSet.t aexpr) : StringSet.t =
      |CTestOp1 (_, _, _, cache)
      |CTestOp2 (_, _, _, _, cache)
      |CTestOp2Pred (_, _, _, _, cache)
+     |CFloat (_, cache)
      |CImmExpr (ImmId (_, cache)) -> cache
     | CImmExpr thing -> helpI thing
   in
@@ -205,6 +206,7 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
           |> u free_vars
         in
         CTestOp2Pred (live_e1, live_e2, live_pred, negation, live_in)
+    | CFloat (n, _) -> CFloat (n, live_out)
   in
   match expr with
   | ASeq (first, next, _) ->

@@ -53,6 +53,7 @@ let rename_and_tag (p : tag program) : tag program =
     | EPrim2 (op, left, right, tag) -> EPrim2 (op, helpE env left, helpE env right, tag)
     | EIf (c, t, f, tag) -> EIf (helpE env c, helpE env t, helpE env f, tag)
     | ENumber _ -> e
+    | EFloat _ -> e
     | EBool _ -> e
     | ENil _ -> e
     | EId (name, tag) -> ( try EId (find env name, tag) with InternalCompilerError _ -> e )
