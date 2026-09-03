@@ -100,7 +100,7 @@ let check_tag value tag err_label =
 
 let move_with_scratch arg1 arg2 = [IMov (Reg scratch_reg, arg2); IMov (arg1, Reg scratch_reg)]
 
-(* Sets the last four bits of the value in thze given location to 0. *)
+(* Sets the last four bits of the value in the given location to 0. *)
 let untag_snakeval arg = IAnd (arg, Sized (QWORD_PTR, HexConst 0xFFFFFFF0L))
 
 let crash = [IJmp (Label index_high_label)]
@@ -205,47 +205,220 @@ let check_tuple_index (tup_reg : arg) (idx_reg : arg) =
     IJl (Label index_low_label) ]
 ;;
 
-(* Helper for numeric comparisons *)
+(** [compare_prim2 op e1 e2] is a helper for comparison operations. These operations work as
+    expected between ints and floats, e.g. [3.0 == 3].
+
+    The ordering operators [>], [>=], [<], and [<=] only work on numerical types. The equality
+    operator [==] is able to compare objects of any type. Its semantics are slightly more permissive
+    than strict equality wrt numbers:
+    - If the two values have the same bits, they are always equal.
+    - If two values have different bits and neither are floats, they are never equal.
+    - If two values have different bits and at least one is a float, we need to dispatch for numeric
+      equality.
+
+    Numeric type dispatch:
+    - int * int: standard integer comparison.
+    - float * float: standard float comparison.
+    - mixed: the ordering operators promote the int to a float. [==] truncates the float to an int
+      and compares as ints, but only after checking the truncation was lossless, so [3.0 == 3] holds
+      while [3.5 == 3] does not.
+
+    The result is always a boolean snakeval left in RAX.
+
+    Note that the semantics of numerical equality are different from other types. We are kind of
+    pretending that floats are not heap-allocated, in order to have interoperability with ints. The
+    results of this are a) more typechecking overhead b) slightly unintuitive results. Note that
+    [3.0 == 3.0] is true, but [(3.0,) == (3.0,)] is false. This is because each tuple literal lives
+    in a different place on the heap, and [==] does not check structural equality on tuples. *)
 let compare_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
-  (* Move the first arg into RAX so we can type-check it. *)
-  let string_op = "comparison_label" in
-  let comp_label = sprintf "%s#%d" string_op t in
-  let jump =
+  let arg1_int_label = sprintf "cmp_arg1_int#%d" t in
+  let arg1_float_arg2_int_label = sprintf "cmp_arg1_float_arg2_int#%d" t in
+  let both_int_label = sprintf "cmp_both_int#%d" t in
+  let int_cmp_label = sprintf "int_cmp_%s#%d" (name_of_op2 op) t in
+  let float_cmp_label = sprintf "float_cmp_%s#%d" (name_of_op2 op) t in
+  let true_label = sprintf "cmp_true#%d" t in
+  let false_label = sprintf "cmp_false#%d" t in
+  let end_label = sprintf "cmp_prim2_end#%d" t in
+  let is_eq =
     match op with
-    | Greater -> IJg (Label comp_label)
-    | GreaterEq -> IJge (Label comp_label)
-    | Less -> IJl (Label comp_label)
-    | LessEq -> IJle (Label comp_label)
+    | Eq -> true
+    | Greater | GreaterEq | Less | LessEq -> false
     | _ -> raise (InternalCompilerError "Expected comparison operator.")
   in
-  let comp_done_label = sprintf "%s_done#%d" string_op t in
-  [IMov (Reg RAX, e1)]
-  @ check_int not_a_number_comp_label
-  @ [IMov (Reg RAX, e2)]
-  @ check_int not_a_number_comp_label
-  @ [ ILineComment (sprintf "BEGIN %s#%d -------------" string_op t);
-      IMov (Reg RAX, e1);
-      (* cmp is weird and breaks if we don't use a temp register... *)
+  (* [==] is total, so a non-number operand means "not equal" rather than a type error.
+     Everything else is defined only on numbers. *)
+  let type_fail_label =
+    if is_eq then
+      false_label
+    else
+      not_a_number_comp_label
+  in
+  (* Which way the mixed int/float cases convert. *)
+  let truncate_mixed = is_eq in
+  (* After ICmp on two untagged machine integers, use the signed jump family. *)
+  let int_jump =
+    match op with
+    | Greater -> IJg (Label true_label)
+    | GreaterEq -> IJge (Label true_label)
+    | Less -> IJl (Label true_label)
+    | LessEq -> IJle (Label true_label)
+    | Eq -> IJe (Label true_label)
+    | _ -> raise (InternalCompilerError "Expected comparison operator.")
+  in
+  (* comisd sets CF/ZF the way an *unsigned* compare does, so the float path must use the
+     above/below family. Using jg/jl here would read the wrong flag and silently give
+     wrong answers. *)
+  let float_jump =
+    match op with
+    | Greater -> IJa (Label true_label)
+    | GreaterEq -> IJae (Label true_label)
+    | Less -> IJb (Label true_label)
+    | LessEq -> IJbe (Label true_label)
+    | Eq -> IJe (Label true_label)
+    | _ -> raise (InternalCompilerError "Expected comparison operator.")
+  in
+  (* The [==] fast path. Costs one compare and one branch when the operands are bit-identical,
+     which is what the old byte-comparing implementation cost for every case.
+
+     The second test relies on floats being heap-tagged, so [float_tag land int_tag_mask <> 0].
+     Given that, the OR has a clear low bit only when both operands are ints, and two ints
+     with different bits are never equal. Distinct booleans and distinct heap pointers fall
+     through to the dispatch below and answer false there, which preserves the old
+     physical-equality behavior for every non-float type. *)
+  let eq_fast_path =
+    if is_eq then
+      [ ILineComment "Fast path: identical bits are always equal.";
+        IMov (Reg RAX, e1);
+        IMov (Reg scratch_reg, e2);
+        ICmp (Reg RAX, Reg scratch_reg);
+        IJe (Label true_label);
+        (* Bits differ. If no float is involved the answer is already settled. *)
+        IInstrComment (IOr (Reg RAX, Reg scratch_reg), "Clear low bit iff both are ints.");
+        IMov (Reg scratch_reg, HexConst int_tag_mask);
+        ITest (Reg RAX, Reg scratch_reg);
+        IInstrComment (IJz (Label false_label), "Two distinct ints are never equal.") ]
+    else
+      []
+  in
+  (* An int can only equal a float that is exactly integral, so truncating the float and
+     comparing as ints is valid only when the truncation loses nothing. [float_src] holds the
+     float, [scratch_float] is the free XMM register, and [int_dest] receives the truncated
+     value. Converting the truncated value back and requiring it to compare equal rejects
+     fractional values, infinities, NaN, and anything outside the int64 range in one test. *)
+  let truncate_exactly (float_src : reg) (scratch_float : reg) (int_dest : reg) =
+    [ IInstrComment (ICvtFloat2Int (Reg int_dest, Reg float_src), "Truncate the float to an int.");
+      IInstrComment (ICvtInt2Float (Reg scratch_float, Reg int_dest), "Convert it back.");
+      IComisd (Reg float_src, Reg scratch_float);
+      IInstrComment (IJp (Label false_label), "NaN equals nothing.");
+      IInstrComment
+        (IJne (Label false_label), "Truncation lost something, so no int can equal this float.") ]
+  in
+  (* Case 1.2 -- arg1 is a float (already in XMM0), arg2 is an int. RAX holds e2. *)
+  let arg1_float_arg2_int_case =
+    if truncate_mixed then
+      truncate_exactly float_reg float_reg2 RAX
+      @ [IMov (Reg scratch_reg, e2); ISar (Reg scratch_reg, Const 1L); IJmp (Label int_cmp_label)]
+    else
+      [ IInstrComment (IMov (Reg RAX, e2), "Load e2.");
+        ISar (Reg RAX, Const 1L);
+        IInstrComment (ICvtInt2Float (Reg float_reg2, Reg RAX), "Promote e2 to a float.");
+        IJmp (Label float_cmp_label) ]
+  in
+  (* Case 2.1 -- arg1 is an int, arg2 is a float. RAX holds the tagged e2. *)
+  let arg1_int_arg2_float_case =
+    [untag_snakeval (Reg RAX); IMovsd (Reg float_reg2, RegOffset (0, RAX))]
+    @
+    if truncate_mixed then
+      truncate_exactly float_reg2 float_reg scratch_reg
+      @ [ IInstrComment (IMov (Reg RAX, e1), "Load e1.");
+          ISar (Reg RAX, Const 1L);
+          IJmp (Label int_cmp_label) ]
+    else
+      [ IInstrComment (IMov (Reg RAX, e1), "Load e1.");
+        ISar (Reg RAX, Const 1L);
+        IInstrComment (ICvtInt2Float (Reg float_reg, Reg RAX), "Promote e1 to a float.");
+        IJmp (Label float_cmp_label) ]
+  in
+  [ILineComment (sprintf "=== Begin comparison #%d ===" t)]
+  @ eq_fast_path
+  (* Move the first arg into RAX so we can type-check it.
+     If Int, jump to that case. *)
+  @ [ IMov (Reg RAX, e1);
+      IMov (Reg scratch_reg, HexConst int_tag_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label arg1_int_label) ]
+  (* If arg1 is a float, fall through. If not, type error, or false for [==]. *)
+  @ check_float type_fail_label
+  (* Case 1: arg1 is a float *)
+  @ [ IInstrComment (IMov (Reg RAX, e1), "Load e1.");
+      untag_snakeval (Reg RAX);
+      IMovsd (Reg float_reg, RegOffset (0, RAX));
+      (* XMM0 will store arg1. *)
+      IMov (Reg RAX, e2);
+      IMov (Reg scratch_reg, HexConst int_tag_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label arg1_float_arg2_int_label) ]
+  @ check_float type_fail_label
+  @ [ (* Case 1.1 -- both floats *)
+      untag_snakeval (Reg RAX);
+      IMovsd (Reg float_reg2, RegOffset (0, RAX));
+      IJmp (Label float_cmp_label);
+      (* Case 1.2 -- arg1 float, arg2 int *)
+      ILabel arg1_float_arg2_int_label ]
+  @ arg1_float_arg2_int_case
+  @ [ (* Case 2: arg1 is an int *)
+      ILabel arg1_int_label;
+      IInstrComment (IMov (Reg RAX, e2), "Load e2.");
+      IMov (Reg scratch_reg, HexConst int_tag_mask);
+      ITest (Reg RAX, Reg scratch_reg);
+      IJz (Label both_int_label) ]
+  @ check_float type_fail_label
+  (* Case 2.1 -- arg1 int, arg2 float *)
+  @ arg1_int_arg2_float_case
+  @ [ (* Case 2.2 -- both ints. For [==] the fast path already settled this, but the
+         ordering operators still need it. *)
+      ILabel both_int_label;
+      IInstrComment (IMov (Reg RAX, e1), "Load e1.");
+      ISar (Reg RAX, Const 1L);
       IMov (Reg scratch_reg, e2);
+      ISar (Reg scratch_reg, Const 1L);
+      IJmp (Label int_cmp_label);
+      (* Float comparison. Assume operands are in XMM0 and XMM1.
+         If either operand is NaN, comisd sets PF and leaves ZF/CF set as well, which would
+         make <=, >= and == report true. Branch out on PF first so every comparison
+         involving NaN is false. *)
+      ILabel float_cmp_label;
+      IComisd (Reg float_reg, Reg float_reg2);
+      IInstrComment (IJp (Label false_label), "Unordered (NaN) compares false.");
+      float_jump;
+      IJmp (Label false_label);
+      (* Integer comparison. Assume untagged operands are in RAX and the scratch register. *)
+      ILabel int_cmp_label;
       ICmp (Reg RAX, Reg scratch_reg);
-      jump;
+      int_jump;
+      (* Fall through into the false case. *)
+      ILabel false_label;
       IMov (Reg RAX, const_false);
-      IJmp (Label comp_done_label);
-      ILabel comp_label;
+      IJmp (Label end_label);
+      ILabel true_label;
       IMov (Reg RAX, const_true);
-      ILabel comp_done_label;
-      ILineComment (sprintf "END %s#%d   -------------" string_op t) ]
+      ILabel end_label;
+      ILineComment (sprintf "=== End comparison #%d ===" t) ]
 ;;
 
 (** [aritmetic_prim2 op e1 e2] is a helper for arithmetic operations. Math ops are polymorphic
     between floats and ints, so each operation needs to check the types of both operands, and
-    dispatch into the correct case. *)
+    dispatch into the correct case.
+    - int * int: standard integer math.
+    - int * float: convert [e1] to float.
+    - float * int: convert [e2] to float.
+    - float * float: standard float math. *)
 let arithmetic_prim2 (op : prim2) (e1 : arg) (e2 : arg) ((t, _) : tag) : instruction list =
   let arg1_int_label = sprintf "arg1_int#%d" t in
   let arg1_float_arg2_int_label = sprintf "arg1_float_arg2_int#%d" t in
   let both_int_label = sprintf "both_int#%d" t in
   let float_op_label = sprintf "float_%s#%d" (name_of_op2 op) t in
-  let end_label = sprintf "prim2_end#%d" t in
+  let end_label = sprintf "arith_prim2_end#%d" t in
   (* Move the first arg into RAX so we can type-check it. 
     If Int, jump to that case. *)
   [ ILineComment (sprintf "=== Begin arithemtic #%d ===" t);
@@ -836,22 +1009,9 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let e2_reg = compile_imm e2 env_env env_name in
       match op with
       | Plus | Minus | Times -> arithmetic_prim2 op e1_reg e2_reg t
-      | Greater | GreaterEq | Less | LessEq -> compare_prim2 op e1_reg e2_reg t
+      | Greater | GreaterEq | Less | LessEq | Eq -> compare_prim2 op e1_reg e2_reg t
       | And -> and_prim2 e1_reg e2_reg t
       | Or -> or_prim2 e1_reg e2_reg t
-      | Eq ->
-          let true_label = sprintf "equal#%d" (fst t) in
-          let done_label = sprintf "equal_done#%d" (fst t) in
-          (* No typechecking for Eq. We can just see if the two values are equivalent. *)
-          [ IMov (Reg RAX, e1_reg);
-            IMov (Reg scratch_reg, e2_reg);
-            ICmp (Reg RAX, Reg scratch_reg);
-            IJe (Label true_label);
-            IMov (Reg RAX, const_false);
-            IJmp (Label done_label);
-            ILabel true_label;
-            IMov (Reg RAX, const_true);
-            ILabel done_label ]
       | CheckSize ->
           (* Check that the tuple `e1` has size `e2`.
            * We don't have to type-check these since:

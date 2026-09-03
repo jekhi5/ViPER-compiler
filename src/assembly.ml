@@ -80,6 +80,12 @@ type instruction =
   | IAddsd of arg * arg
   | ISubsd of arg * arg
   | IMulsd of arg * arg
+  | IComisd of arg * arg
+  | IJa of arg
+  | IJae of arg
+  | IJb of arg
+  | IJbe of arg
+  | IJp of arg
 
 let r_to_asm (r : reg) : string =
   match r with
@@ -169,6 +175,12 @@ let rec i_to_asm (i : instruction) : string =
   | IAddsd (dest, to_add) -> sprintf "  addsd %s, %s" (arg_to_asm dest) (arg_to_asm to_add)
   | ISubsd (dest, to_sub) -> sprintf "  subsd %s, %s" (arg_to_asm dest) (arg_to_asm to_sub)
   | IMulsd (dest, to_mul) -> sprintf "  mulsd %s, %s" (arg_to_asm dest) (arg_to_asm to_mul)
+  | IComisd (dest, value) -> sprintf "  comisd %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | IJa label -> sprintf "  ja near %s" (arg_to_asm label)
+  | IJae label -> sprintf "  jae near %s" (arg_to_asm label)
+  | IJb label -> sprintf "  jb near %s" (arg_to_asm label)
+  | IJbe label -> sprintf "  jbe near %s" (arg_to_asm label)
+  | IJp label -> sprintf "  jp near %s" (arg_to_asm label)
 ;;
 
 let to_asm (is : instruction list) : string =
