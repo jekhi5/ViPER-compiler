@@ -21,6 +21,8 @@ type reg =
   | R15
   | RBX
   | CL
+  | XMM0
+  | XMM1
 
 type size =
   | QWORD_PTR
@@ -31,6 +33,7 @@ type size =
 type arg =
   | Const of int64
   | HexConst of int64
+  | FloatConst of float
   | Reg of reg
   | RegOffset of int * reg (* int is # words of offset *)
   | RegOffsetReg of reg * reg * int * int
@@ -71,6 +74,18 @@ type instruction =
   | IJnz of arg
   | ILineComment of string
   | IInstrComment of instruction * string
+  | IMovsd of arg * arg
+  | ICvtInt2Float of arg * arg
+  | ICvtFloat2Int of arg * arg
+  | IAddsd of arg * arg
+  | ISubsd of arg * arg
+  | IMulsd of arg * arg
+  | IComisd of arg * arg
+  | IJa of arg
+  | IJae of arg
+  | IJb of arg
+  | IJbe of arg
+  | IJp of arg
 
 let r_to_asm (r : reg) : string =
   match r with
@@ -91,12 +106,15 @@ let r_to_asm (r : reg) : string =
   | R15 -> "R15"
   | RBX -> "RBX"
   | CL -> "CL"
+  | XMM0 -> "XMM0"
+  | XMM1 -> "XMM1"
 ;;
 
 let rec arg_to_asm (a : arg) : string =
   match a with
   | Const n -> sprintf "%Ld" n
   | HexConst n -> sprintf "0x%Lx" n
+  | FloatConst n -> sprintf "dq %f" n
   | Reg r -> r_to_asm r
   | RegOffset (n, r) ->
       if n >= 0 then
@@ -151,6 +169,18 @@ let rec i_to_asm (i : instruction) : string =
   | ITest (arg, comp) -> sprintf "  test %s, %s" (arg_to_asm arg) (arg_to_asm comp)
   | ILineComment str -> sprintf "  ;; %s" str
   | IInstrComment (instr, str) -> sprintf "%s ; %s" (i_to_asm instr) str
+  | IMovsd (dest, value) -> sprintf "  movsd %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | ICvtInt2Float (dest, value) -> sprintf "  cvtsi2sd %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | ICvtFloat2Int (dest, value) -> sprintf "  cvtsd2si %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | IAddsd (dest, to_add) -> sprintf "  addsd %s, %s" (arg_to_asm dest) (arg_to_asm to_add)
+  | ISubsd (dest, to_sub) -> sprintf "  subsd %s, %s" (arg_to_asm dest) (arg_to_asm to_sub)
+  | IMulsd (dest, to_mul) -> sprintf "  mulsd %s, %s" (arg_to_asm dest) (arg_to_asm to_mul)
+  | IComisd (dest, value) -> sprintf "  comisd %s, %s" (arg_to_asm dest) (arg_to_asm value)
+  | IJa label -> sprintf "  ja near %s" (arg_to_asm label)
+  | IJae label -> sprintf "  jae near %s" (arg_to_asm label)
+  | IJb label -> sprintf "  jb near %s" (arg_to_asm label)
+  | IJbe label -> sprintf "  jbe near %s" (arg_to_asm label)
+  | IJp label -> sprintf "  jp near %s" (arg_to_asm label)
 ;;
 
 let to_asm (is : instruction list) : string =

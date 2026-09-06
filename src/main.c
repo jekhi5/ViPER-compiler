@@ -4,6 +4,7 @@
 #include <string.h>
 #include "gc.h"
 #include <setjmp.h>
+# include <math.h>
 
 typedef uint64_t SNAKEVAL;
 
@@ -24,12 +25,14 @@ extern void report_pass() asm("?report_pass");
 extern void report_fail() asm("?report_fail");
 extern void report_fail_exception() asm("?report_fail_exception");
 
-const uint64_t NUM_TAG_MASK = 0x0000000000000001;
-const uint64_t BOOL_TAG_MASK = 0x0000000000000007;
-const uint64_t TUPLE_TAG_MASK = 0x0000000000000007;
-const uint64_t CLOSURE_TAG_MASK = 0x0000000000000007;
-const uint64_t FWD_PTR_TAG_MASK = 0x0000000000000007;
-const uint64_t NUM_TAG = 0x0000000000000000;
+const uint64_t INT_TAG_MASK = 0x0000000000000001;
+const uint64_t BOOL_TAG_MASK = 0x000000000000000F;
+const uint64_t TUPLE_TAG_MASK = 0x000000000000000F;
+const uint64_t CLOSURE_TAG_MASK = 0x000000000000000F;
+const uint64_t FWD_PTR_TAG_MASK = 0x000000000000000F;
+const uint64_t FLOAT_TAG_MASK = 0x000000000000000F;
+const uint64_t INT_TAG = 0x0000000000000000;
+const uint64_t FLOAT_TAG = 0x0000000000000009;
 const uint64_t BOOL_TAG = 0x0000000000000007;
 const uint64_t TUPLE_TAG = 0x0000000000000001;
 const uint64_t CLOSURE_TAG = 0x0000000000000005;
@@ -88,11 +91,36 @@ uint64_t *FROM_E;
 uint64_t *TO_S;
 uint64_t *TO_E;
 
+// The `equal` function will use this value when comparing floats.
+double EPSILON = 1e-7;
+
 SNAKEVAL equal(SNAKEVAL val1, SNAKEVAL val2)
 {
   if (val1 == val2)
   {
+    // Handles all cases where values are exact, such as int-int.
     return BOOL_TRUE;
+  }
+  if ((val1 & FLOAT_TAG_MASK) == FLOAT_TAG && (val2 & FLOAT_TAG_MASK) == FLOAT_TAG)
+  {
+      /* both floats */
+      double *f1 = (double *)(val1 - FLOAT_TAG);
+      double *f2 = (double *)(val2 - FLOAT_TAG);
+      return (fabs(*f1 - *f2) < EPSILON) ? BOOL_TRUE : BOOL_FALSE;
+  }
+  else if ((val1 & FLOAT_TAG_MASK) == FLOAT_TAG && (val2 & INT_TAG_MASK) == 0)
+  {
+      /* val1 float, val2 int */
+      double *f1 = (double *)(val1 - FLOAT_TAG);
+      double  f2 = (double)(val2 >> 1);
+      return (fabs(*f1 - f2) < EPSILON) ? BOOL_TRUE : BOOL_FALSE;
+  }
+  else if ((val1 & INT_TAG_MASK) == 0 && (val2 & FLOAT_TAG_MASK) == FLOAT_TAG)
+  {
+      /* val1 int, val2 float */
+      double  f1 = (double)(val1 >> 1);
+      double *f2 = (double *)(val2 - FLOAT_TAG);
+      return (fabs(f1 - *f2) < EPSILON) ? BOOL_TRUE : BOOL_FALSE;
   }
   if (val1 == NIL || val2 == NIL)
   {
@@ -124,9 +152,17 @@ void printHelp(FILE *out, SNAKEVAL val)
   {
     fprintf(out, "nil");
   }
-  else if ((val & NUM_TAG_MASK) == NUM_TAG)
+  else if ((val & INT_TAG_MASK) == INT_TAG)
   {
     fprintf(out, "%ld", ((int64_t)val) >> 1); // deliberately int64, so that it's signed
+  }
+  else if ((val & FLOAT_TAG_MASK) == FLOAT_TAG)
+  {
+    uint64_t *addr = (uint64_t *)(val - FLOAT_TAG);
+    double d;
+    memcpy(&d, (void*)addr, sizeof(d));
+    // fprintf(out, "%#018lx\n", *addr);
+    fprintf(out, "%g", d);
   }
   else if (val == BOOL_TRUE)
   {
@@ -187,7 +223,7 @@ void printHelp(FILE *out, SNAKEVAL val)
 
     // by storing as a SNAKEVAL, we buy ourselves one bit!
     uint64_t len = addr[0];
-    if (len & NUM_TAG_MASK)
+    if (len & INT_TAG_MASK)
     { // actually, it's a forwarding pointer
       fprintf(out, "forwarding to %p", (uint64_t *)(len - 1));
       return;
@@ -390,7 +426,7 @@ void error(uint64_t code, SNAKEVAL val)
   printHelp(stderr, val);
   fprintf(stderr, "\n");
   fflush(stderr);
-  naive_print_heap(stderr, HEAP, HEAP_END);
+  // naive_print_heap(stderr, HEAP, HEAP_END);
   fflush(stdout);
   free(HEAP);
   exit(code);
@@ -734,7 +770,7 @@ int main(int argc, char **argv)
 {
   initialize_tests();
 
-  HEAP_SIZE = 2000;
+  HEAP_SIZE = 4000;
   if (argc > 1)
   {
     HEAP_SIZE = atoi(argv[1]);

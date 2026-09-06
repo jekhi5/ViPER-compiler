@@ -6,7 +6,7 @@
 typedef uint64_t SNAKEVAL;
 
 void printHelp(FILE* out, SNAKEVAL val);
-extern uint64_t NUM_TAG_MASK;
+extern uint64_t INT_TAG_MASK;
 extern uint64_t CLOSURE_TAG_MASK;
 extern uint64_t TUPLE_TAG_MASK;
 extern uint64_t FWD_PTR_MASK;

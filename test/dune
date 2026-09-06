@@ -8,6 +8,7 @@
   test_errors
   test_exprs
   test_funcs
+  test_float
   test_garter
   test_parser
   test_racer
