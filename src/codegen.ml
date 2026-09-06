@@ -1172,7 +1172,7 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
   | CTestOp2Pred _ -> raise (InternalCompilerError "CTestOp2Pred Desugared away")
   | CFloat (n, (t, _)) ->
       [ ILineComment (sprintf "Compiling float_#%d (%s)" t (Float.to_string n));
-        IMovsd (Reg float_reg, LabelContents (label_cexpr e));
+        IMovsd (Reg float_reg, RelLabel (label_cexpr e));
         IMovsd (RegOffset (0, R15), Reg float_reg);
         IMov (Reg RAX, Reg R15);
         IOr (Reg RAX, Const float_tag);
