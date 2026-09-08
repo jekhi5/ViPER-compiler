@@ -103,7 +103,6 @@ let string_of_test_type tt =
   match tt with
   | DeepEq -> "DeepEq"
   | ShallowEq -> "ShallowEq"
-  | Pred -> "Prdicate"
   | Raises -> "Raises"
 ;;
 

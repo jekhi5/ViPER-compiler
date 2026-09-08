@@ -20,7 +20,6 @@ type except =
 type test_type =
   | DeepEq
   | ShallowEq
-  | Pred
   | Raises
 
 type prim1 =

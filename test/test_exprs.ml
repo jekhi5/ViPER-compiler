@@ -89,7 +89,8 @@ let test_suite =
     tae "get_tag_ETestOp1" (Some true)
       (Exprs.get_tag_E (ETestOp1 (ENumber (1L, None), ENumber (1L, None), false, Some true)));
     tae "get_tag_ETestOp2" (Some true)
-      (Exprs.get_tag_E (ETestOp2 (ENumber (1L, None), ENumber (1L, None), Pred, false, Some true)));
+      (Exprs.get_tag_E
+         (ETestOp2 (ENumber (1L, None), ENumber (1L, None), DeepEq, false, Some true)) );
     (* --- get_tag_I --- *)
     tae "get_tag_ImmNum" (Some true) (get_tag_I (ImmNum (1L, Some true)));
     tae "get_tag_ImmBool" (Some true) (get_tag_I (ImmBool (true, Some true)));
