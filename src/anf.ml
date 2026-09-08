@@ -127,11 +127,6 @@ let anf (p : tag program) : sourcespan aprogram =
         let e1_imm, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
         (CTestOp2 (e1_imm, e2_imm, tt, negation, s), e1_setup @ e2_setup)
-    | ETestOp2Pred (e1, e2, pred, negation, (_, s)) ->
-        let e1_imm, e1_setup = helpI e1 in
-        let e2_imm, e2_setup = helpI e2 in
-        let pred_imm, pred_setup = helpI pred in
-        (CTestOp2Pred (e1_imm, e2_imm, pred_imm, negation, s), e1_setup @ e2_setup @ pred_setup)
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -251,14 +246,6 @@ let anf (p : tag program) : sourcespan aprogram =
         let e2_ans, e2_setup = helpI e2 in
         ( ImmId (tmp, s),
           e1_setup @ e2_setup @ [BLet (tmp, CTestOp2 (e1_ans, e2_ans, tt, negation, s))] )
-    | ETestOp2Pred (e1, e2, pred, negation, (tag, s)) ->
-        let tmp = sprintf "testop2pred_%d" tag in
-        let e1_ans, e1_setup = helpI e1 in
-        let e2_ans, e2_setup = helpI e2 in
-        let pred_ans, pred_setup = helpI pred in
-        ( ImmId (tmp, s),
-          e1_setup @ e2_setup @ pred_setup
-          @ [BLet (tmp, CTestOp2Pred (e1_ans, e2_ans, pred_ans, negation, s))] )
   (* [helpA e] converts a tagged expression into a complete A-expression ([aexpr]). This is the
      entry point for positions that must yield a full [aexpr]: lambda bodies, if-branches, and
      the top-level program body. *)

@@ -29,7 +29,6 @@ let get_cache (expr : StringSet.t aexpr) : StringSet.t =
      |CCheck (_, cache)
      |CTestOp1 (_, _, _, cache)
      |CTestOp2 (_, _, _, _, cache)
-     |CTestOp2Pred (_, _, _, _, cache)
      |CImmExpr (ImmId (_, cache)) -> cache
     | CImmExpr thing -> helpI thing
   in
@@ -188,23 +187,6 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
         let free_vars = free_vars aexpr_live_e2 |> u (free_vars aexpr_live_e1) in
         let live_in = get_cache aexpr_live_e1 |> u (get_cache aexpr_live_e2) |> u free_vars in
         CTestOp2 (live_e1, live_e2, tt, negation, live_in)
-    | CTestOp2Pred (e1, e2, pred, negation, _) ->
-        let live_e2 = helpI e2 live_out in
-        let aexpr_live_e2 = ACExpr (CImmExpr live_e2) in
-        let live_e1 = helpI e1 (get_cache aexpr_live_e2) in
-        let aexpr_live_e1 = ACExpr (CImmExpr live_e1) in
-        let live_pred = helpI pred (get_cache aexpr_live_e1) in
-        let aexpr_live_pred = ACExpr (CImmExpr live_pred) in
-        let free_vars =
-          free_vars aexpr_live_e2 |> u (free_vars aexpr_live_e1) |> u (free_vars aexpr_live_pred)
-        in
-        let live_in =
-          get_cache aexpr_live_e1
-          |> u (get_cache aexpr_live_e2)
-          |> u (get_cache aexpr_live_pred)
-          |> u free_vars
-        in
-        CTestOp2Pred (live_e1, live_e2, live_pred, negation, live_in)
   in
   match expr with
   | ASeq (first, next, _) ->

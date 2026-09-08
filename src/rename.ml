@@ -94,8 +94,6 @@ let rename_and_tag (p : tag program) : tag program =
     | ETestOp1 (e1, e2, negation, tag) -> ETestOp1 (helpE env e1, helpE env e2, negation, tag)
     | ETestOp2 (e1, e2, tt, negation, tag) ->
         ETestOp2 (helpE env e1, helpE env e2, tt, negation, tag)
-    | ETestOp2Pred (e1, e2, pred, negation, tag) ->
-        ETestOp2Pred (helpE env e1, helpE env e2, helpE env pred, negation, tag)
   in
   rename [] p
 ;;

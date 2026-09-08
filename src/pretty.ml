@@ -179,17 +179,6 @@ and string_of_expr_with (depth : int) (print_a : 'a -> string) (e : 'a expr) : s
         let se2 = string_of_expr e2 in
         let se1 = string_of_expr e1 in
         sprintf "(Test2: %s%s (%s, %s))%s" negate typ se1 se2 (print_a a)
-    | ETestOp2Pred (e1, e2, pred, n, a) ->
-        let negate =
-          if n then
-            "!"
-          else
-            ""
-        in
-        let se2 = string_of_expr e2 in
-        let se1 = string_of_expr e1 in
-        let p = string_of_expr pred in
-        sprintf "(Test2: %s%s (%s, %s))%s" negate p se1 se2 (print_a a)
 ;;
 
 let string_of_expr (e : 'a expr) : string = string_of_expr_with 1000 (fun _ -> "") e
@@ -301,13 +290,6 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
             else
               "" )
           (string_of_immexpr e1) (string_of_test_type tt) (string_of_immexpr e2) (print_a a)
-    | CTestOp2Pred (e1, e2, pred, negation, a) ->
-        sprintf "(TestOp2Pred: %s(%s(%s, %s) is true))%s"
-          ( if negation then
-              "!"
-            else
-              "" )
-          (string_of_immexpr pred) (string_of_immexpr e1) (string_of_immexpr e2) (print_a a)
 
 and string_of_immexpr_with (print_a : 'a -> string) (i : 'a immexpr) : string =
   match i with
@@ -554,18 +536,6 @@ let rec format_expr (fmt : Format.formatter) (print_a : 'a -> string) (e : 'a ex
           else
             "" );
       pp_print_string fmt (string_of_test_type tt ^ " ");
-      help e1;
-      print_comma_sep fmt;
-      help e2;
-      close_paren fmt
-  | ETestOp2Pred (e1, e2, pred, n, a) ->
-      open_label fmt "ETestOp1" (print_a a);
-      pp_print_string fmt
-        ( if n then
-            "!"
-          else
-            "" );
-      help pred;
       help e1;
       print_comma_sep fmt;
       help e2;

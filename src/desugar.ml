@@ -262,8 +262,6 @@ let desugar (p : sourcespan program) : sourcespan program =
                EException (Value, tag),
                report_result_fail_exception,
                tag ) )
-    | ETestOp2Pred (e1, e2, pred, negation, tag) ->
-        ETestOp2Pred (helpE e1, helpE e2, helpE pred, negation, tag)
   in
   helpP p
 ;;

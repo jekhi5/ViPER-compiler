@@ -97,8 +97,7 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
      |CTryCatch _
      |CCheck _
      |CTestOp1 _
-     |CTestOp2 _
-     |CTestOp2Pred _ -> env_env
+     |CTestOp2 _ -> env_env
     | CIf (_, thn, els, _) ->
         let thn_env = helpA thn env_name env_env in
         helpA els env_name thn_env

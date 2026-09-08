@@ -176,7 +176,6 @@ let is_well_formed (p : sourcespan program) : sourcespan program fallible =
         in
         wf_E e1 env @ wf_E e2 env @ e2_err
     | ETestOp2 (e1, e2, _, _, _) -> wf_E e1 env @ wf_E e2 env
-    | ETestOp2Pred (e1, e2, pred, _, _) -> wf_E e1 env @ wf_E e2 env @ wf_E pred env
   and wf_D d (env : scope_info name_envt) =
     match d with
     | DFun (_, args, body, _) ->

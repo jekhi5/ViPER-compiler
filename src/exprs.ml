@@ -86,7 +86,6 @@ and 'a expr =
   | ECheck of 'a expr list * 'a
   | ETestOp1 of 'a expr * 'a expr * bool * 'a
   | ETestOp2 of 'a expr * 'a expr * test_type * bool * 'a
-  | ETestOp2Pred of 'a expr * 'a expr * 'a expr * bool * 'a
 
 type 'a decl = DFun of string * 'a bind list * 'a expr * 'a
 
@@ -116,7 +115,6 @@ and 'a cexpr =
   | CCheck of 'a immexpr list * 'a
   | CTestOp1 of 'a immexpr * 'a immexpr * bool * 'a
   | CTestOp2 of 'a immexpr * 'a immexpr * test_type * bool * 'a
-  | CTestOp2Pred of 'a immexpr * 'a immexpr * 'a immexpr * bool * 'a
 
 and 'a aexpr =
   (* anf expressions *)
@@ -158,8 +156,7 @@ let get_tag_E e =
    |ETryCatch (_, _, _, _, t)
    |ECheck (_, t)
    |ETestOp1 (_, _, _, t)
-   |ETestOp2 (_, _, _, _, t)
-   |ETestOp2Pred (_, _, _, _, t) -> t
+   |ETestOp2 (_, _, _, _, t) -> t
 ;;
 
 let get_tag_I (e : 'a immexpr) =
@@ -180,7 +177,6 @@ let get_tag_C (e : 'a cexpr) =
    |CSetItem (_, _, _, t)
    |CTestOp1 (_, _, _, t)
    |CTestOp2 (_, _, _, _, t)
-   |CTestOp2Pred (_, _, _, _, t)
    |CTryCatch (_, _, _, t)
    |CTuple (_, t) -> t
 ;;
@@ -260,8 +256,6 @@ let rec map_tag_E (f : 'a -> 'b) (e : sourcespan expr) : ('b * 'c) expr =
   | ECheck (exprs, s) -> ECheck (List.map (map_tag_E f) exprs, (f s, s))
   | ETestOp1 (e1, e2, n, s) -> ETestOp1 (map_tag_E f e1, map_tag_E f e2, n, (f s, s))
   | ETestOp2 (e1, e2, tt, n, s) -> ETestOp2 (map_tag_E f e1, map_tag_E f e2, tt, n, (f s, s))
-  | ETestOp2Pred (e1, e2, e3, n, s) ->
-      ETestOp2Pred (map_tag_E f e1, map_tag_E f e2, map_tag_E f e3, n, (f s, s))
 
 and map_tag_B (f : 'a -> int) (b : sourcespan bind) : tag bind =
   match b with
@@ -338,7 +332,6 @@ and untagE (e : 'a expr) =
   | ECheck (ops, _) -> ECheck (List.map untagE ops, ())
   | ETestOp1 (e1, e2, n, _) -> ETestOp1 (untagE e1, untagE e2, n, ())
   | ETestOp2 (e1, e2, tt, n, _) -> ETestOp2 (untagE e1, untagE e2, tt, n, ())
-  | ETestOp2Pred (e1, e2, e3, n, _) -> ETestOp2Pred (untagE e1, untagE e2, untagE e3, n, ())
 
 and untagB (b : 'a bind) =
   match b with
@@ -408,9 +401,6 @@ let atag (p : sourcespan aprogram) : tag aprogram =
     | CTestOp2 (e1, e2, tt, n, s) ->
         let test_op_2_tag = tag () in
         CTestOp2 (helpI e1, helpI e2, tt, n, (test_op_2_tag, s))
-    | CTestOp2Pred (e1, e2, e3, n, s) ->
-        let test_op_2_pred_tag = tag () in
-        CTestOp2Pred (helpI e1, helpI e2, helpI e3, n, (test_op_2_pred_tag, s))
   and helpI (i : 'a immexpr) : tag immexpr =
     match i with
     | ImmNil s -> ImmNil (tag (), s)
