@@ -46,7 +46,7 @@ let interfere (e : livevars aexpr) : grapht =
 (* We got rid of the scratch registers because they were too important... *)
 let colors = List.map (fun x -> Reg x) [R12; R13; R14; RBX]
 
-let color_graph ?(colors = colors) (g : grapht) (init_env : arg name_envt) : arg name_envt =
+let color_graph (g : grapht) (init_env : arg name_envt) : arg name_envt =
   (* Get the node with the smallest degree. *)
   let rec worklist (gw : grapht) (stack : string list) : string list =
     match smallest_degree gw with

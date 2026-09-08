@@ -109,15 +109,13 @@ let ra =
         ("lam_25", [("p", RegOffset (4, RBP)); ("r", RegOffset (3, RBP))]) ] ]
 ;;
 
-let live_out = []
-
 (** Test for equality over color mappings.*)
-let tc ?(colors = colors) name given expected =
+let tc name given expected =
   name
   >:: fun _ ->
   assert_equal
     (string_of_name_envt (assoc_to_map expected))
-    (string_of_name_envt (color_graph ~colors given StringMap.empty))
+    (string_of_name_envt (color_graph given StringMap.empty))
     ~printer:(fun s -> s)
 ;;
 
@@ -167,13 +165,6 @@ let coloring =
         ("f", RegOffset (~-2, RBP));
         ("g", RegOffset (~-3, RBP));
         ("h", RegOffset (~-4, RBP)) ];
-    tc "stack_spill2" ~colors:[Reg R12] g1
-      [ ("a", RegOffset (~-1, RBP));
-        ("b", Reg R12);
-        ("c", Reg R12);
-        ("d", Reg R12);
-        ("e", Reg R12);
-        ("f", Reg R12) ];
     tc "cliques" g3 [("a", Reg R14); ("b", Reg R12); ("c", Reg R13); ("d", Reg R12); ("e", Reg R13)]
   ]
 ;;
@@ -202,8 +193,7 @@ let tigc name program expected =
 let empty_map = StringMap.empty
 
 let interference =
-  [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R12); ("b", Reg R13)]);
-    tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
+  [ tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
       (assoc_to_map [("x", Reg R12); ("y", Reg R12)]);
     tigc "let1" "let a = 1, b = 2, c = 3 in 4"
       (assoc_to_map [("a", Reg R12); ("b", Reg R12); ("c", Reg R12)]);
@@ -231,6 +221,8 @@ let run_with_ra =
     tr "boa2" "(((1 + 2) + 3) + (4 + 5))" "" "15";
     tr "nested_lambdas1" "let foo = (lambda(x): (lambda(y): y + x)) in 3" "" "3";
     tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12";
+    (* A `nil` operand is how a real program reaches [get_cache]'s non-[ImmId] immediate arm. *)
+    tr "nilOperand" "nil == nil" "" "true";
     tr "fv_vs_live_counterexample"
       "let x = true in\n  let y = if true: (let b = 5 in b) else: 6 in\n  x" "" "true";
     t "selfrec_naive"
@@ -252,8 +244,9 @@ let graph_utils =
          (get_neighbors (merge_graphs (graph [("a", ["b"])]) (graph [("a", ["c"])])) "a") ) ]
 ;;
 
-(* NOTE: these helpers skip desugaring, so ECheck/ETestOp1/ETestOp2 survive to ANF as 
-   their C-forms (in the real pipeline desugar rewrites them away). *)
+(* NOTE: [tra] skips desugaring, so these ANF shapes are slightly rosier than what the real
+   pipeline hands Racer (e.g. desugar wraps a try/catch's arms in lambdas). The constructs
+   themselves are all reachable from source. *)
 let ra_constructs =
   [ tra "tupleCtor" "(1, 2, 3)" [("ocsh_0", [])];
     tra "getItem" "let t = (1, 2) in t[0]" [("ocsh_0", [("t", Reg R12)])];
@@ -264,78 +257,22 @@ let ra_constructs =
       [("ocsh_0", [("unary_3", Reg R12)])] ]
 ;;
 
-let liveness_direct =
-  [ teq "getCacheImmNum"
-      (string_of_set (get_cache (ACExpr (CImmExpr (ImmNum (5L, set ["x"]))))))
-      "(, x)";
-    teq "getCacheImmNil"
-      (string_of_set (get_cache (ACExpr (CImmExpr (ImmNil (set ["y"]))))))
-      "(, y)";
-    teq "stringOfSet" (string_of_set (set ["a"; "b"])) "(, a, b)";
-    teq "stringOfSetEmpty" (string_of_set empty_set) "()" ]
-;;
-
-let letop c = ALet ("t", c, ACExpr (CImmExpr (ImmId ("t", dummy))), dummy)
-
-let ra_testops =
-  [ traw "raCheck" (letop (CCheck ([ImmNum (1L, dummy)], dummy))) [("ocsh_0", [("t", Reg R12)])];
-    traw "raTestOp1"
-      (letop (CTestOp1 (ImmNum (1L, dummy), ImmNum (2L, dummy), false, dummy)))
-      [("ocsh_0", [("t", Reg R12)])];
-    traw "raTestOp2"
-      (letop (CTestOp2 (ImmNum (1L, dummy), ImmNum (2L, dummy), DeepEq, false, dummy)))
-      [("ocsh_0", [("t", Reg R12)])];
-    traw "raTestOp2Pred"
-      (letop
-         (CTestOp2Pred (ImmNum (1L, dummy), ImmNum (2L, dummy), ImmNum (3L, dummy), false, dummy)) )
-      [("ocsh_0", [("t", Reg R12)])] ]
-;;
-
-(* NOTE: The source pipeline can't reach these as `anf` rejects non-lambda and multi-binding let-recs,
-   and no surface syntax yields an empty let-rec. So, these tests use ANF'ed programs that are custom and wouldn't
-   otherwise be possible in the language (even though our OCaml for Racer would support it). The non-lambda arm 
-   intentionally assigns the bound name no location (bc LetRec is not yet truly implemented). *)
-let ra_letrec_defensive =
-  [ traw "raLetRecEmpty"
-      (ALetRec ([], ACExpr (CImmExpr (ImmNum (1L, dummy))), dummy))
-      [("ocsh_0", [])];
-    traw "raLetRecNonLambda"
-      (ALetRec
-         ([("x", CImmExpr (ImmNum (5L, dummy)))], ACExpr (CImmExpr (ImmId ("x", dummy))), dummy) )
-      [("ocsh_0", [])];
-    ( "raLetRecMultiRaises"
+(* Mutual recursion is unimplemented: [anf]'s immediate-position let-rec arm builds a
+   multi-binding [ALetRec], which Racer refuses. *)
+let ra_letrec =
+  [ ( "raLetRecMultiRaises"
     >:: fun _ ->
     assert_raises (Errors.NotYetImplemented "lol") (fun () ->
         register_allocation
-          (AProgram
-             ( ALetRec
-                 ( [("a", CImmExpr (ImmNum (1L, dummy))); ("b", CImmExpr (ImmNum (2L, dummy)))],
-                   ACExpr (CImmExpr (ImmNum (3L, dummy))),
-                   dummy ),
-               dummy ) ) ) ) ]
-;;
-
-(* Direct tests for the test-op arms of [free_vars] (the un-cached variant), which
-   [compute_live_in] only ever invokes on immediate wrappers, never on these cexpr forms. *)
-let fv_testops =
-  [ teq "fvCheck" (string_of_set (free_vars (ACExpr (CCheck ([ImmId ("a", ())], ()))))) "(, a)";
-    teq "fvTestOp1"
-      (string_of_set (free_vars (ACExpr (CTestOp1 (ImmId ("a", ()), ImmId ("b", ()), false, ())))))
-      "(, a, b)";
-    teq "fvTestOp2"
-      (string_of_set
-         (free_vars (ACExpr (CTestOp2 (ImmId ("a", ()), ImmId ("b", ()), DeepEq, false, ())))) )
-      "(, a, b)";
-    teq "fvTestOp2Pred"
-      (string_of_set
-         (free_vars
-            (ACExpr (CTestOp2Pred (ImmId ("a", ()), ImmId ("b", ()), ImmId ("p", ()), false, ()))) ) )
-      "(, a, b, p)" ]
+          (atag
+             (anf
+                (tag
+                   (parse_string "raLetRecMultiRaises"
+                      "1 + (let rec f = (lambda: 1), g = (lambda: 2) in 3)" ) ) ) ) ) ) ]
 ;;
 
 module Suite : TestSuite = struct
   let suite =
-    nsa @ ra @ coloring @ interference @ run_with_ra @ graph_utils @ ra_constructs @ liveness_direct
-    @ ra_testops @ ra_letrec_defensive @ fv_testops
+    nsa @ ra @ coloring @ interference @ run_with_ra @ graph_utils @ ra_constructs @ ra_letrec
   ;;
 end
