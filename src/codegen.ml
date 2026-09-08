@@ -879,14 +879,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
       let excptn = ImmExcept (except, tag) in
       let exception_arg = compile_imm excptn env_env env_name in
       native_call (Label "?try_catch") [compiled_try; compiled_catch; exception_arg]
-  | CTestOp2 (given, expected, _, _, _) ->
-      (* Naive implementation! No error checking *)
-      let given_reg = compile_imm given env_env env_name in
-      let expected_reg = compile_imm expected env_env env_name in
-      [ IMov (Reg RSI, given_reg);
-        IMov (Reg RDI, expected_reg);
-        ICall (Label "?equal");
-        ICmp (Sized (QWORD_PTR, Reg RAX), const_true) ]
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with

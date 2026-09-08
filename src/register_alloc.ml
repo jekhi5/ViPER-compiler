@@ -87,15 +87,8 @@ let register_allocation (prog : tag aprogram) : tag aprogram * arg name_envt nam
   let rec helpC (e : freevars cexpr) (env_name : string) (env_env : arg name_envt name_envt) :
       arg name_envt name_envt =
     match e with
-    | CPrim1 _
-     |CPrim2 _
-     |CApp _
-     |CImmExpr _
-     |CTuple _
-     |CGetItem _
-     |CSetItem _
-     |CTryCatch _
-     |CTestOp2 _ -> env_env
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ | CTryCatch _
+      -> env_env
     | CIf (_, thn, els, _) ->
         let thn_env = helpA thn env_name env_env in
         helpA els env_name thn_env

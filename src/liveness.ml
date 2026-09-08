@@ -26,7 +26,6 @@ let get_cache (expr : StringSet.t aexpr) : StringSet.t =
      |CLambda (_, _, cache)
      |CApp (_, _, _, cache)
      |CTryCatch (_, _, _, cache)
-     |CTestOp2 (_, _, _, _, cache)
      |CImmExpr (ImmId (_, cache)) -> cache
     | CImmExpr thing -> helpI thing
   in
@@ -158,14 +157,6 @@ let rec compute_live_in (expr : freevars aexpr) (live_out : livevars) : livevars
         let free_vars = free_vars aexpr_live_catch |> u (free_vars aexpr_live_try) in
         let live_in = get_cache aexpr_live_try |> u (get_cache aexpr_live_catch) |> u free_vars in
         CTryCatch (live_try, except, live_catch, live_in)
-    | CTestOp2 (e1, e2, tt, negation, _) ->
-        let live_e2 = helpI e2 live_out in
-        let aexpr_live_e2 = ACExpr (CImmExpr live_e2) in
-        let live_e1 = helpI e1 (get_cache aexpr_live_e2) in
-        let aexpr_live_e1 = ACExpr (CImmExpr live_e1) in
-        let free_vars = free_vars aexpr_live_e2 |> u (free_vars aexpr_live_e1) in
-        let live_in = get_cache aexpr_live_e1 |> u (get_cache aexpr_live_e2) |> u free_vars in
-        CTestOp2 (live_e1, live_e2, tt, negation, live_in)
   in
   match expr with
   | ASeq (first, next, _) ->

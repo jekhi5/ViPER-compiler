@@ -116,10 +116,6 @@ let anf (p : tag program) : sourcespan aprogram =
         (CTryCatch (t_imm, except, c_imm, s), t_setup @ c_setup)
     | ETryCatch _ ->
         raise (InternalCompilerError "Violated invariant: Tried to catch a non-exception")
-    | ETestOp2 (e1, e2, tt, negation, (_, s)) ->
-        let e1_imm, e1_setup = helpI e1 in
-        let e2_imm, e2_setup = helpI e2 in
-        (CTestOp2 (e1_imm, e2_imm, tt, negation, s), e1_setup @ e2_setup)
     | _ ->
         let imm, setup = helpI e in
         (CImmExpr imm, setup)
@@ -226,12 +222,7 @@ let anf (p : tag program) : sourcespan aprogram =
         raise (InternalCompilerError "Violated invariant. Tried to catch a non-exception")
     | ECheck _ -> raise (InternalCompilerError "ECheck should have been desugared away")
     | ETestOp1 _ -> raise (InternalCompilerError "ETestOp1 should have been desugared away")
-    | ETestOp2 (e1, e2, tt, negation, (tag, s)) ->
-        let tmp = sprintf "testop2_%d" tag in
-        let e1_ans, e1_setup = helpI e1 in
-        let e2_ans, e2_setup = helpI e2 in
-        ( ImmId (tmp, s),
-          e1_setup @ e2_setup @ [BLet (tmp, CTestOp2 (e1_ans, e2_ans, tt, negation, s))] )
+    | ETestOp2 _ -> raise (InternalCompilerError "ETestOp2 should have been desugared away")
   (* [helpA e] converts a tagged expression into a complete A-expression ([aexpr]). This is the
      entry point for positions that must yield a full [aexpr]: lambda bodies, if-branches, and
      the top-level program body. *)

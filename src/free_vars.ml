@@ -33,7 +33,6 @@ let free_vars (e : 'a aexpr) : StringSet.t =
         helpI tup bound_ids |> u (helpI idx bound_ids) |> u (helpI new_elem bound_ids)
     | CLambda (ids, body, _) -> helpA body (StringSet.of_list ids |> u bound_ids)
     | CTryCatch (t, _, c, _) -> helpI t bound_ids |> u (helpI c bound_ids)
-    | CTestOp2 (e1, e2, _, _, _) -> helpI e1 bound_ids |> u (helpI e2 bound_ids)
   and helpA (e : 'a aexpr) (bound_ids : StringSet.t) : StringSet.t =
     match e with
     | ASeq (first, next, _) -> helpC first bound_ids |> u (helpA next bound_ids)
@@ -123,11 +122,6 @@ let free_vars_cache (AProgram (body, _) : 'a aprogram) : freevars aprogram =
         let new_catch, free_catch = helpI c in
         let free = free_try |> u free_catch in
         (CTryCatch (new_try, except, new_catch, free), free)
-    | CTestOp2 (e1, e2, tt, negation, _) ->
-        let new_e1, free_e1 = helpI e1 in
-        let new_e2, free_e2 = helpI e2 in
-        let free = free_e1 |> u free_e2 in
-        (CTestOp2 (new_e1, new_e2, tt, negation, free), free)
   and helpA (e : 'a aexpr) : StringSet.t aexpr * StringSet.t =
     match e with
     | ASeq (first, next, _) ->

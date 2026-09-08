@@ -115,8 +115,6 @@ let test_suite =
       (get_tag_C (CPrim2 (Plus, ImmNum (1L, None), ImmNum (1L, None), Some true)));
     tae "get_tag_CSetItem" (Some true)
       (get_tag_C (CSetItem (ImmNum (1L, None), ImmNum (1L, None), ImmNum (1L, None), Some true)));
-    tae "get_tag_CTestOp2" (Some true)
-      (get_tag_C (CTestOp2 (ImmNum (1L, None), ImmNum (1L, None), Pred, false, Some true)));
     tae "get_tag_CTryCatch" (Some true)
       (get_tag_C (CTryCatch (ImmNum (1L, None), Runtime, ImmNum (1L, None), Some true)));
     tae "get_tag_CTuple" (Some true) (get_tag_C (CTuple ([], Some true)));
@@ -345,12 +343,6 @@ let test_suite =
          ( ACExpr (CTryCatch (ImmNum (1L, (3, ss1)), Runtime, ImmNum (2L, (2, ss1)), (1, ss1))),
            (0, ss1) ) )
       (atag (AProgram (ACExpr (CTryCatch (ImmNum (1L, ss1), Runtime, ImmNum (2L, ss1), ss1)), ss1)));
-    tae "atagCTestOp2"
-      (AProgram
-         ( ACExpr (CTestOp2 (ImmNum (1L, (3, ss1)), ImmNum (2L, (2, ss1)), Pred, false, (1, ss1))),
-           (0, ss1) ) )
-      (atag
-         (AProgram (ACExpr (CTestOp2 (ImmNum (1L, ss1), ImmNum (2L, ss1), Pred, false, ss1)), ss1)) );
     tae "atagASeq"
       (AProgram
          ( ASeq
