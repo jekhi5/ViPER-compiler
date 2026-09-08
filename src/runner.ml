@@ -463,16 +463,41 @@ let test_doesnt_err filename _ =
       assert_failure (sprintf "Expected program to succeed, but it didn't:\nReceived: %s" errmsg)
 ;;
 
-(* Set VIPER_DIFF_ALLOC=1 to additionally run every do_pass program once under [Naive] and once
-   under [Register] (ignoring whatever strategy its .options declares) and assert the two runs
-   agree. [Naive] gives every variable its own location, so it can't suffer register-reuse
-   corruption, thus, any divergence from [Register] here is a register-allocation bug. Off by
-   default since it doubles the compile+link+run cost of the do_pass corpus. *)
+(* Registering the option with OUnit's configuration system is what makes [-diff-alloc true] a
+   legal command-line flag, and it comes with OUnit's other two channels for free:
+   [OUNIT_DIFF_ALLOC=true] in the environment and [diff_alloc = true] in an [ounit.conf] file. *)
+let diff_alloc_conf_name = "diff_alloc"
+
+let diff_alloc : OUnitConf.conf -> bool =
+  OUnitConf.make_bool diff_alloc_conf_name false
+    "Also run every test/input/do_pass program under both naive stack allocation and register \
+     allocation, and assert the two runs agree."
+;;
+
+(* OUnit hands the resolved configuration to individual tests (through their [test_ctxt]), but we
+   need this option's value earlier than that: whether the differential suite exists at all is
+   decided while assembling the suite, which happens before [run_test_tt_main] has parsed
+   anything. So resolve the configuration ourselves, which honors all three channels with OUnit's
+   own precedence (config file, then environment, then command line).
+
+   We hand [load] a filtered [Sys.argv] holding just the arguments our configuration owns, since
+   [run_test_tt_main] registers flags of its own ([-only-test], [-list-test]) that this call isn't
+   told about and would reject. Filtering, rather than parsing the value ourselves, keeps OUnit as
+   the only thing that interprets the option. Passing an explicit argv also means [load] uses its
+   own cursor, leaving [Arg]'s global one untouched for OUnit's real pass over the true argv. A
+   malformed value still raises here; fall back to the default and let [run_test_tt_main] be the
+   one to report it. *)
 let differential_alloc_enabled =
   lazy
-    ( match Sys.getenv_opt "VIPER_DIFF_ALLOC" with
-    | Some ("1" | "true") -> true
-    | _ -> false )
+    (let diff_alloc_flag = OUnitConf.cli_name diff_alloc_conf_name in
+     let rec owned_args = function
+       | flag :: value :: rest when flag = diff_alloc_flag || flag = "-conf" ->
+           flag :: value :: owned_args rest
+       | _ :: rest -> owned_args rest
+       | [] -> []
+     in
+     let argv = Array.of_list (Sys.argv.(0) :: owned_args (Array.to_list Sys.argv)) in
+     try diff_alloc (OUnitConf.load ~argv []) with _ -> false )
 ;;
 
 let test_run_differential

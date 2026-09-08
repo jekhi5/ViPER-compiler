@@ -79,7 +79,8 @@ The main interface is the Makefile. Here is a general workflow:
 > make test                     # Build the tester
 > ./tester                      # Run the tests
 > # OR:
-> VIPER_DIFF_ALLOC=1 ./tester   # Runs the regular test suite and additionally asserts output of input/do_pass/ tests run with naive stack allocation matches that of the same tests run with register allocation
+> ./tester -diff-alloc true     # Runs the regular test suite and additionally asserts output of input/do_pass/ tests run with naive stack allocation matches that of the same tests run with register allocation
+>                               # (equivalently: OUNIT_DIFF_ALLOC=true ./tester)
 > bisect-ppx-report html        # Generate a detailed test coverage report
 > python scripts/server.py -c   # View the test coverage report at localhost:8080
 ```
