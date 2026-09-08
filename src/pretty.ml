@@ -272,17 +272,6 @@ and string_of_cexpr_with (depth : int) (print_a : 'a -> string) (c : 'a cexpr) :
     | CTryCatch (t, except, c, a) ->
         sprintf "(ctry (%s) catch %s in (%s))%s" (string_of_immexpr t) (string_of_exception except)
           (string_of_immexpr c) (print_a a)
-    | CCheck (checks, a) ->
-        sprintf "(check:\n  %s\n)%s"
-          (List.fold_left (fun acc e -> acc ^ "\n" ^ string_of_immexpr e) "" checks)
-          (print_a a)
-    | CTestOp1 (e1, e2, negation, a) ->
-        sprintf "(TestOp1: %s(%s satisfies %s))%s"
-          ( if negation then
-              "!"
-            else
-              "" )
-          (string_of_immexpr e1) (string_of_immexpr e2) (print_a a)
     | CTestOp2 (e1, e2, tt, negation, a) ->
         sprintf "(TestOp2: %s(%s %s %s))%s"
           ( if negation then

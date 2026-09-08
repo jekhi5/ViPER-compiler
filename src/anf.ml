@@ -116,13 +116,6 @@ let anf (p : tag program) : sourcespan aprogram =
         (CTryCatch (t_imm, except, c_imm, s), t_setup @ c_setup)
     | ETryCatch _ ->
         raise (InternalCompilerError "Violated invariant: Tried to catch a non-exception")
-    | ECheck (checks, (_, s)) ->
-        let new_checks, checks_setup = List.split (List.map helpI checks) in
-        (CCheck (new_checks, s), List.concat checks_setup)
-    | ETestOp1 (e1, e2, negation, (_, s)) ->
-        let e1_imm, e1_setup = helpI e1 in
-        let e2_imm, e2_setup = helpI e2 in
-        (CTestOp1 (e1_imm, e2_imm, negation, s), e1_setup @ e2_setup)
     | ETestOp2 (e1, e2, tt, negation, (_, s)) ->
         let e1_imm, e1_setup = helpI e1 in
         let e2_imm, e2_setup = helpI e2 in
@@ -231,15 +224,8 @@ let anf (p : tag program) : sourcespan aprogram =
         (ImmId (tmp, s), t_setup @ c_setup @ [BLet (tmp, CTryCatch (new_t, except, new_c, s))])
     | ETryCatch _ ->
         raise (InternalCompilerError "Violated invariant. Tried to catch a non-exception")
-    | ECheck (checks, (tag, s)) ->
-        let tmp = sprintf "check_%d" tag in
-        let new_checks, new_setup = List.split (List.map helpI checks) in
-        (ImmId (tmp, s), List.concat new_setup @ [BLet (tmp, CCheck (new_checks, s))])
-    | ETestOp1 (e1, e2, negation, (tag, s)) ->
-        let tmp = sprintf "testop1_%d" tag in
-        let e1_ans, e1_setup = helpI e1 in
-        let e2_ans, e2_setup = helpI e2 in
-        (ImmId (tmp, s), e1_setup @ e2_setup @ [BLet (tmp, CTestOp1 (e1_ans, e2_ans, negation, s))])
+    | ECheck _ -> raise (InternalCompilerError "ECheck should have been desugared away")
+    | ETestOp1 _ -> raise (InternalCompilerError "ETestOp1 should have been desugared away")
     | ETestOp2 (e1, e2, tt, negation, (tag, s)) ->
         let tmp = sprintf "testop2_%d" tag in
         let e1_ans, e1_setup = helpI e1 in

@@ -887,9 +887,6 @@ and compile_cexpr (e : tag cexpr) si (env_env : arg name_envt name_envt) num_arg
         IMov (Reg RDI, expected_reg);
         ICall (Label "?equal");
         ICmp (Sized (QWORD_PTR, Reg RAX), const_true) ]
-  (* We made these ANF types before we realized we do not need them... Oops! *)
-  | CCheck _ -> raise (InternalCompilerError "CCheck Desugared away")
-  | CTestOp1 _ -> raise (InternalCompilerError "CTestOp1 Desugared away")
 
 and compile_imm e (env_env : arg name_envt name_envt) env_name =
   match e with

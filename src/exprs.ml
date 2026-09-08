@@ -112,8 +112,6 @@ and 'a cexpr =
   | CLambda of string list * 'a aexpr * 'a
   (* The CTryCatch does not have a `bind` anymore because it was desugared away *)
   | CTryCatch of 'a immexpr * except * 'a immexpr * 'a
-  | CCheck of 'a immexpr list * 'a
-  | CTestOp1 of 'a immexpr * 'a immexpr * bool * 'a
   | CTestOp2 of 'a immexpr * 'a immexpr * test_type * bool * 'a
 
 and 'a aexpr =
@@ -168,14 +166,12 @@ let get_tag_C (e : 'a cexpr) =
   match e with
   | CImmExpr i -> get_tag_I i
   | CApp (_, _, _, t)
-   |CCheck (_, t)
    |CGetItem (_, _, t)
    |CIf (_, _, _, t)
    |CLambda (_, _, t)
    |CPrim1 (_, _, t)
    |CPrim2 (_, _, _, t)
    |CSetItem (_, _, _, t)
-   |CTestOp1 (_, _, _, t)
    |CTestOp2 (_, _, _, _, t)
    |CTryCatch (_, _, _, t)
    |CTuple (_, t) -> t
@@ -392,12 +388,6 @@ let atag (p : sourcespan aprogram) : tag aprogram =
     | CTryCatch (t, except, c, s) ->
         let try_catch_tag = tag () in
         CTryCatch (helpI t, except, helpI c, (try_catch_tag, s))
-    | CCheck (ops, s) ->
-        let catch_tag = tag () in
-        CCheck (List.map helpI ops, (catch_tag, s))
-    | CTestOp1 (e1, e2, n, s) ->
-        let test_op_1_tag = tag () in
-        CTestOp1 (helpI e1, helpI e2, n, (test_op_1_tag, s))
     | CTestOp2 (e1, e2, tt, n, s) ->
         let test_op_2_tag = tag () in
         CTestOp2 (helpI e1, helpI e2, tt, n, (test_op_2_tag, s))

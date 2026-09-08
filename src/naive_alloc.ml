@@ -24,8 +24,6 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
      |CGetItem _
      |CSetItem _
      |CTryCatch _
-     |CCheck _
-     |CTestOp1 _
      |CTestOp2 _ -> env
     | CIf (_, thn, els, _) ->
         let thn_env = helpA thn env (si + 1) env_name in

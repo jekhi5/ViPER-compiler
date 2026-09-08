@@ -99,7 +99,6 @@ let test_suite =
     (* --- get_tag_C --- *)
     tae "get_tag_CImmExpr" (Some true) (get_tag_C (CImmExpr (ImmNum (1L, Some true))));
     tae "get_tag_CApp" (Some true) (get_tag_C (CApp (ImmNum (1L, None), [], Unknown, Some true)));
-    tae "get_tag_CCheck" (Some true) (get_tag_C (CCheck ([], Some true)));
     tae "get_tag_CGetItem" (Some true)
       (get_tag_C (CGetItem (ImmNum (1L, None), ImmNum (1L, None), Some true)));
     tae "get_tag_CIf" (Some true)
@@ -116,8 +115,6 @@ let test_suite =
       (get_tag_C (CPrim2 (Plus, ImmNum (1L, None), ImmNum (1L, None), Some true)));
     tae "get_tag_CSetItem" (Some true)
       (get_tag_C (CSetItem (ImmNum (1L, None), ImmNum (1L, None), ImmNum (1L, None), Some true)));
-    tae "get_tag_CTestOp1" (Some true)
-      (get_tag_C (CTestOp1 (ImmNum (1L, None), ImmNum (1L, None), false, Some true)));
     tae "get_tag_CTestOp2" (Some true)
       (get_tag_C (CTestOp2 (ImmNum (1L, None), ImmNum (1L, None), Pred, false, Some true)));
     tae "get_tag_CTryCatch" (Some true)
@@ -348,20 +345,6 @@ let test_suite =
          ( ACExpr (CTryCatch (ImmNum (1L, (3, ss1)), Runtime, ImmNum (2L, (2, ss1)), (1, ss1))),
            (0, ss1) ) )
       (atag (AProgram (ACExpr (CTryCatch (ImmNum (1L, ss1), Runtime, ImmNum (2L, ss1), ss1)), ss1)));
-    tae "atagCCheck"
-      (AProgram
-         ( ACExpr
-             (CCheck
-                ([ImmNum (1L, (2, ss1)); ImmNum (2L, (3, ss1)); ImmNum (3L, (4, ss1))], (1, ss1)) ),
-           (0, ss1) ) )
-      (atag
-         (AProgram
-            (ACExpr (CCheck ([ImmNum (1L, ss1); ImmNum (2L, ss1); ImmNum (3L, ss1)], ss1)), ss1) ) );
-    tae "atagCTestOp1"
-      (AProgram
-         (ACExpr (CTestOp1 (ImmNum (1L, (3, ss1)), ImmNum (2L, (2, ss1)), true, (1, ss1))), (0, ss1))
-      )
-      (atag (AProgram (ACExpr (CTestOp1 (ImmNum (1L, ss1), ImmNum (2L, ss1), true, ss1)), ss1)));
     tae "atagCTestOp2"
       (AProgram
          ( ACExpr (CTestOp2 (ImmNum (1L, (3, ss1)), ImmNum (2L, (2, ss1)), Pred, false, (1, ss1))),
