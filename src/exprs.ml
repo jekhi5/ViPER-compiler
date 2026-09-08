@@ -60,7 +60,6 @@ and 'a binding = 'a bind * 'a expr * 'a
 and call_type =
   | Native
   | Snake
-  | Prim
   | Unknown
 
 and 'a expr =

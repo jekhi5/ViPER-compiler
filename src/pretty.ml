@@ -89,7 +89,6 @@ let string_of_call_type ct =
   match ct with
   | Native -> "*"
   | Snake -> ""
-  | Prim -> "#"
   | Unknown -> "?"
 ;;
 
