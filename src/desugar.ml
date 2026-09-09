@@ -241,7 +241,9 @@ let desugar (p : sourcespan program) : sourcespan program =
                 ( [given; expected],
                   negated (EApp (EId ("equal", tag), [given_id; expected_id], Snake, tag)),
                   tag )
-          | _ -> raise (NotYetImplemented ("unimplemented test type: " ^ string_of_test_type tt))
+          | Raises ->
+              raise
+                (NotYetImplemented "test type Raises must be handled by the preceding ETestOp2 arm")
         in
         helpE
           (ETryCatch
@@ -262,8 +264,6 @@ let desugar (p : sourcespan program) : sourcespan program =
                EException (Value, tag),
                report_result_fail_exception,
                tag ) )
-    | ETestOp2Pred (e1, e2, pred, negation, tag) ->
-        ETestOp2Pred (helpE e1, helpE e2, helpE pred, negation, tag)
   in
   helpP p
 ;;

@@ -89,11 +89,8 @@ let test_suite =
     tae "get_tag_ETestOp1" (Some true)
       (Exprs.get_tag_E (ETestOp1 (ENumber (1L, None), ENumber (1L, None), false, Some true)));
     tae "get_tag_ETestOp2" (Some true)
-      (Exprs.get_tag_E (ETestOp2 (ENumber (1L, None), ENumber (1L, None), Pred, false, Some true)));
-    tae "get_tag_ETestOp2Pred" (Some true)
       (Exprs.get_tag_E
-         (ETestOp2Pred (ENumber (1L, None), ENumber (1L, None), ENumber (1L, None), false, Some true)
-         ) );
+         (ETestOp2 (ENumber (1L, None), ENumber (1L, None), DeepEq, false, Some true)) );
     (* --- get_tag_I --- *)
     tae "get_tag_ImmNum" (Some true) (get_tag_I (ImmNum (1L, Some true)));
     tae "get_tag_ImmBool" (Some true) (get_tag_I (ImmBool (true, Some true)));
@@ -103,7 +100,6 @@ let test_suite =
     (* --- get_tag_C --- *)
     tae "get_tag_CImmExpr" (Some true) (get_tag_C (CImmExpr (ImmNum (1L, Some true))));
     tae "get_tag_CApp" (Some true) (get_tag_C (CApp (ImmNum (1L, None), [], Unknown, Some true)));
-    tae "get_tag_CCheck" (Some true) (get_tag_C (CCheck ([], Some true)));
     tae "get_tag_CGetItem" (Some true)
       (get_tag_C (CGetItem (ImmNum (1L, None), ImmNum (1L, None), Some true)));
     tae "get_tag_CIf" (Some true)
@@ -120,13 +116,6 @@ let test_suite =
       (get_tag_C (CPrim2 (Plus, ImmNum (1L, None), ImmNum (1L, None), Some true)));
     tae "get_tag_CSetItem" (Some true)
       (get_tag_C (CSetItem (ImmNum (1L, None), ImmNum (1L, None), ImmNum (1L, None), Some true)));
-    tae "get_tag_CTestOp1" (Some true)
-      (get_tag_C (CTestOp1 (ImmNum (1L, None), ImmNum (1L, None), false, Some true)));
-    tae "get_tag_CTestOp2" (Some true)
-      (get_tag_C (CTestOp2 (ImmNum (1L, None), ImmNum (1L, None), Pred, false, Some true)));
-    tae "get_tag_CTestOp2Pred" (Some true)
-      (get_tag_C
-         (CTestOp2Pred (ImmNum (1L, None), ImmNum (1L, None), ImmNum (1L, None), false, Some true)) );
     tae "get_tag_CTryCatch" (Some true)
       (get_tag_C (CTryCatch (ImmNum (1L, None), Runtime, ImmNum (1L, None), Some true)));
     tae "get_tag_CTuple" (Some true) (get_tag_C (CTuple ([], Some true)));
@@ -195,9 +184,6 @@ let test_suite =
     tae "map_tag_ETestOp2"
       (ETestOp2 (numM, boolM, DeepEq, false, tag42))
       (map_tag_E (fun _ -> 42) (ETestOp2 (numE, boolE, DeepEq, false, ss1)));
-    tae "map_tag_ETestOp2Pred"
-      (ETestOp2Pred (numM, boolM, idM, true, tag42))
-      (map_tag_E (fun _ -> 42) (ETestOp2Pred (numE, boolE, idE, true, ss1)));
     (* --- map_tag_B --- *)
     tae "map_tag_BBlank" (BBlank tag42) (map_tag_B (fun _ -> 42) (BBlank ss1));
     tae "map_tag_BName"
@@ -257,9 +243,6 @@ let test_suite =
     tae "untagETestOp2"
       (ETestOp2 (numU, boolU, DeepEq, false, ()))
       (untagE (ETestOp2 (numE, boolE, DeepEq, false, ss1)));
-    tae "untagETestOp2Pred"
-      (ETestOp2Pred (numU, boolU, idU, true, ()))
-      (untagE (ETestOp2Pred (numE, boolE, idE, true, ss1)));
     (* --- untagB --- *)
     tae "untagBBlank" (BBlank ()) (untagB (BBlank ss1));
     tae "untagBName" (BName ("v", false, ())) (untagB (BName ("v", false, ss1)));
@@ -361,37 +344,6 @@ let test_suite =
          ( ACExpr (CTryCatch (ImmNum (1L, (3, ss1)), Runtime, ImmNum (2L, (2, ss1)), (1, ss1))),
            (0, ss1) ) )
       (atag (AProgram (ACExpr (CTryCatch (ImmNum (1L, ss1), Runtime, ImmNum (2L, ss1), ss1)), ss1)));
-    tae "atagCCheck"
-      (AProgram
-         ( ACExpr
-             (CCheck
-                ([ImmNum (1L, (2, ss1)); ImmNum (2L, (3, ss1)); ImmNum (3L, (4, ss1))], (1, ss1)) ),
-           (0, ss1) ) )
-      (atag
-         (AProgram
-            (ACExpr (CCheck ([ImmNum (1L, ss1); ImmNum (2L, ss1); ImmNum (3L, ss1)], ss1)), ss1) ) );
-    tae "atagCTestOp1"
-      (AProgram
-         (ACExpr (CTestOp1 (ImmNum (1L, (3, ss1)), ImmNum (2L, (2, ss1)), true, (1, ss1))), (0, ss1))
-      )
-      (atag (AProgram (ACExpr (CTestOp1 (ImmNum (1L, ss1), ImmNum (2L, ss1), true, ss1)), ss1)));
-    tae "atagCTestOp2"
-      (AProgram
-         ( ACExpr (CTestOp2 (ImmNum (1L, (3, ss1)), ImmNum (2L, (2, ss1)), Pred, false, (1, ss1))),
-           (0, ss1) ) )
-      (atag
-         (AProgram (ACExpr (CTestOp2 (ImmNum (1L, ss1), ImmNum (2L, ss1), Pred, false, ss1)), ss1)) );
-    tae "atagCTestOp2Pred"
-      (AProgram
-         ( ACExpr
-             (CTestOp2Pred
-                (ImmNum (1L, (4, ss1)), ImmNum (2L, (3, ss1)), ImmNum (3L, (2, ss1)), true, (1, ss1))
-             ),
-           (0, ss1) ) )
-      (atag
-         (AProgram
-            ( ACExpr (CTestOp2Pred (ImmNum (1L, ss1), ImmNum (2L, ss1), ImmNum (3L, ss1), true, ss1)),
-              ss1 ) ) );
     tae "atagASeq"
       (AProgram
          ( ASeq
