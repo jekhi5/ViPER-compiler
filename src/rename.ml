@@ -11,23 +11,19 @@ open Util
 let rename_and_tag (p : tag program) : tag program =
   let rec rename env p =
     match p with
-    | Program (decls, body, checks, tag) ->
-        Program
-          (List.map (fun group -> List.map (helpD env) group) decls, helpE env body, checks, tag)
-  and helpD env decl =
-    match decl with
-    | DFun (name, args, body, tag) ->
-        let newArgs, env' = helpBS env args in
-        DFun (name, newArgs, helpE env' body, tag)
+    (* decls and checks have been sugared away *)
+    | Program ([], body, [], tag) -> Program ([], helpE env body, [], tag)
+    | Program _ ->
+        raise (InternalCompilerError "decls should have been desugared away") [@coverage off]
   and helpB env (b : tag bind) =
     match b with
     | BBlank _ -> (b, env)
     | BName (name, allow_shadow, tag) ->
         let name' = sprintf "%s_%d" name (fst tag) in
         (BName (name', allow_shadow, tag), (name, name') :: env)
-    | BTuple (binds, tag) ->
-        let binds', env' = helpBS env binds in
-        (BTuple (binds', tag), env')
+    | BTuple _ ->
+        raise (InternalCompilerError "Tuple bindings should have been desugared away")
+        [@coverage off]
   and helpBS env (bs : tag bind list) =
     match bs with
     | [] -> ([], env)
@@ -57,13 +53,13 @@ let rename_and_tag (p : tag program) : tag program =
     | ENil _ -> e
     | EId (name, tag) -> ( try EId (find env name, tag) with InternalCompilerError _ -> e )
     | EApp (func, args, _, tag) ->
-        let call_type' =
+        let call_type =
           match func with
           | EId (name, _) when StringMap.mem name initial_fun_env -> Native
           | _ -> Snake
         in
         let func = helpE env func in
-        EApp (func, List.map (helpE env) args, call_type', tag)
+        EApp (func, List.map (helpE env) args, call_type, tag)
     | ELet (bindings, body, tag) ->
         let bindings', env' = helpBG env bindings in
         let body' = helpE env' body in
@@ -90,10 +86,12 @@ let rename_and_tag (p : tag program) : tag program =
      * it in an ELet with the binding
      *)
     | ETryCatch (t, bind, excptn, c, tag) -> ETryCatch (helpE env t, bind, excptn, helpE env c, tag)
-    | ECheck (checks, tag) -> ECheck (List.map (fun check -> helpE env check) checks, tag)
-    | ETestOp1 (e1, e2, negation, tag) -> ETestOp1 (helpE env e1, helpE env e2, negation, tag)
-    | ETestOp2 (e1, e2, tt, negation, tag) ->
-        ETestOp2 (helpE env e1, helpE env e2, tt, negation, tag)
+    | ECheck _ ->
+        raise (InternalCompilerError "ECheck should have been desugared away") [@coverage off]
+    | ETestOp1 _ ->
+        raise (InternalCompilerError "ETestOp1 should have been desugared away") [@coverage off]
+    | ETestOp2 _ ->
+        raise (InternalCompilerError "ETestOp2 should have been desugared away") [@coverage off]
   in
   rename [] p
 ;;
