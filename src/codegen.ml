@@ -320,7 +320,7 @@ and compile_fun
            (* Handles self-reference by tagging the heap pointer with the closure tag.
             * This works because we know that this closure will be on the top of the heap at this given moment.
             *)
-           | Reg heap_reg ->
+           | Reg r when r = heap_reg ->
                [ IMov (Reg RAX, arg);
                  IAdd (Reg RAX, Const closure_tag);
                  IMov (Sized (QWORD_PTR, RegOffset (i + 3, heap_reg)), Reg RAX) ]

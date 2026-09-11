@@ -463,22 +463,108 @@ let test_doesnt_err filename _ =
       assert_failure (sprintf "Expected program to succeed, but it didn't:\nReceived: %s" errmsg)
 ;;
 
+(* Registering the option with OUnit's configuration system is what makes [-diff-alloc true] a
+   legal command-line flag, and it comes with OUnit's other two channels for free:
+   [OUNIT_DIFF_ALLOC=true] in the environment and [diff_alloc = true] in an [ounit.conf] file. *)
+let diff_alloc_conf_name = "diff_alloc"
+
+let diff_alloc : OUnitConf.conf -> bool =
+  OUnitConf.make_bool diff_alloc_conf_name false
+    "Also run every test/input/do_pass program under both naive stack allocation and register \
+     allocation, and assert the two runs agree."
+;;
+
+(* OUnit hands the resolved configuration to individual tests (through their [test_ctxt]), but we
+   need this option's value earlier than that: whether the differential suite exists at all is
+   decided while assembling the suite, which happens before [run_test_tt_main] has parsed
+   anything. So resolve the configuration ourselves, which honors all three channels with OUnit's
+   own precedence (config file, then environment, then command line).
+
+   We hand [load] a filtered [Sys.argv] holding just the arguments our configuration owns, since
+   [run_test_tt_main] registers flags of its own ([-only-test], [-list-test]) that this call isn't
+   told about and would reject. Filtering, rather than parsing the value ourselves, keeps OUnit as
+   the only thing that interprets the option. Passing an explicit argv also means [load] uses its
+   own cursor, leaving [Arg]'s global one untouched for OUnit's real pass over the true argv. A
+   malformed value still raises here; fall back to the default and let [run_test_tt_main] be the
+   one to report it. *)
+let differential_alloc_enabled =
+  lazy
+    (let diff_alloc_flag = OUnitConf.cli_name diff_alloc_conf_name in
+     let rec owned_args = function
+       | flag :: value :: rest when flag = diff_alloc_flag || flag = "-conf" ->
+           flag :: value :: owned_args rest
+       | _ :: rest -> owned_args rest
+       | [] -> []
+     in
+     let argv = Array.of_list (Sys.argv.(0) :: owned_args (Array.to_list Sys.argv)) in
+     try diff_alloc (OUnitConf.load ~argv []) with _ -> false )
+;;
+
+let test_run_differential
+    ?(no_builtins = false)
+    ?(args = [])
+    ?(std_input = "")
+    program_str
+    outfile
+    _ =
+  let run_strat strat suffix =
+    let full_outfile = sprintf "test/output/%s.%s" outfile suffix in
+    try
+      let program = parse_string outfile program_str in
+      run program full_outfile run_no_vg no_builtins args std_input strat
+    with err -> Error (Printexc.to_string err)
+  in
+  let naive_result = run_strat Naive "naive" in
+  let register_result = run_strat Register "register" in
+  assert_equal naive_result register_result ~printer:result_printer
+    ~msg:(sprintf "Naive vs Register allocation diverged for %s" outfile)
+;;
+
+let test_does_run_differential filename test_ctxt =
+  let filename = Filename.remove_extension filename in
+  let progfile = sprintf "test/input/do_pass/%s.viper" filename in
+  let argsfile = sprintf "test/input/do_pass/%s.args" filename in
+  let infile = sprintf "test/input/do_pass/%s.in" filename in
+  let opts = read_options (sprintf "test/input/do_pass/%s.options" filename) in
+  let prog = string_of_file progfile in
+  let args = parse_args argsfile opts in
+  let input =
+    if Sys.file_exists infile then
+      string_of_file infile
+    else
+      ""
+  in
+  test_run_differential ~no_builtins:opts.no_builtins ~args ~std_input:input prog
+    ("do_pass/" ^ filename) test_ctxt
+;;
+
 let input_file_test_suite () =
   let safe_readdir dir ext =
     try List.filter (fun f -> Filename.check_suffix f ext) (Array.to_list (Sys.readdir dir))
     with _ -> []
   in
-  "input-file-suite"
-  >::: [ "do_pass"
-         >::: List.map (fun f -> f >:: test_does_run f) (safe_readdir "test/input/do_pass" ".viper");
-         "do_err"
-         >::: List.map (fun f -> f >:: test_does_err f) (safe_readdir "test/input/do_err" ".viper");
-         "dont_pass"
-         >::: List.map
-                (fun f -> f >:: test_doesnt_run f)
-                (safe_readdir "test/input/dont_pass" ".viper");
-         "dont_err"
-         >::: List.map
-                (fun f -> f >:: test_doesnt_err f)
-                (safe_readdir "test/input/dont_err" ".viper") ]
+  let base_suites =
+    [ "do_pass"
+      >::: List.map (fun f -> f >:: test_does_run f) (safe_readdir "test/input/do_pass" ".viper");
+      "do_err"
+      >::: List.map (fun f -> f >:: test_does_err f) (safe_readdir "test/input/do_err" ".viper");
+      "dont_pass"
+      >::: List.map
+             (fun f -> f >:: test_doesnt_run f)
+             (safe_readdir "test/input/dont_pass" ".viper");
+      "dont_err"
+      >::: List.map (fun f -> f >:: test_doesnt_err f) (safe_readdir "test/input/dont_err" ".viper")
+    ]
+  in
+  let suites =
+    if Lazy.force differential_alloc_enabled then
+      base_suites
+      @ [ "do_pass-differential-alloc"
+          >::: List.map
+                 (fun f -> f >:: test_does_run_differential f)
+                 (safe_readdir "test/input/do_pass" ".viper") ]
+    else
+      base_suites
+  in
+  "input-file-suite" >::: suites
 ;;
