@@ -16,18 +16,8 @@ let naive_stack_allocation (AProgram (body, _) as prog : tag aprogram) :
   let rec helpC (cexp : tag cexpr) (env : arg name_envt name_envt) (si : int) (env_name : string) :
       arg name_envt name_envt =
     match cexp with
-    | CPrim1 _
-     |CPrim2 _
-     |CApp _
-     |CImmExpr _
-     |CTuple _
-     |CGetItem _
-     |CSetItem _
-     |CTryCatch _
-     |CCheck _
-     |CTestOp1 _
-     |CTestOp2 _
-     |CTestOp2Pred _ -> env
+    | CPrim1 _ | CPrim2 _ | CApp _ | CImmExpr _ | CTuple _ | CGetItem _ | CSetItem _ | CTryCatch _
+      -> env
     | CIf (_, thn, els, _) ->
         let thn_env = helpA thn env (si + 1) env_name in
         helpA els thn_env (si + 1) env_name
