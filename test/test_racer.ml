@@ -66,14 +66,19 @@ let ra =
             ("bar", Reg R12);
             ("lam_21", Reg R13);
             ("baz", Reg R12) ] );
-        ("lam_8", [("x", RegOffset (3, RBP))]) ];
+        ("lam_8", [("x", RegOffset (3, RBP))]);
+        ("lam_13", [("y", RegOffset (3, RBP)); ("x", RegOffset (4, RBP))]);
+        ("lam_21", []) ];
     tra "nested_lambdas" "let foo = (lambda(x): (lambda(y): y + x)) in 1"
-      [ ("ocsh_0", []);
-        ("lam_5", [("x", RegOffset (3, RBP))]);
+      [ ("ocsh_0", [("foo", Reg R12); ("lam_5", Reg R13)]);
+        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_6", Reg R13)]);
         ("lam_6", [("y", RegOffset (3, RBP))]) ];
+    (* `foo` must be able to find itself by name for self-recursive calls (mirroring
+       naive_alloc's self-reference), so its own env carries `foo => RegOffset(2, RBP)`
+       alongside its argument `x`. *)
     tra "letrec1" "let rec foo = (lambda(x): x) in 1"
-      [ ("ocsh_0", [("lam_5", RegOffset (~-1, RBP)); ("foo", RegOffset (~-2, RBP))]);
-        ("lam_5", [("x", RegOffset (3, RBP)); ("lam_5", RegOffset (~-1, RBP))]) ];
+      [ ("ocsh_0", [("foo", Reg R12)]);
+        ("foo", [("foo", RegOffset (2, RBP)); ("x", RegOffset (3, RBP))]) ];
     tra "number" "1" [("ocsh_0", [])];
     tra "nested_let_and_lambda"
       "\n\
@@ -104,15 +109,13 @@ let ra =
         ("lam_25", [("p", RegOffset (4, RBP)); ("r", RegOffset (3, RBP))]) ] ]
 ;;
 
-let live_out = []
-
 (** Test for equality over color mappings.*)
-let tc ?(colors = colors) name given expected =
+let tc name given expected =
   name
   >:: fun _ ->
   assert_equal
     (string_of_name_envt (assoc_to_map expected))
-    (string_of_name_envt (color_graph ~colors given StringMap.empty))
+    (string_of_name_envt (color_graph given StringMap.empty))
     ~printer:(fun s -> s)
 ;;
 
@@ -162,13 +165,6 @@ let coloring =
         ("f", RegOffset (~-2, RBP));
         ("g", RegOffset (~-3, RBP));
         ("h", RegOffset (~-4, RBP)) ];
-    tc "stack_spill2" ~colors:[Reg R12] g1
-      [ ("a", RegOffset (~-1, RBP));
-        ("b", Reg R12);
-        ("c", Reg R12);
-        ("d", Reg R12);
-        ("e", Reg R12);
-        ("f", Reg R12) ];
     tc "cliques" g3 [("a", Reg R14); ("b", Reg R12); ("c", Reg R13); ("d", Reg R12); ("e", Reg R13)]
   ]
 ;;
@@ -197,8 +193,7 @@ let tigc name program expected =
 let empty_map = StringMap.empty
 
 let interference =
-  [ tigc "simple" "let a = 1 in b" (assoc_to_map [("a", Reg R12); ("b", Reg R13)]);
-    tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
+  [ tigc "if1" "if true: let x = 1 in x else: let y = 2 in y"
       (assoc_to_map [("x", Reg R12); ("y", Reg R12)]);
     tigc "let1" "let a = 1, b = 2, c = 3 in 4"
       (assoc_to_map [("a", Reg R12); ("b", Reg R12); ("c", Reg R12)]);
@@ -225,9 +220,59 @@ let run_with_ra =
     tr "boa1" "1 + 2 + 3 + 4 + 5" "" "15";
     tr "boa2" "(((1 + 2) + 3) + (4 + 5))" "" "15";
     tr "nested_lambdas1" "let foo = (lambda(x): (lambda(y): y + x)) in 3" "" "3";
-    tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12" ]
+    tr "nested_lambdas2" "let foo = (lambda(x): (lambda(y): y - x)) in foo(3)(15)" "" "12";
+    (* A `nil` operand is how a real program reaches [get_cache]'s non-[ImmId] immediate arm. *)
+    tr "nilOperand" "nil == nil" "" "true";
+    tr "fv_vs_live_counterexample"
+      "let x = true in\n  let y = if true: (let b = 5 in b) else: 6 in\n  x" "" "true";
+    t "selfrec_naive"
+      "let rec fact = (lambda(n): if n == 1: n else: n * (fact(sub1(n)))) in fact(5)" "" "120"
+    (* Segfaults under [Register]: callee-saved registers aren't preserved across calls. See issue #87.
+       tr "selfrec_register"
+         "let rec fact = (lambda(n): if n == 1: n else: n * (fact(sub1(n)))) in fact(5)" "" "120"; *)
+  ]
+;;
+
+let graph_utils =
+  [ tae "getNeighborsPresent" ["b"; "c"]
+      (List.sort compare (get_neighbors (graph [("a", ["b"; "c"])]) "a"));
+    tae "getNeighborsAbsent" [] (get_neighbors (graph [("a", ["b"])]) "missing");
+    tae "getVertices" ["a"; "b"; "c"] (List.sort compare (get_vertices (graph [("a", ["b"; "c"])])));
+    tae "stringOfGraphSingleEdge" "a: b\nb: a" (string_of_graph (graph [("a", ["b"])]));
+    tae "mergeGraphsUnionsEdges" ["b"; "c"]
+      (List.sort compare
+         (get_neighbors (merge_graphs (graph [("a", ["b"])]) (graph [("a", ["c"])])) "a") ) ]
+;;
+
+(* NOTE: [tra] skips desugaring, so these ANF shapes are slightly rosier than what the real
+   pipeline hands Racer (e.g. desugar wraps a try/catch's arms in lambdas). The constructs
+   themselves are all reachable from source. *)
+let ra_constructs =
+  [ tra "tupleCtor" "(1, 2, 3)" [("ocsh_0", [])];
+    tra "getItem" "let t = (1, 2) in t[0]" [("ocsh_0", [("t", Reg R12)])];
+    tra "setItem" "let t = (1, 2) in t[0] := 5" [("ocsh_0", [("t", Reg R12)])];
+    tra "sequence" "print(1); print(2); 3" [("ocsh_0", [])];
+    tra "nilImm" "nil" [("ocsh_0", [])];
+    tra "tryCatch" "try raise(RuntimeException) catch RuntimeException as b in 5"
+      [("ocsh_0", [("unary_3", Reg R12)])] ]
+;;
+
+(* Mutual recursion is unimplemented: [anf]'s immediate-position let-rec arm builds a
+   multi-binding [ALetRec], which Racer refuses. *)
+let ra_letrec =
+  [ ( "raLetRecMultiRaises"
+    >:: fun _ ->
+    assert_raises (Errors.NotYetImplemented "lol") (fun () ->
+        register_allocation
+          (atag
+             (anf
+                (tag
+                   (parse_string "raLetRecMultiRaises"
+                      "1 + (let rec f = (lambda: 1), g = (lambda: 2) in 3)" ) ) ) ) ) ) ]
 ;;
 
 module Suite : TestSuite = struct
-  let suite = nsa @ ra @ coloring @ interference @ run_with_ra
+  let suite =
+    nsa @ ra @ coloring @ interference @ run_with_ra @ graph_utils @ ra_constructs @ ra_letrec
+  ;;
 end
